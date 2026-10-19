@@ -22,11 +22,6 @@ from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
-
 
 # Build compressed sparse storage from index and value tensors.
 # Pass dtype explicitly: these ATen factories default to float32.
@@ -161,7 +156,11 @@ def _assert_result(res_out, ref_out, dtype, layout, index_dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in [torch.float32, torch.int32, torch.float8_e4m3fn]
     ],
@@ -203,7 +202,11 @@ def test_sparse_compressed_tensor_shape_levels(shape, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SPARSE_COMPRESSED_DTYPES
     ],
@@ -243,7 +246,11 @@ def test_sparse_compressed_tensor(case, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SPARSE_COMPRESSED_DTYPES
     ],
@@ -314,7 +321,11 @@ def test_sparse_compressed_tensor_empty(case, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SPARSE_COMPRESSED_DTYPES
     ],
@@ -357,7 +368,10 @@ def test_sparse_compressed_tensor_value_ranges(case, value_range, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_SPARSE_COMPRESSED_DTYPES)

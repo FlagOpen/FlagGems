@@ -22,11 +22,6 @@ from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
-
 
 def _assert_result_equal(result, reference):
     # Keep dtype/device checks before moving complex comparisons off the NPU.
@@ -124,11 +119,11 @@ _DTYPE_RANGE_CASES = [
             shape,
             dtype,
             value_range,
-            marks=(
-                _ASCEND_FP8_INPUT_SKIP
-                if dtype in _FP8_DTYPES
-                and (all(shape) or value_range[0] == value_range[1])
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _FP8_DTYPES
+                and (all(shape) or value_range[0] == value_range[1]),
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
             ),
         )
         for shape in tu.selected_shapes()
@@ -170,7 +165,11 @@ _CALL_FORM_SHAPES = tu.selected_cases([(2, 19, 7), (20, 320, 15)], quick=[(2, 19
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SUPPORTED_DTYPES
     ],
@@ -213,7 +212,11 @@ def _layout_view(base, layout):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SUPPORTED_DTYPES
     ],
@@ -251,7 +254,11 @@ def test_test_string_default_preserves_lazy_conjugate(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _FLOAT_DTYPES
     ],
@@ -300,7 +307,11 @@ _SCALAR_SHAPES = [(), (1,)]
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SUPPORTED_DTYPES
     ],
@@ -326,7 +337,10 @@ def test_test_string_default_scalar_operand(shape, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_SUPPORTED_DTYPES), quick=[]
@@ -350,7 +364,11 @@ def test_test_string_default_special_values(dtype, scenario):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in tu.selected_cases(_FLOAT_DTYPES, quick=[])
     ],
@@ -378,7 +396,11 @@ def test_test_string_default_backward(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SUPPORTED_DTYPES
     ],

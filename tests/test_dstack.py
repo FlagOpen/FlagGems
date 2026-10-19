@@ -26,11 +26,6 @@ _ASCEND_UNSUPPORTED_DTYPES = (
     torch.complex32,
 )
 
-_ASCEND_DSTACK_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
-)
-
 
 def _assert_result_equal(result, reference):
     # Keep dtype/device checks before moving complex comparisons off the NPU.
@@ -127,7 +122,11 @@ def _assert_dstack_output(res_out, ref_out):
     [
         pytest.param(
             dtype,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype in DSTACK_DTYPES
     ],
@@ -150,7 +149,11 @@ def test_dstack(shape_set, dtype):
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype, value_range in _DTYPE_RANGE_PAIRS
     ],
@@ -172,7 +175,11 @@ def test_dstack_value_ranges(shape_set, dtype, value_range):
     [
         pytest.param(
             dtype,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype in DSTACK_DTYPES
     ],
@@ -201,7 +208,11 @@ def test_dstack_out(shape_set, dtype):
     [
         pytest.param(
             dtype,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype in DSTACK_DTYPES
     ],
@@ -223,7 +234,11 @@ def test_dstack_empty_inputs(shape_set, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(DSTACK_DTYPES))
     ],
@@ -245,7 +260,11 @@ def test_dstack_nan_inf(dtype, scenario):
     [
         pytest.param(
             dtype,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype in utils.COMPLEX_DTYPES
     ],
@@ -270,7 +289,11 @@ def test_dstack_complex(dtype):
     [
         pytest.param(
             dtype,
-            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+            ),
         )
         for dtype in tu.selected_cases(
             [d for d in DSTACK_DTYPES if d.is_floating_point or d.is_complex]

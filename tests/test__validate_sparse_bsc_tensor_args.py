@@ -22,11 +22,6 @@ from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
-
 
 def _assert_result_equal(result, reference):
     # Compare complex and high-rank payloads on CPU; keep their original metadata checks.
@@ -163,7 +158,10 @@ _DTYPE_RANGE_CASES = [
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, value_range in _DTYPE_RANGE_CASES
     ],
@@ -466,7 +464,10 @@ _SPECIAL_CASES = tu.selected_cases(
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, scenario in _SPECIAL_CASES
     ],

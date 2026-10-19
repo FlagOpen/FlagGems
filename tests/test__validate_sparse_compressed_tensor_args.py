@@ -22,11 +22,6 @@ from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
-
 
 def _assert_result_equal(result, reference):
     # Keep dtype/device checks before moving complex comparisons off the NPU.
@@ -315,14 +310,14 @@ _VALUE_DTYPE_RANGE_CASES = [
             nnz,
             values_dtype,
             value_range,
-            marks=(
-                _ASCEND_FP8_INPUT_SKIP
-                if values_dtype in _FP8_DTYPES
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and values_dtype in _FP8_DTYPES
                 and (
                     all(_values_shape(layout, batch, nnz, blocks, dense))
                     or value_range[0] == value_range[1]
-                )
-                else ()
+                ),
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
             ),
         )
         for layout, batch, base, dense, blocks, nnz in _DESCRIPTORS
@@ -411,7 +406,10 @@ def _capacity_base(layout, nnz, blocks):
         pytest.param(
             values_dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if values_dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and values_dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for values_dtype, scenario in _SPECIAL_VALUES_CASES
     ],

@@ -20,15 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_FP64_REFERENCE_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
-    reason="Ascend NPU reference upcast/comparison does not preserve FP64",
-)
-_ASCEND_FP64_BACKWARD_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend native convolution backward does not support FP64",
-)
-
 # Test transposed conv3d; weight dimensions are (C_in, C_out, kD, kH, kW).
 # Extreme ranges retain their bounds and use the original reference dtype to preserve overflow.
 # Cases: (input shape, weight shape, kernel size, stride, padding, output padding, dilation).
@@ -264,7 +255,13 @@ def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
         )
         for dtype in SUPPORTED_DTYPES
     ],
@@ -313,10 +310,12 @@ def test_slow_conv_transpose3d(
         pytest.param(
             value_range,
             dtype,
-            marks=(
-                _ASCEND_FP64_REFERENCE_SKIP
-                if dtype == torch.float64 and not tu.is_extreme_range(value_range)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64
+                and not tu.is_extreme_range(value_range),
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
             ),
         )
         for value_range in tu.selected_ranges()
@@ -371,7 +370,13 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
         )
         for dtype in SUPPORTED_DTYPES
     ],
@@ -441,7 +446,11 @@ def test_slow_conv_transpose3d_out(
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP64_BACKWARD_SKIP if dtype == torch.float64 else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype == torch.float64,
+                reason="Ascend native convolution backward does not support FP64",
+            ),
         )
         for dtype in tu.selected_cases(_BACKWARD_DTYPES)
     ],
@@ -513,7 +522,12 @@ def test_slow_conv_transpose3d_backward(case, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else (),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(SUPPORTED_DTYPES)

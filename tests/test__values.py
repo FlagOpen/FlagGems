@@ -21,14 +21,6 @@ from . import accuracy_utils as utils
 from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-)
-_ASCEND_FP8_COMPARISON_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
-    reason="Ascend device comparison does not support FP8, including empty values",
-)
 
 # _values returns a non-differentiable view of the COO value storage.
 # Explicit zeros and duplicate entries are preserved; dense and CSR inputs fail.
@@ -98,7 +90,11 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -121,7 +117,11 @@ def test__values_layouts(case, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -142,7 +142,13 @@ def test__values_value_ranges(case, value_range, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_COMPARISON_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype in _FP8_DTYPES,
+                reason="Ascend device comparison does not support FP8, including empty values",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -166,7 +172,13 @@ def test__values_empty(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_COMPARISON_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype in _FP8_DTYPES,
+                reason="Ascend device comparison does not support FP8, including empty values",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -190,7 +202,11 @@ def test__values_empty_hybrid(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -217,7 +233,11 @@ def test__values_full_storage(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -243,7 +263,10 @@ def test__values_uncoalesced(dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else (),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_VALUES_DTYPES))
     ],

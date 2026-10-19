@@ -22,12 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
-
-
 # Gather one row per combination, with the first input varying slowest.
 _FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2]
 
@@ -82,11 +76,11 @@ _BACKWARD_SIZES = tu.selected_cases(
             sizes,
             dtype,
             value_range,
-            marks=(
-                _ASCEND_FP8_INPUT_SKIP
-                if dtype in _FP8_DTYPES
-                and (any(sizes) or value_range[0] == value_range[1])
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _FP8_DTYPES
+                and (any(sizes) or value_range[0] == value_range[1]),
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
             ),
         )
         for sizes in _CARTESIAN_PROD_SIZES
@@ -136,7 +130,11 @@ def test_cartesian_prod_row_order(dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _SUPPORTED_DTYPES
     ],
@@ -162,7 +160,10 @@ def test_cartesian_prod_non_contiguous(dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_SUPPORTED_DTYPES)
@@ -190,7 +191,12 @@ def test_cartesian_prod_nan_inf(dtype, scenario):
     "sizes, dtype",
     [
         pytest.param(
-            sizes, dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            sizes,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for sizes, dtype in tu.selected_cases(
             [

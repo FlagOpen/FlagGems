@@ -24,10 +24,6 @@ from . import test_utils as tu
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 # Empty FP8 casts work; constant fills fail even for empty values.
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate FP8 payloads with device casts or fills",
-)
 
 
 # Store CSC indices and values verbatim, including repeated/unsorted rows.
@@ -154,11 +150,11 @@ _DTYPE_RANGE_CASES = [
             nnz,
             dtype,
             value_range,
-            marks=(
-                _ASCEND_FP8_INPUT_SKIP
-                if dtype in _FP8_DTYPES
-                and (nnz > 0 or value_range[0] == value_range[1])
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _FP8_DTYPES
+                and (nnz > 0 or value_range[0] == value_range[1]),
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
             ),
         )
         for shape, nnz in _CSC_CASES
@@ -208,7 +204,10 @@ def test_sparse_csc_tensor(shape, nnz, dtype, index_dtype, value_range):
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, value_range in _DTYPE_RANGE_CASES
     ],
@@ -255,11 +254,11 @@ def test_sparse_csc_tensor_batched(shape, nnz, dtype, index_dtype, value_range):
             row_list,
             dtype,
             value_range,
-            marks=(
-                _ASCEND_FP8_INPUT_SKIP
-                if dtype in _FP8_DTYPES
-                and (bool(row_list) or value_range[0] == value_range[1])
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _FP8_DTYPES
+                and (bool(row_list) or value_range[0] == value_range[1]),
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
             ),
         )
         for ccol_list, row_list in _CSC_NO_SIZE_CASES
@@ -307,7 +306,11 @@ def test_sparse_csc_tensor_no_size(
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _CSC_DTYPES
     ],
@@ -352,7 +355,11 @@ def test_sparse_csc_tensor_unchecked_uncoalesced(dtype, index_dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _CSC_DTYPES
     ],
@@ -399,7 +406,10 @@ def test_sparse_csc_tensor_unchecked_unsorted_rows(dtype, index_dtype):
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype in _FLOAT_STORAGE_DTYPES
         for value_range in tu.selected_ranges()
@@ -456,7 +466,10 @@ _BOUNDARY_DTYPE_RANGE_CASES = [
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, value_range in _BOUNDARY_DTYPE_RANGE_CASES
     ],
@@ -501,7 +514,10 @@ def test_sparse_csc_tensor_boundary_values(dtype, value_range):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_CSC_DTYPES))
     ],

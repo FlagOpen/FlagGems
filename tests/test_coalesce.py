@@ -29,11 +29,6 @@ _ASCEND_UNSUPPORTED_DTYPES = (
     torch.bool,
 )
 
-_ASCEND_COALESCE_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend COO reduction supports only FP16, BF16, FP32 and INT32",
-)
-
 
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
@@ -153,8 +148,10 @@ def _assert_coalesced(res_out, ref_out, dtype, *, equal_nan=False):
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend COO reduction supports only FP16, BF16, FP32 and INT32",
             ),
         )
         for dtype in _COALESCE_DTYPES
@@ -210,8 +207,10 @@ def test_coalesce_coalesced_input(case, dtype):
             value_range,
             dtype,
             case,
-            marks=(
-                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend COO reduction supports only FP16, BF16, FP32 and INT32",
             ),
         )
         for value_range, dtype, case in _VALUE_CASES
@@ -243,8 +242,10 @@ def test_coalesce_value_ranges(value_range, dtype, case):
         pytest.param(
             dtype,
             scenario,
-            marks=(
-                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in _ASCEND_UNSUPPORTED_DTYPES,
+                reason="Ascend COO reduction supports only FP16, BF16, FP32 and INT32",
             ),
         )
         for dtype, scenario in tu.selected_cases(

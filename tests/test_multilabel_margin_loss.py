@@ -20,21 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_CPU_LOW_PRECISION_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend" and utils.TO_CPU,
-    reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-)
-
-_ASCEND_LOW_PRECISION_BACKWARD_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend FP16/BF16 backward falls back to an unavailable CPU kernel",
-)
-
-_ASCEND_CPU_SPECIAL_VALUES_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend" and utils.TO_CPU,
-    reason="Ascend and CPU native loss differ in NaN/Inf propagation",
-)
-
 # multilabel_margin_loss scores an (N, C) matrix, or a single C-class row, against an
 # int64 target of the same shape whose rows list active class ids terminated by -1.
 # reduction follows at::Reduction: 0 is per-row, 1 the mean, 2 the sum. The native
@@ -279,10 +264,11 @@ def _special_input(dtype, shape, special, layout):
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -309,10 +295,11 @@ def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -339,10 +326,11 @@ def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction,
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -368,10 +356,11 @@ def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
         pytest.param(
             reduction,
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for reduction, dtype in EXTRA_REDUCTIONS
@@ -397,10 +386,11 @@ def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -441,10 +431,11 @@ def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -471,10 +462,10 @@ def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, 
     [
         pytest.param(
             dtype,
-            marks=(
-                _ASCEND_LOW_PRECISION_BACKWARD_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend FP16/BF16 backward falls back to an unavailable CPU kernel",
             ),
         )
         for dtype in SUPPORTED_DTYPES
@@ -529,10 +520,11 @@ def test_multilabel_margin_loss_empty_batch(dtype):
             n_classes,
             dtype,
             value_range,
-            marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else ()
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and utils.TO_CPU
+                and dtype in (torch.float16, torch.bfloat16),
+                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
             ),
         )
         for n_classes, dtype, value_range in CLASS_COUNT_CASES
@@ -560,17 +552,22 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
             dtype,
             special,
             marks=(
-                _ASCEND_CPU_LOW_PRECISION_SKIP
-                if dtype in (torch.float16, torch.bfloat16)
-                else (
-                    _ASCEND_CPU_SPECIAL_VALUES_SKIP
-                    if dtype == torch.float32
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "ascend"
+                    and utils.TO_CPU
+                    and dtype in (torch.float16, torch.bfloat16),
+                    reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
+                ),
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "ascend"
+                    and utils.TO_CPU
+                    and dtype == torch.float32
                     and (
                         special in ("nan", "mixed")
                         or (layout == "batched" and special == "inf")
-                    )
-                    else ()
-                )
+                    ),
+                    reason="Ascend and CPU native loss differ in NaN/Inf propagation",
+                ),
             ),
         )
         for layout in SPECIAL_LAYOUTS

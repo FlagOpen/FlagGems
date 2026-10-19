@@ -23,11 +23,6 @@ from . import test_utils as tu
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
-)
-
 
 # Place flattened input values on a diagonal and zero the rest.
 _DIAGFLAT_DTYPES = tu.REQUIRED_DTYPES + [torch.int16, torch.float64, torch.bool]
@@ -74,7 +69,11 @@ def _assert_output(res_out, ref_out):
     "dtype",
     [
         pytest.param(
-            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in _DIAGFLAT_DTYPES
     ],
@@ -109,7 +108,10 @@ _DTYPE_RANGE_CASES = [
         pytest.param(
             dtype,
             value_range,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype, value_range in _DTYPE_RANGE_CASES
     ],
@@ -131,7 +133,11 @@ def test_diagflat_value_ranges(shape, value_range, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in _DIAGFLAT_DTYPES
     ],
@@ -153,7 +159,11 @@ def test_diagflat_large_offset(shape, offset, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in _DIAGFLAT_DTYPES
     ],
@@ -177,7 +187,11 @@ def test_diagflat_non_contiguous(shape, offset, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in _DIAGFLAT_DTYPES
     ],
@@ -202,7 +216,10 @@ def test_diagflat_strided(shape, offset, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_DIAGFLAT_DTYPES)
@@ -225,7 +242,11 @@ def test_diagflat_nan_inf(dtype, scenario):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in _DIAGFLAT_DTYPES
     ],
@@ -247,7 +268,11 @@ def test_diagflat_empty_input(offset, dtype):
     "dtype",
     [
         pytest.param(
-            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+            ),
         )
         for dtype in tu.selected_cases(_GRAD_DTYPES)
     ],
