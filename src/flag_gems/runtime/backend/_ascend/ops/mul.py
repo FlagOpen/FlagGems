@@ -189,11 +189,16 @@ def mul_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    # Ascend coreDim is limited to UINT16_MAX. Iterate over tiles when the
+    # launch grid is capped, keeping each tile small enough for the UB.
+    for block_id in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask, other=0)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -618,9 +623,22 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    # Ascend NPU coreDim limit: <= 65535
+    # The kernel has a loop to handle cases where grid < total_blocks
+    # We just need to ensure grid calculation doesn't overflow
+    MAX_CORE_DIM = 65535
+
+    def compute_grid(meta):
+        block_size = meta["BLOCK_SIZE"]
+        # Calculate required blocks, ensuring intermediate value is safe
+        num_blocks = triton.cdiv(n_elements, block_size)
+        # Cap at hardware limit
+        grid_size = min(num_blocks, MAX_CORE_DIM)
+        return (grid_size,)
+
     with torch_device_fn.device(output.device):
-        mul_scalar_kernel[grid](
+        mul_scalar_kernel[compute_grid](
             tensor,
             output,
             scalar,

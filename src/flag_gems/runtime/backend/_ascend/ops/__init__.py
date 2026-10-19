@@ -111,7 +111,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -313,6 +313,7 @@ __all__ = [
     "mm_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
