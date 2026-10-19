@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+import importlib.util
 import logging
+import sys
 from functools import lru_cache
 from itertools import product
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 import torch
@@ -379,9 +384,252 @@ def test_scaled_mm_descriptor_dtype_switch():
         torch.testing.assert_close(
             actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
         )
+
         out = torch.empty_like(actual)
         actual = flag_gems.scaled_mm_out(*args, **kwargs, out=out)
         assert actual is out
         torch.testing.assert_close(
             actual.cpu().float(), expected.float(), rtol=0.02, atol=0.02
         )
+
+
+# Host-only regression checks: no capability probe may run during collection.
+pytest_plugins = ["pytester"]
+
+ROOT = Path(__file__).resolve().parents[1]
+
+ASCEND_ERROR = (
+    "'hivm.hir.vbrc' op failed to verify that operand at idx 0 should have "
+    "element type f8E4M3FN type or f8E5M2 type or 32-bit float"
+)
+
+METAX_ERROR = (
+    "CUDA error: CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul "
+    "with transpose_mat1 t transpose_mat2 n m 16 n 16 k 16"
+)
+
+
+def _load_modules(monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("device operation during collection")
+
+    def module(name, **attributes):
+        value = ModuleType(name)
+        value.__dict__.update(attributes)
+        monkeypatch.setitem(sys.modules, name, value)
+        return value
+
+    module("benchmark", __path__=[str(ROOT / "benchmark")])
+    names = (
+        "float16",
+        "bfloat16",
+        "float32",
+        "float8_e4m3fn",
+        "float8_e5m2",
+        "float8_e4m3fnuz",
+        "float8_e5m2fnuz",
+    )
+    module("torch", **{name: f"torch.{name}" for name in names}, arange=unexpected)
+    language = module("triton.language", constexpr=object())
+    module("triton", language=language, jit=lambda fn: fn)
+    gems = module("flag_gems", device="cuda", vendor_name="metax")
+    module(
+        "flag_gems.runtime", torch_device_fn=SimpleNamespace(current_device=unexpected)
+    )
+    module("tests.conftest", QUICK_MODE=False)
+    module("benchmark.base", Benchmark=object)
+    module("benchmark.consts", DEFAULT_METRICS=[])
+    config = SimpleNamespace(
+        query=False,
+        list_cases=False,
+        preflight_only=False,
+        profile_only=False,
+        skip_native=False,
+        native_baseline_skip_reason=None,
+    )
+    conftest = module("benchmark.conftest", Config=config)
+    # Exercise the real baseline fixture, including its teardown ordering.
+    tree = ast.parse((ROOT / "benchmark/conftest.py").read_text())
+    tree.body = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        in ("configure_native_baseline", "_get_native_baseline_skip_reason")
+    ]
+    conftest.__dict__.update(pytest=pytest, vendor_name="metax")
+    exec(compile(tree, "benchmark/conftest.py", "exec"), conftest.__dict__)
+
+    def load(name, path):
+        spec = importlib.util.spec_from_file_location(name, ROOT / path)
+        value = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, value)
+        spec.loader.exec_module(value)
+        return value
+
+    accuracy = load("tests.test_scaled_mm", "tests/test_scaled_mm.py")
+    benchmark = load("benchmark.test_scaled_mm", "benchmark/test_scaled_mm.py")
+    return SimpleNamespace(
+        accuracy=accuracy,
+        benchmark=benchmark,
+        config=config,
+        conftest=conftest,
+        gems=gems,
+    )
+
+
+@pytest.fixture
+def modules(monkeypatch):
+    return _load_modules(monkeypatch)
+
+
+def test_import_enumerates_all_cases_without_device_calls(modules):
+    accuracy, benchmark = modules.accuracy, modules.benchmark
+    assert len(accuracy.CASES) == 80
+    assert len(benchmark.CASES) == 240
+    assert {p.values[0] for p in accuracy.CASES} == set(accuracy.cases())
+    assert {p.values for p in benchmark.CASES} == {
+        (case, shape) for case in accuracy.cases() for shape in benchmark.CORE_SHAPES
+    }
+    assert all(p.id == accuracy.case_id(p.values[0]) for p in accuracy.CASES)
+    assert all(
+        p.id == f"{accuracy.case_id(p.values[0])}-{p.values[1]}"
+        for p in benchmark.CASES
+    )
+
+
+@pytest.mark.parametrize("dtype", ["float8_e4m3fnuz", "float8_e5m2fnuz"])
+@pytest.mark.parametrize("stage", ["input_conversion", "output_conversion"])
+def test_ascend_known_fnuz_conversion_is_unsupported(modules, dtype, stage):
+    modules.gems.vendor_name = "ascend"
+    error = type("MLIRCompilationError", (RuntimeError,), {})(ASCEND_ERROR)
+    reason = modules.accuracy._unsupported_reason(
+        error, dtype=f"torch.{dtype}", stage=stage
+    )
+    assert dtype in reason and stage in reason
+
+
+@pytest.mark.parametrize(
+    "vendor,dtype,stage,error_type",
+    [
+        ("metax", "float8_e4m3fnuz", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fn", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e5m2", "input_conversion", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "dot", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "allocation", "MLIRCompilationError"),
+        ("ascend", "float8_e4m3fnuz", "input_conversion", "RuntimeError"),
+    ],
+)
+def test_unrelated_compiler_errors_are_not_skipped(
+    modules, vendor, dtype, stage, error_type
+):
+    modules.gems.vendor_name = vendor
+    error = type(error_type, (RuntimeError,), {})(ASCEND_ERROR)
+    with pytest.raises(RuntimeError) as caught:
+        modules.accuracy._unsupported_reason(error, dtype=f"torch.{dtype}", stage=stage)
+    assert caught.value is error
+
+
+def test_metax_known_native_rowwise_rejection(modules):
+    reason = modules.accuracy._unsupported_reason(
+        RuntimeError(METAX_ERROR),
+        dtype="torch.float8_e4m3fn",
+        stage="native",
+        scaling="rowwise",
+    )
+    assert "native FP8 rowwise" in reason
+
+
+@pytest.mark.parametrize(
+    "vendor,dtype,stage,scaling,message",
+    [
+        ("nvidia", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
+        ("metax", "float32", "native", "rowwise", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "dot", "rowwise", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "native", "scalar", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "native", "rowwise", "CUBLAS_STATUS_INVALID_VALUE"),
+    ],
+)
+def test_other_native_errors_are_not_skipped(
+    modules, vendor, dtype, stage, scaling, message
+):
+    modules.gems.vendor_name = vendor
+    error = RuntimeError(message)
+    with pytest.raises(RuntimeError) as caught:
+        modules.accuracy._unsupported_reason(
+            error, dtype=f"torch.{dtype}", stage=stage, scaling=scaling
+        )
+    assert caught.value is error
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "out of memory",
+        "device-side assert",
+        "illegal memory access",
+        "No space left on device",
+        "unspecified launch failure",
+        "unknown compiler regression",
+    ],
+)
+def test_resource_and_unknown_errors_propagate(modules, message):
+    with pytest.raises(RuntimeError, match=message):
+        modules.accuracy._unsupported_reason(RuntimeError(message))
+
+
+def _pytest_environment(pytester, monkeypatch):
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    pytester.makeconftest(f"""
+import ast
+import pytest
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+import sys
+import importlib.util
+source = Path({str(Path(__file__))!r}).read_text()
+tree = ast.parse(source)
+def helper_node(node):
+    if isinstance(node, ast.FunctionDef):
+        return node.name == "_load_modules"
+    return isinstance(node, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id in ("ROOT", "ASCEND_ERROR", "METAX_ERROR")
+        for t in node.targets
+    )
+tree.body = [node for node in tree.body if helper_node(node)]
+namespace = dict(globals(), __file__={str(Path(__file__))!r})
+exec(compile(tree, "regression_helpers", "exec"), namespace)
+helpers = SimpleNamespace(**namespace)
+patch = pytest.MonkeyPatch()
+modules = helpers._load_modules(patch)
+configure_native_baseline = modules.conftest.configure_native_baseline
+
+def pytest_unconfigure(config):
+    patch.undo()
+""")
+    pytester.makeini("""[pytest]
+markers =
+    scaled_mm
+    scaled_mm_out
+    unrelated
+    skip_native(vendors, reason)
+""")
+
+
+def test_unselected_tests_do_not_probe(pytester, monkeypatch):
+    _pytest_environment(pytester, monkeypatch)
+    pytester.makepyfile("""
+import pytest
+from conftest import modules
+# Import and collect the real tests, with all device calls prohibited.
+for module in (modules.accuracy, modules.benchmark):
+    globals().update({k: v for k, v in vars(module).items() if k.startswith("test_scaled_mm")})
+@pytest.mark.unrelated
+def test_unrelated():
+    pass
+""")
+    result = pytester.runpytest_subprocess("-q", "-m", "unrelated")
+    result.assert_outcomes(passed=1, deselected=2242)
+    collected = pytester.runpytest_subprocess("--collect-only", "-q")
+    assert collected.ret == 0
+    assert "2243 tests collected" in collected.stdout.str()

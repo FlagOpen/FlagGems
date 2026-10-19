@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import lru_cache
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -20,7 +21,10 @@ import torch
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 from tests.test_scaled_mm import (
+    METAX_ERROR,
     _device_key,
+    _load_modules,
+    _pytest_environment,
     _unsupported_reason,
     case_id,
     cases,
@@ -138,3 +142,128 @@ def test_scaled_mm_benchmark(case, shape, request, monkeypatch):
 def test_scaled_mm_out_benchmark(case, shape, request, monkeypatch):
     _prepare_benchmark(case, shape, True, request, monkeypatch)
     ScaledMMBenchmark(case, shape, True).run()
+
+
+# Host-only regression checks: no capability probe may run during collection.
+@pytest.fixture
+def modules(monkeypatch):
+    return _load_modules(monkeypatch)
+
+
+@pytest.mark.parametrize("out", [False, True])
+def test_native_probe_keeps_case_context(modules, monkeypatch, out):
+    module = modules.benchmark
+    case = (
+        "torch.float8_e4m3fn",
+        "torch.float8_e4m3fn",
+        "torch.bfloat16",
+        "rowwise",
+        True,
+    )
+
+    def rejected(*args, **kwargs):
+        raise RuntimeError(METAX_ERROR)
+
+    monkeypatch.setattr(module, "make_inputs", lambda *args: ((), {}))
+    monkeypatch.setattr(module.torch, "_scaled_mm", rejected, raising=False)
+    monkeypatch.setattr(
+        module.torch, "empty", lambda *args, **kwargs: object(), raising=False
+    )
+    monkeypatch.setattr(
+        module.torch,
+        "ops",
+        SimpleNamespace(aten=SimpleNamespace(_scaled_mm=SimpleNamespace(out=rejected))),
+        raising=False,
+    )
+    assert "native FP8 rowwise" in module._native_reason(
+        case, (16, 16, 16), out, ("cuda", 0), object()
+    )
+
+
+def test_runtime_skips_errors_and_baseline_state(pytester, monkeypatch):
+    _pytest_environment(pytester, monkeypatch)
+    pytester.makepyfile("""
+import pytest
+from conftest import modules
+
+def check(value):
+    if value == "unsupported":
+        return "known capability limitation"
+    if value == "broken":
+        raise RuntimeError("unknown probe failure")
+    return None
+modules.accuracy.case_reason = check
+modules.benchmark.native_reason = lambda case, shape, use_out, **kw: (
+    "native unavailable" if case == "no-native" else None
+)
+@pytest.mark.parametrize("case", ["supported", "unsupported", "broken"])
+def test_accuracy(case):
+    modules.accuracy.require_case(case)
+    assert case == "supported"
+@pytest.mark.parametrize("case", ["no-native", "supported", "unsupported", "broken", "supported"])
+@pytest.mark.parametrize("shape", [(16, 16, 16)])
+def test_benchmark(case, shape, request, monkeypatch):
+    modules.benchmark._prepare_benchmark(case, shape, False, request, monkeypatch)
+    assert modules.config.skip_native == (case == "no-native")
+    assert modules.config.native_baseline_skip_reason == ("native unavailable" if case == "no-native" else None)
+def test_final_reset():
+    assert modules.config.skip_native is False
+    assert modules.config.native_baseline_skip_reason is None
+""")
+    result = pytester.runpytest_subprocess("-q")
+    result.assert_outcomes(passed=5, skipped=2, failed=2)
+    assert "unknown probe failure" in result.stdout.str()
+
+
+@pytest.mark.parametrize(
+    "mode", ["query", "list_cases", "preflight_only", "profile_only", "skip_native"]
+)
+def test_metadata_and_candidate_modes_do_not_probe_native(modules, monkeypatch, mode):
+    monkeypatch.setattr(modules.config, mode, True)
+    calls = []
+    monkeypatch.setattr(
+        modules.benchmark, "require_case", lambda case: calls.append(case)
+    )
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("unexpected native probe")
+
+    monkeypatch.setattr(modules.benchmark, "native_reason", unexpected)
+    modules.benchmark._prepare_benchmark("case", (16, 16, 16), False, None, monkeypatch)
+    assert calls == ([] if mode in ("query", "list_cases") else ["case"])
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+def test_native_skip_still_runs_the_selected_candidate(modules, monkeypatch, use_out):
+    module = modules.benchmark
+    calls = []
+    markers = []
+    monkeypatch.setattr(module, "require_case", lambda case: None)
+
+    def native(case, shape, out, **kwargs):
+        assert out is use_out
+        return "native scaling unsupported"
+
+    class Candidate:
+        def __init__(self, case, shape, out):
+            assert out is use_out
+
+        def run(self):
+            assert modules.config.skip_native is True
+            assert (
+                modules.config.native_baseline_skip_reason
+                == "native scaling unsupported"
+            )
+            calls.append("candidate ran")
+
+    monkeypatch.setattr(module, "native_reason", native)
+    monkeypatch.setattr(module, "ScaledMMBenchmark", Candidate)
+    request = SimpleNamespace(node=SimpleNamespace(add_marker=markers.append))
+    test = (
+        module.test_scaled_mm_out_benchmark
+        if use_out
+        else module.test_scaled_mm_benchmark
+    )
+    test("case", (16, 16, 16), request, monkeypatch)
+    assert calls == ["candidate ran"]
+    assert markers[0].name == "skip_native"
