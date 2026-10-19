@@ -758,10 +758,6 @@ from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
-from .upsample_nearest2d_backward import (
-    upsample_nearest2d_backward,
-    upsample_nearest2d_backward_grad_input,
-)
 from .upsample_nearest3d import upsample_nearest3d
 from .upsample_nearest_exact1d import upsample_nearest_exact1d
 from .upsample_nearest_exact2d import (
@@ -1620,8 +1616,6 @@ __all__ = [
     "upsample_linear1d_backward",
     "upsample_nearest1d",
     "upsample_nearest2d",
-    "upsample_nearest2d_backward",
-    "upsample_nearest2d_backward_grad_input",
     "upsample_nearest3d",
     "upsample_nearest_exact1d",
     "upsample_nearest_exact2d_backward",
