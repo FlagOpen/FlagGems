@@ -235,13 +235,11 @@ def _addmv_impl(self, mat, vec, beta, alpha, out):
         return _addmv_empty(self, beta, out, N)
 
     if M >= _MV_DELEGATE_M:
-        if (
-            beta != 0
-            and tuple(self.shape) == (N,)
-            and self.is_contiguous()
-            and out.is_contiguous()
-        ):
-            return _addmv_addmm(self, mat, vec, beta, alpha, out, N, M)
+        if beta != 0 and out.is_contiguous():
+            bias = self
+            if tuple(bias.shape) != (N,) or not bias.is_contiguous():
+                bias = bias.broadcast_to((N,)).contiguous()
+            return _addmv_addmm(bias, mat, vec, beta, alpha, out, N, M)
         return _addmv_mv(self, mat, vec, beta, alpha, out, N)
     return _addmv_triton(self, mat, vec, beta, alpha, out, N, M)
 
