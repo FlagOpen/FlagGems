@@ -2837,6 +2837,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: chain_matmul_out
+  description: 'A variant of `chain_matmul` that assigns to the output to the provided
+    `out` parameter.
+
+    '
+  for:
+  - chain_matmul.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: chalf
   description: 'Returns a copy of the tensor cast to the ``complex32`` dtype. Real
     inputs are

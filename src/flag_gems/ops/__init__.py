@@ -547,6 +547,7 @@ from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.chain_matmul import chain_matmul_out
 from flag_gems.ops.chain_matmul import run as chain_matmul
 from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
@@ -2008,6 +2009,7 @@ __all__ = [
     "celu",
     "celu_",
     "chain_matmul",
+    "chain_matmul_out",
     "chalf",
     "channel_shuffle",
     "cholesky_inverse",

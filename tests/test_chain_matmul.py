@@ -19,91 +19,299 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Each case lists the chain dimensions (d0, d1, ..., dn), so the chain holds
-# n >= 2 matrices of shapes (d0, d1), (d1, d2), ... and the result is (d0, dn).
-# The optimal parenthesization differs between these cases, which is what
-# exercises the matrix-chain DP rather than just the gemms. The one-matrix
-# chain is covered separately because multi_dot needs at least two tensors.
-CHAIN_CASES = [
-    (16, 16, 16),
-    (64, 32, 128),
-    (64, 32, 128, 16),
-    (64, 128, 32, 16),
-    (128, 16, 256, 32, 64),
-    (64, 32, 128, 64, 32, 16),
+# The helpers below (value-range resolution, native-dtype comparison, the
+# special-value payloads) come from the KernelGen test harness that the kernel
+# was evaluated against. That harness lives outside this repository, so the
+# parts this operator depends on are inlined here rather than added as a new
+# shared module.
+
+# The five value ranges of the operator-test spec: [-1,1], [0,1], [-1,0],
+# [0,dtype_max], [dtype_min,0]. The extreme ones matter for a matmul chain
+# because the intermediate products are what overflow first.
+VALUE_RANGES = [
+    ["-1", "1"],
+    ["0", "1"],
+    ["-1", "0"],
+    ["0", "max"],
+    ["min", "0"],
 ]
 
 
-def _make_chain(dimensions, dtype):
-    return [
-        torch.randn(
-            dimensions[index],
-            dimensions[index + 1],
-            dtype=dtype,
-            device=flag_gems.device,
-        )
-        for index in range(len(dimensions) - 1)
-    ]
+def _resolve_bound(symbol, dtype):
+    finfo = torch.finfo(dtype)
+    return {
+        "-1": -1.0,
+        "0": 0.0,
+        "1": 1.0,
+        "max": finfo.max,
+        "min": finfo.min,
+    }[symbol]
 
 
-def _reference_chain_matmul(tensors):
-    # TF32 would make the reference itself lossy, so pin it off and compare
-    # against the full-precision result.
-    allow_tf32 = torch.backends.cuda.matmul.allow_tf32
-    try:
-        torch.backends.cuda.matmul.allow_tf32 = False
-        return torch.linalg.multi_dot(tensors)
-    finally:
-        torch.backends.cuda.matmul.allow_tf32 = allow_tf32
+def _make_input(dtype, shape, value_range):
+    low = _resolve_bound(value_range[0], dtype)
+    high = _resolve_bound(value_range[1], dtype)
+    if low == high:
+        return torch.full(shape, low, device=flag_gems.device, dtype=dtype)
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device=flag_gems.device, low=low, high=high
+    )
+
+
+def _assert_close(res, ref):
+    # The reference is kept in the input dtype, so each DP node rounds the same
+    # way the candidate does; comparing against an upcast reference would
+    # instead measure the chain's accumulated rounding, which differs with the
+    # parenthesization rather than with correctness. reduce_dim stays at its
+    # default for the same reason: the per-node rounding is already matched, so
+    # the tolerance must not grow with the chain's reduction extent.
+    utils.gems_assert_close(res, ref, ref.dtype, equal_nan=True)
+
+
+def _to_reference(inp):
+    # Copy dense storage instead of cloning, so stride/offset of a transposed
+    # view survive into the reference.
+    reference = torch.empty(0, dtype=inp.dtype, device=inp.device).set_(
+        inp.untyped_storage().clone(),
+        inp.storage_offset(),
+        inp.size(),
+        inp.stride(),
+    )
+    reference.requires_grad_(inp.requires_grad)
+    return utils.to_reference(reference)
+
+
+# Fixed payloads so NaN / Inf land at known positions of the first matrix.
+SPECIAL_PAYLOADS = {
+    "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+    "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+    "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+}
+
+SPECIAL_CASES = [
+    (dtype, scenario)
+    for dtype in utils.ALL_FLOAT_DTYPES
+    for scenario in SPECIAL_PAYLOADS
+]
+
+# The six large chains of the core benchmark. They are the shapes the kernel
+# config table is tuned for, so the accuracy tests must cover them too.
+LARGE_CHAIN_DIMENSIONS = [
+    (1024, 64, 1024),
+    (2048, 32, 2048, 32),
+    (512, 2048, 64, 1024),
+    (1024, 128, 2048, 64, 512),
+    (256, 1024, 64, 2048, 128, 512),
+    (512, 128, 1024, 64, 2048, 32, 512),
+]
+
+# Each case is one chain: a list of rank-2 shapes with consistent inner
+# dimensions. The small chains cover a one-matrix chain, the degenerate
+# single-element reduction, the odd / non-power-of-two extents that exercise
+# the masked tails of the gemm kernels, and chains long enough that the
+# matrix-chain DP picks a non-trivial parenthesization.
+CHAIN_SHAPES = [
+    [(1, 1)],
+    [(4, 8)],
+    [(2, 3), (3, 4)],
+    [(1, 5), (5, 1), (1, 7)],
+    [(16, 32), (32, 64), (64, 32), (32, 16)],
+    [(8, 16), (16, 32), (32, 48), (48, 32), (32, 16)],
+    [(33, 65), (65, 17), (17, 129), (129, 255), (255, 71)],
+] + [list(zip(dims, dims[1:])) for dims in LARGE_CHAIN_DIMENSIONS]
+
+# A subset for the .out overload: it measures the same chains plus the write
+# into the caller's buffer, so the long chains add no new path.
+OUT_CHAIN_SHAPES = CHAIN_SHAPES[:4]
+
+BACKWARD_CHAINS = [
+    [(4, 8)],
+    [(2, 3), (3, 4)],
+    [(4, 8), (8, 16), (16, 4)],
+    [(16, 32), (32, 64), (64, 32), (32, 16)],
+]
+
+NONCONTIG_CHAINS = [
+    [(4, 8), (8, 16)],
+    [(16, 32), (32, 64), (64, 16)],
+]
 
 
 @pytest.mark.chain_matmul
-@pytest.mark.parametrize("dimensions", CHAIN_CASES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_chain_matmul(dimensions, dtype):
-    tensors = _make_chain(dimensions, dtype)
-    ref_tensors = [utils.to_reference(tensor) for tensor in tensors]
+@pytest.mark.parametrize("shapes", CHAIN_SHAPES)
+@pytest.mark.parametrize("value_range", VALUE_RANGES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_chain_matmul(shapes, value_range, dtype):
+    inp = [_make_input(dtype, shape, value_range) for shape in shapes]
+    ref_inp = [_to_reference(matrix) for matrix in inp]
 
-    ref_out = _reference_chain_matmul(ref_tensors)
-    res_out = flag_gems.chain_matmul(tensors)
+    ref_out = torch.ops.aten.chain_matmul(ref_inp)
+    res_out = flag_gems.chain_matmul(inp)
 
-    # The error accumulates over the reduction dimensions of the whole chain,
-    # so scale the tolerance with the largest one.
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=max(dimensions))
-
-
-@pytest.mark.chain_matmul
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_chain_matmul_single_matrix(dtype):
-    # A one-matrix chain is returned unchanged.
-    inp = torch.randn(32, 16, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-
-    ref_out = torch.chain_matmul(ref_inp)
-    res_out = flag_gems.chain_matmul([inp])
-
-    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.is_contiguous()
+    _assert_close(res_out, ref_out.to(dtype))
 
 
 @pytest.mark.chain_matmul
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_chain_matmul_non_contiguous(dtype):
+@pytest.mark.parametrize("shapes", NONCONTIG_CHAINS)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_chain_matmul_non_contiguous(shapes, dtype):
     # Transposed views: the kernels are stride-generic and must not assume a
     # row-major layout.
-    tensors = [
-        torch.randn(32, 64, dtype=dtype, device=flag_gems.device).t(),
-        torch.randn(16, 32, dtype=dtype, device=flag_gems.device).t(),
-    ]
-    assert not any(tensor.is_contiguous() for tensor in tensors)
-    ref_tensors = [utils.to_reference(tensor) for tensor in tensors]
+    inp = [_make_input(dtype, (cols, rows), ["-1", "1"]).t() for rows, cols in shapes]
+    assert all(not matrix.is_contiguous() for matrix in inp)
+    ref_inp = [_to_reference(matrix) for matrix in inp]
 
-    ref_out = _reference_chain_matmul(ref_tensors)
-    res_out = flag_gems.chain_matmul(tensors)
+    ref_out = torch.ops.aten.chain_matmul(ref_inp)
+    res_out = flag_gems.chain_matmul(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=64)
+    _assert_close(res_out, ref_out.to(dtype))
+
+
+@pytest.mark.chain_matmul_out
+@pytest.mark.parametrize("shapes", OUT_CHAIN_SHAPES)
+@pytest.mark.parametrize("value_range", VALUE_RANGES)
+@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
+def test_chain_matmul_out(shapes, value_range, dtype):
+    inp = [_make_input(dtype, shape, value_range) for shape in shapes]
+    ref_inp = [_to_reference(matrix) for matrix in inp]
+
+    out_shape = (shapes[0][0], shapes[-1][1])
+    # Garbage-prefilled buffers: the .out overload must overwrite every element.
+    out = torch.full(out_shape, 7.0, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.full(
+        out_shape, 7.0, dtype=ref_inp[0].dtype, device=ref_inp[0].device
+    )
+
+    torch.ops.aten.chain_matmul.out(ref_inp, out=ref_out)
+    res_ret = flag_gems.chain_matmul(inp, out=out)
+
+    # The .out overload must write into and return the caller's buffer.
+    assert res_ret is out
+    _assert_close(out, ref_out.to(dtype))
+
+
+@pytest.mark.chain_matmul
+@pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
+def test_chain_matmul_nan_inf(dtype, scenario):
+    # Zeros in m2 also exercise Inf * 0 -> NaN during reduction.
+    m1 = (
+        torch.tensor(
+            SPECIAL_PAYLOADS[scenario], device=flag_gems.device, dtype=torch.float32
+        )
+        .to(dtype)[:4]
+        .reshape(2, 2)
+    )
+    m2 = torch.tensor(
+        [[1.0, 0.0], [1.0, 1.0]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    inp = [m1, m2]
+    ref_inp = [_to_reference(matrix) for matrix in inp]
+
+    ref_out = torch.ops.aten.chain_matmul(ref_inp)
+    res_out = flag_gems.chain_matmul(inp)
+
+    _assert_close(res_out, ref_out)
+
+
+@pytest.mark.chain_matmul
+@pytest.mark.parametrize("shapes", BACKWARD_CHAINS)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_chain_matmul_backward(shapes, dtype):
+    inp = [_make_input(dtype, shape, ["-1", "1"]).requires_grad_() for shape in shapes]
+    grad = _make_input(dtype, (shapes[0][0], shapes[-1][1]), ["-1", "1"])
+
+    ref_inp = [_to_reference(matrix.detach()).requires_grad_(True) for matrix in inp]
+    ref_grad = _to_reference(grad)
+
+    ref_out = torch.ops.aten.chain_matmul(ref_inp)
+    ref_grads = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
+
+    # The candidate forward must match the native-dtype reference...
+    res_out = flag_gems.chain_matmul(inp)
+    _assert_close(res_out, ref_out.to(dtype))
+
+    # ...and so must every input gradient, with the dtype preserved.
+    assert res_out.requires_grad
+    res_grads = torch.autograd.grad(res_out, inp, grad_outputs=grad)
+    for res_grad, ref_g in zip(res_grads, ref_grads):
+        assert res_grad.dtype == dtype
+        assert res_grad.shape == ref_g.shape
+        _assert_close(res_grad, ref_g.to(dtype))
 
 
 @pytest.mark.chain_matmul
 def test_chain_matmul_rejects_empty_list():
-    with pytest.raises((RuntimeError, ValueError)):
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul([])
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.chain_matmul([])
+
+
+@pytest.mark.chain_matmul
+def test_chain_matmul_rejects_non_tensor():
+    with pytest.raises((RuntimeError, TypeError)):
+        torch.ops.aten.chain_matmul(3.14)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(3.14)
+
+
+@pytest.mark.chain_matmul
+def test_chain_matmul_rejects_1d_matrix():
+    inp = [_make_input(torch.float32, (4,), ["-1", "1"])]
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul(inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(inp)
+
+
+@pytest.mark.chain_matmul
+def test_chain_matmul_rejects_3d_tensor():
+    matrix = _make_input(torch.float32, (2, 3, 4), ["-1", "1"])
+    inp = [matrix, matrix]
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul(inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(inp)
+
+
+@pytest.mark.chain_matmul
+def test_chain_matmul_rejects_mismatched_dims():
+    inp = [
+        _make_input(torch.float32, (3, 4), ["-1", "1"]),
+        _make_input(torch.float32, (5, 6), ["-1", "1"]),
+    ]
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul(inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(inp)
+
+
+@pytest.mark.chain_matmul
+@pytest.mark.skipif(
+    flag_gems.device == "cpu",
+    reason="aten chain_matmul accepts integer addmm on the CPU reference path",
+)
+def test_chain_matmul_rejects_int_dtype():
+    inp = [torch.ones((2, 2), dtype=torch.int32, device=flag_gems.device)] * 2
+    # On the accelerator the integer addmm is not implemented.
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul(inp)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(inp)
+
+
+@pytest.mark.chain_matmul_out
+def test_chain_matmul_out_rejects_wrong_dtype():
+    inp = [_make_input(torch.float32, shape, ["-1", "1"]) for shape in [(4, 8), (8, 4)]]
+    ref_inp = [_to_reference(matrix) for matrix in inp]
+
+    ref_bad = torch.empty(4, 4, dtype=torch.int32, device=ref_inp[0].device)
+    res_bad = torch.empty(4, 4, dtype=torch.int32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        torch.ops.aten.chain_matmul.out(ref_inp, out=ref_bad)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        flag_gems.chain_matmul(inp, out=res_bad)
