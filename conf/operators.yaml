@@ -3949,7 +3949,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.1'
+  - alpha: '5.5.0'
 - id: copy_from_and_resize_out
   description: 'A variant of `_copy_from_and_resize()` that also mirrors the resized
     result into the `out` tensor and returns `out`.
@@ -3964,7 +3964,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.1'
+  - alpha: '5.5.0'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
