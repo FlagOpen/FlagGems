@@ -510,8 +510,19 @@ def test_slow_conv_transpose3d_backward(case, dtype):
     res_gi, res_gw, res_gb = torch.autograd.grad(
         res_out, (inp, weight, bias), grad_outputs=grad_out
     )
-    _assert_close(res_gi, ref_gi.to(dtype), dtype)
-    _assert_close(res_gw, ref_gw.to(dtype), dtype)
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype == torch.float32
+        and utils.TO_CPU
+        and torch.npu.conv.allow_hf32
+    ):
+        # Native HF32 input/weight gradients differ from the CPU FP64 oracle.
+        # Keep forward, bias and non-HF32 comparisons at their original tolerances.
+        utils.gems_assert_close(res_gi, ref_gi.to(dtype), dtype, atol=3e-3)
+        utils.gems_assert_close(res_gw, ref_gw.to(dtype), dtype, atol=5e-3)
+    else:
+        _assert_close(res_gi, ref_gi.to(dtype), dtype)
+        _assert_close(res_gw, ref_gw.to(dtype), dtype)
     _assert_close(res_gb, ref_gb.to(dtype), dtype)
 
 
