@@ -5249,7 +5249,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5.0'
 - id: empty_permuted
   description: 'Tensor factory operator — allocates an uninitialized tensor whose
     memory
