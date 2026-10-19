@@ -17,8 +17,7 @@
 is one ambient configuration (cuDNN switches plus grad mode) under which the
 query is invoked, and there is no dtype axis. The timing override only applies
 that configuration and then delegates to ``Benchmark.get_latency``, so the
-invoked and measured callable is still the exact ``torch_op``;
-``@base.reference_uses_torch_op`` declares that contract for ``--reference-only``.
+reference measurement invokes the exact ``torch_op`` under that configuration.
 """
 
 import contextlib
@@ -144,7 +143,6 @@ class UseCudnnRnnFlattenWeightBenchmark(OperatorBenchmark):
         # Nullary query configurations have no tensor-shape dimension.
         return []
 
-    @base.reference_uses_torch_op
     def get_latency(self, op, *args, **kwargs):
         # Timing wrapper only: the ambient configuration is applied around the
         # standard measurement, which still invokes the exact op.

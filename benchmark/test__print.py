@@ -86,9 +86,7 @@ class PrintBenchmark(OperatorBenchmark):
 
     # This override times exactly the callable it is given, so the reference
     # measurement stays the plain torch.ops.aten._print call. A host write has no
-    # device event to time, so it is measured with a wall clock; the marker keeps a
-    # native-only run able to report this as the reference runner.
-    @base.reference_uses_torch_op
+    # device event to time, so it is measured with a wall clock.
     def get_latency(self, op, *args, **kwargs):
         for _ in range(self.WARMUP_CALLS):
             op(*args, **kwargs)
