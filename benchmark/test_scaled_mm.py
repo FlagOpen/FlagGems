@@ -145,6 +145,9 @@ def test_scaled_mm_out_benchmark(case, shape, request, monkeypatch):
 
 
 # Host-only regression checks: no capability probe may run during collection.
+pytest_plugins = ["pytester"]
+
+
 @pytest.fixture
 def modules(monkeypatch):
     return _load_modules(monkeypatch)
