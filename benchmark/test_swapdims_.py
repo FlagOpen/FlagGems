@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 _DTYPE_FLAGS = {
@@ -80,6 +80,20 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class SwapDimsBenchmark(OperatorBenchmark):
+    def get_latency(self, op, inp, *args, **kwargs):
+        # Metadata-only ops need host timing, not GPU events or payload copies.
+        reference_only = getattr(base.Config, "reference_only", False)
+        if not reference_only and base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError("Metadata benchmarks require host timing, not CUDA graphs")
+        warmup, repeat = (0, 1) if reference_only else (5, 100)
+        # Prepare independent Tensor metadata before the measured batch.
+        inputs = iter([inp.detach() for _ in range(warmup + repeat)])
+        return base.measure_calls(
+            lambda: op(next(inputs), *args, **kwargs),
+            warmup_calls=warmup,
+            repeat_calls=repeat,
+        )
+
     def set_more_shapes(self):
         return super().set_more_shapes() + BOUNDARY_SHAPES
 
