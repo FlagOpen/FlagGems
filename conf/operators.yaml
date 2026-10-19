@@ -20403,7 +20403,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.5'
+  - alpha: '5.5'
 - id: unpack_seq_triton
   description: Unpack a packed sequence tensor back to its original variable-length
     form.
