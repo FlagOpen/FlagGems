@@ -155,7 +155,10 @@ def test_sgn_complex_nonfinite_values():
     ref_out = torch.sgn(ref_inp)
     res_out = flag_gems.sgn(inp)
 
-    res_real = torch.view_as_real(res_out.to(ref_out.device))
+    if flag_gems.vendor_name == "kunlunxin":
+        res_real = torch.view_as_real(res_out.to(ref_out.device))
+    else:
+        res_real = torch.view_as_real(utils.to_cpu(res_out, ref_out))
     ref_real = torch.view_as_real(ref_out).to(dtype=res_real.dtype)
     assert torch.equal(torch.isnan(res_real), torch.isnan(ref_real))
     torch.testing.assert_close(res_real, ref_real, equal_nan=True)
