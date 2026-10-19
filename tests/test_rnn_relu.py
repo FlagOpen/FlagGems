@@ -62,11 +62,10 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
         ref_input, ref_hx, ref_params, True, 1, 0.0, False, False, batch_first
     )
 
-    # Run FlagGems implementation (via torch dispatch)
-    with flag_gems.use_gems():
-        res_out = torch.rnn_relu(
-            input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
-        )
+    # Run FlagGems implementation
+    res_out = flag_gems.rnn_relu(
+        input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
+    )
 
     # Compare outputs
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)

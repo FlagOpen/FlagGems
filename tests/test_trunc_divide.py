@@ -53,8 +53,7 @@ def test_trunc_div(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, upcast)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -90,8 +89,7 @@ def test_trunc_divide_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, upcast)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = inp1.div_(inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode="trunc")
 
     if not cfg.TO_CPU:
         logging.debug(
@@ -113,8 +111,7 @@ def test_trunc_divide_scalar_scalar(dtype):
         inp2 = random.randint(1, 100)
 
     ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -144,8 +141,7 @@ def test_trunc_divide_tensor_int(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -167,8 +163,7 @@ def test_trunc_divide_tensor_scalar_int(shape, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = torch.div(ref_inp1, scalar, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, scalar, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(inp1, scalar, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -190,7 +185,6 @@ def test_trunc_div_scalar_tensor_int(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(scalar, ref_inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(scalar, inp2, rounding_mode="trunc")
+    res_out = flag_gems.div_mode(scalar, inp2, rounding_mode="trunc")
 
     utils.gems_assert_equal(res_out, ref_out)

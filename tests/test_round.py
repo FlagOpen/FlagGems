@@ -38,8 +38,7 @@ def test_round(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.round(inp)
+    res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -52,8 +51,7 @@ def test_round_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.round_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = inp.round_()
+    res_out = flag_gems.round_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -68,8 +66,7 @@ def test_round_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.round(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.round(inp, out=out)
+    flag_gems.round_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)
 
@@ -87,9 +84,7 @@ def test_round_decimals(shape, dtype, decimals):
     ref_out = torch.round(inp, decimals=decimals)
     ref_out = ref_out.to("cpu")
 
-    with flag_gems.use_gems():
-        res_out = torch.round(inp, decimals=decimals)
-        res_out = res_out.to("cpu")
+    res_out = flag_gems.round(inp, decimals=decimals).to("cpu")
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -107,7 +102,6 @@ def test_round_half_to_even(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.round(inp)
+    res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

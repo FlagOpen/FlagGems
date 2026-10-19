@@ -38,8 +38,7 @@ def test_sum(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.sum(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sum(inp)
+    res_out = flag_gems.sum(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
@@ -63,8 +62,7 @@ def test_sum_dim(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim)
 
     if isinstance(dim, int):
         dim = [dim]
@@ -91,8 +89,7 @@ def test_sum_dim_out(shape, dim, keepdim, dtype):
 
     # Pre-allocate out tensor with wrong shape to test resize logic
     out = torch.empty((1,), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_result = torch.sum(inp, dim=dim, keepdim=keepdim, out=out)
+    res_result = flag_gems.sum_dim_out(inp, dim=dim, keepdim=keepdim, out=out)
 
     if isinstance(dim, int):
         dim = [dim]
@@ -116,8 +113,7 @@ def test_sum_out(shape, dtype):
     ref_out = torch.sum(ref_inp)
 
     out = torch.empty([], dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.sum.out(inp, out=out)
+    res_out = flag_gems.sum_out(inp, out=out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=inp.numel())

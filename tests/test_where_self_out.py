@@ -34,8 +34,7 @@ def test_where_self(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.where(ref_inp1 > 0, ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.where(inp1 > 0, inp1, inp2)
+    res_out = flag_gems.where_self(inp1 > 0, inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -54,8 +53,7 @@ def test_where_self_scalar(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.where(ref_inp2 > 0, inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.where(inp2 > 0, inp1, inp2)
+    res_out = flag_gems.where_scalar_self(inp2 > 0, inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -74,8 +72,7 @@ def test_where_self_scalar_other(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.where(ref_inp2 > 0, ref_inp2, inp1)
-    with flag_gems.use_gems():
-        res_out = torch.where(inp2 > 0, inp2, inp1)
+    res_out = flag_gems.where_scalar_other(inp2 > 0, inp2, inp1)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -98,8 +95,7 @@ def test_where_self_out(shape, dtype):
     ref_cond = utils.to_reference(cond)
 
     ref_out = torch.where(ref_cond, ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.where(cond, inp1, inp2, out=out)
+    res_out = flag_gems.where_self_out(cond, inp1, inp2, out=out)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -129,7 +125,6 @@ def test_where_self_out_cross_device(shape, dtype):
         ref_c = utils.to_reference(c)
 
         ref_out = torch.where(ref_c, ref_a, ref_b)
-        with flag_gems.use_gems():
-            res_out = torch.where(c, a, b)
+        res_out = flag_gems.where_self(c, a, b)
 
         utils.gems_assert_equal(res_out, ref_out)

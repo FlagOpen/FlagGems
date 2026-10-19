@@ -69,8 +69,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
+    res_out = flag_gems.vector_norm(inp, ord, dim, keepdim)
 
     # On mthreads with --ref cpu (TO_CPU=True), the reference is computed on CPU.
     # For large reduce_dim (e.g. 8M elements with ord=1), torch GPU (mthreads native)

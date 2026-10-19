@@ -61,8 +61,8 @@ def test_dropout(shape, p, dtype):
         one_minus_p = np.float32(1.0) - p
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.dropout(res_inp, p, True)
+    # GEMS dropout follows native_dropout semantics and returns (out, mask).
+    res_out, _ = flag_gems.dropout(res_inp, p, True)
 
     res_out = utils.to_reference(res_out)
     exp_equal = (p * p + one_minus_p * one_minus_p) * res_inp.numel()

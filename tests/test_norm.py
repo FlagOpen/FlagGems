@@ -23,8 +23,7 @@ def test_norm(shape, ord, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp, ord)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp, ord)
+    res_out = flag_gems.norm(inp, ord)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -37,8 +36,7 @@ def test_norm_scalar(shape, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp)
+    res_out = flag_gems.norm_scalar(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
