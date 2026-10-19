@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ctypes
 import logging
-from contextlib import redirect_stderr, redirect_stdout
+import os
+import sys
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from functools import lru_cache
 from io import StringIO
+from tempfile import TemporaryFile
 from types import SimpleNamespace
 
 import pytest
@@ -42,30 +46,91 @@ from . import base, conftest, consts
 logger = logging.getLogger(__name__)
 
 
+@contextmanager
+def _native_probe_output():
+    state = SimpleNamespace(unsupported=False)
+    if flag_gems.vendor_name != "metax":
+        yield state
+        return
+
+    # MACA writes directly to native stdout/stderr, bypassing Python logging.
+    # Keep unknown diagnostics even when the exception is a capability rejection.
+    expected = (
+        b"invalid matrix datatype, matC->type(2), matD->type(28)",
+        b"invalid matrix datatype, matC->type(2), matD->type(29)",
+        b"narrow-precision only supports block scaling_1D1D or 2D1D or tensorwide",
+    )
+    libc = ctypes.CDLL(None)
+    libc.fflush.argtypes = [ctypes.c_void_p]
+    libc.fflush.restype = ctypes.c_int
+
+    def flush():
+        sys.stdout.flush()
+        sys.stderr.flush()
+        libc.fflush(None)
+
+    with ExitStack() as resources:
+        streams = [
+            (
+                fd,
+                resources.enter_context(TemporaryFile()),
+                resources.enter_context(os.fdopen(os.dup(fd), "wb", buffering=0)),
+            )
+            for fd in (1, 2)
+        ]
+        flush()
+        try:
+            with ExitStack() as redirects:
+                for fd, captured, original in streams:
+                    redirects.callback(os.dup2, original.fileno(), fd)
+                    os.dup2(captured.fileno(), fd)
+                try:
+                    yield state
+                finally:
+                    flush()
+        finally:
+            # Descriptors are restored before replay, including on exceptions.
+            for _, captured, original in streams:
+                captured.seek(0)
+                for line in captured:
+                    _, marker, message = line.partition(b"[MCBLASLT][E]")
+                    if state.unsupported and marker and message.strip() in expected:
+                        continue
+                    original.write(line)
+
+
 @lru_cache(None)
 def _native_reason(case, shape, use_out, device_key, reference):
     if not hasattr(torch, "_scaled_mm"):
         return "torch._scaled_mm is unavailable"
     args, kwargs = make_inputs(case, shape)
-    try:
-        if use_out:
-            out = torch.empty(
-                (shape[0], shape[1]), dtype=case[2] or case[0], device=flag_gems.device
+    with _native_probe_output() as output:
+        try:
+            if use_out:
+                out = torch.empty(
+                    (shape[0], shape[1]),
+                    dtype=case[2] or case[0],
+                    device=flag_gems.device,
+                )
+                actual = torch.ops.aten._scaled_mm.out(*args, **kwargs, out=out)
+            else:
+                actual = torch._scaled_mm(*args, **kwargs)
+            torch_device_fn.synchronize()
+            tol = comparison_tolerance(actual.dtype)
+            torch.testing.assert_close(
+                actual.cpu().float(),
+                reference(args, kwargs).float(),
+                rtol=tol,
+                atol=tol,
             )
-            actual = torch.ops.aten._scaled_mm.out(*args, **kwargs, out=out)
-        else:
-            actual = torch._scaled_mm(*args, **kwargs)
-        torch_device_fn.synchronize()
-        tol = comparison_tolerance(actual.dtype)
-        torch.testing.assert_close(
-            actual.cpu().float(), reference(args, kwargs).float(), rtol=tol, atol=tol
-        )
-    except AssertionError as exc:
-        return f"Native probe disagrees with FP32 golden: {str(exc)[:300]}"
-    except Exception as exc:
-        return _unsupported_reason(
-            exc, dtype=case[0], other_dtype=case[1], stage="native", scaling=case[3]
-        )
+        except AssertionError as exc:
+            return f"Native probe disagrees with FP32 golden: {str(exc)[:300]}"
+        except Exception as exc:
+            reason = _unsupported_reason(
+                exc, dtype=case[0], other_dtype=case[1], stage="native", scaling=case[3]
+            )
+            output.unsupported = bool(reason)
+            return reason
     return None
 
 
@@ -204,6 +269,106 @@ pytest_plugins = ["pytester"]
 @pytest.fixture
 def modules(monkeypatch):
     return _load_modules(monkeypatch)
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize(
+    "outcome", ["unsupported", "unknown", "oom", "mismatch", "success", "interrupt"]
+)
+def test_native_probe_output_preserves_unexpected_diagnostics(
+    modules, monkeypatch, capfd, use_out, outcome
+):
+    module = modules.benchmark
+    case = (
+        "torch.float8_e4m3fn",
+        "torch.float8_e4m3fn",
+        "torch.bfloat16",
+        "scalar",
+        True,
+    )
+    known = (
+        b"[05:57:42.335][MCBLASLT][E]invalid matrix datatype, matC->type(2), matD->type(28)\n"
+        b"[05:57:42.335][MCBLASLT][E]invalid matrix datatype, matC->type(2), matD->type(29)\n",
+        b"[MCBLASLT][E]narrow-precision only supports block scaling_1D1D or 2D1D or tensorwide\n",
+    )
+    other = b"[MCBLASLT][E]unexpected diagnostic must survive\n"
+    error = {
+        "unsupported": RuntimeError(METAX_ERROR),
+        "unknown": RuntimeError("unexpected native failure"),
+        "oom": RuntimeError("out of memory"),
+        "interrupt": KeyboardInterrupt(),
+    }.get(outcome)
+    value = SimpleNamespace(dtype="torch.bfloat16")
+    value.cpu = value.float = lambda: value
+    libc = ctypes.CDLL(None)
+    libc.puts.argtypes = [ctypes.c_char_p]
+    libc.puts.restype = ctypes.c_int
+
+    def native(*args, **kwargs):
+        assert ("out" in kwargs) is use_out
+        # Exercise buffered C stdio as well as direct fd writes; redirect_stdout
+        # alone cannot capture either. Unknown messages must survive a rejection.
+        libc.puts(known[0].rstrip(b"\n"))
+        os.write(2, known[1])
+        os.write(2, other)
+        if error is not None:
+            raise error
+        return value
+
+    def check(*args, **kwargs):
+        if outcome == "mismatch":
+            raise AssertionError("incorrect native result")
+
+    monkeypatch.setattr(module, "make_inputs", lambda *args: ((), {}))
+    monkeypatch.setattr(module, "comparison_tolerance", lambda dtype: 1e-3)
+    monkeypatch.setattr(module.torch, "_scaled_mm", native, raising=False)
+    monkeypatch.setattr(module.torch, "empty", lambda *a, **kw: value, raising=False)
+    monkeypatch.setattr(
+        module.torch,
+        "ops",
+        SimpleNamespace(aten=SimpleNamespace(_scaled_mm=SimpleNamespace(out=native))),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module.torch, "testing", SimpleNamespace(assert_close=check), raising=False
+    )
+    monkeypatch.setattr(
+        module.torch_device_fn, "synchronize", lambda: None, raising=False
+    )
+    # Flush pending output before redirecting, and restore both descriptors after
+    # the probe even if classification, correctness checking, or interruption fails.
+    libc.puts(b"before probe")
+    if outcome in ("unknown", "oom", "interrupt"):
+        with pytest.raises(type(error)) as caught:
+            module._native_reason(
+                case, (16, 16, 16), use_out, "device", lambda *a: value
+            )
+        assert caught.value is error
+    else:
+        reason = module._native_reason(
+            case, (16, 16, 16), use_out, "device", lambda *a: value
+        )
+        if outcome == "unsupported":
+            assert "MetaX native FP8 scalar baseline unavailable" in reason
+        elif outcome == "mismatch":
+            assert "Native probe disagrees with FP32 golden" in reason
+        else:
+            assert reason is None
+    os.write(1, b"candidate stdout\n")
+    os.write(2, b"candidate stderr\n")
+    captured = capfd.readouterr()
+    assert (
+        captured.out
+        == "before probe\n"
+        + ("" if outcome == "unsupported" else known[0].decode())
+        + "candidate stdout\n"
+    )
+    assert (
+        captured.err
+        == ("" if outcome == "unsupported" else known[1].decode())
+        + other.decode()
+        + "candidate stderr\n"
+    )
 
 
 @pytest.mark.parametrize("out", [False, True])
