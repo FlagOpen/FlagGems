@@ -3867,7 +3867,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.1'
+    - alpha: '5.5.0'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
