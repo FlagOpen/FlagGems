@@ -1248,7 +1248,7 @@ def gru_data(
     train=False,
     bidirectional=False,
 ):
-    logger.debug("GEMS GRU_DATA")
+    logger.debug("GEMS_THEAD GRU_DATA")
     if data.dim() != 2:
         raise RuntimeError("gru.data: packed data must have 2 dimensions")
     if batch_sizes.dim() != 1:
