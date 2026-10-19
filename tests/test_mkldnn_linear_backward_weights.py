@@ -18,8 +18,9 @@ MkldnnCPU is the only registered dispatch key: grad_output and input must be
 mkldnn-layout CPU tensors and weight a dense float32 CPU tensor; the results
 are dense CPU float32 tensors shaped (out_features, in_features) and
 (out_features,) -- 0-dim when ``bias_defined`` is False. The oracle is
-``torch.ops.aten.mkldnn_linear_backward_weights`` (``default`` and ``out``)
-and the candidate is called directly as
+``torch.ops.aten.mkldnn_linear_backward_weights`` (``default`` and ``out``),
+with an independent float64 derivative fallback for finite rounding differences.
+The candidate is called directly as
 ``flag_gems.mkldnn_linear_backward_weights``.
 """
 
@@ -118,6 +119,26 @@ def _dense_operands(shape, dtype):
     return grad_output, inp, weight
 
 
+def _assert_gradient_close(res, ref, grad_output, inp, *, bias=False):
+    assert res.device == ref.device
+    assert res.dtype == ref.dtype
+    assert res.layout == ref.layout
+    assert res.shape == ref.shape
+    try:
+        tu.assert_result_close(res, ref)
+    except AssertionError:
+        # Native oneDNN can round a low-precision reduction before exporting
+        # fp32. Accept an independently computed float64 derivative too, using
+        # the original tolerance; retain native NaN/Inf behavior unchanged.
+        if not (torch.isfinite(res).all() and torch.isfinite(ref).all()):
+            raise
+        x = inp.to_dense().double().reshape(-1, inp.shape[-1])
+        g = grad_output.to_dense().double().reshape(x.shape[0], -1)
+        exact = (g.sum(0) if bias else g.T @ x).to(ref.dtype)
+        assert torch.isfinite(exact).all()
+        tu.assert_result_close(res, exact)
+
+
 @pytest.mark.mkldnn_linear_backward_weights
 @pytest.mark.parametrize("bias_defined", BIAS_FLAGS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -135,9 +156,11 @@ def test_mkldnn_linear_backward_weights(shape, value_range, bias_defined, dtype)
         grad_output, inp, weight, bias_defined
     )
 
-    tu.assert_result_close(res_grad_weight, ref_grad_weight)
+    _assert_gradient_close(res_grad_weight, ref_grad_weight, ref_grad_output, ref_inp)
     if bias_defined:
-        tu.assert_result_close(res_grad_bias, ref_grad_bias)
+        _assert_gradient_close(
+            res_grad_bias, ref_grad_bias, ref_grad_output, ref_inp, bias=True
+        )
     else:
         # Without a bias the native grad_bias is an undefined 0-dim
         # placeholder, so only its metadata carries information.
@@ -182,9 +205,11 @@ def test_mkldnn_linear_backward_weights_out(shape, value_range, bias_defined, dt
     assert res_out[0] is res_grad_weight
     assert res_out[1] is res_grad_bias
 
-    tu.assert_result_close(res_out[0], ref_out[0])
+    _assert_gradient_close(res_out[0], ref_out[0], ref_grad_output, ref_inp)
     if bias_defined:
-        tu.assert_result_close(res_out[1], ref_out[1])
+        _assert_gradient_close(
+            res_out[1], ref_out[1], ref_grad_output, ref_inp, bias=True
+        )
     else:
         # bias_defined=False leaves grad_bias an undefined 0-dim placeholder:
         # its contents are unspecified storage, so only metadata is asserted.
@@ -229,8 +254,10 @@ def test_mkldnn_linear_backward_weights_special_values(shape, dtype, scenario):
         grad_output, inp, weight, True
     )
 
-    tu.assert_result_close(res_grad_weight, ref_grad_weight)
-    tu.assert_result_close(res_grad_bias, ref_grad_bias)
+    _assert_gradient_close(res_grad_weight, ref_grad_weight, ref_grad_output, ref_inp)
+    _assert_gradient_close(
+        res_grad_bias, ref_grad_bias, ref_grad_output, ref_inp, bias=True
+    )
 
 
 @pytest.mark.mkldnn_linear_backward_weights
@@ -266,9 +293,11 @@ def test_mkldnn_linear_backward_weights_metadata(shape, dtype, bias_defined):
     assert res_grad_bias.device == weight.device
     assert res_grad_bias.shape == ref_grad_bias.shape
 
-    tu.assert_result_close(res_grad_weight, ref_grad_weight)
+    _assert_gradient_close(res_grad_weight, ref_grad_weight, ref_grad_output, ref_inp)
     if bias_defined:
-        tu.assert_result_close(res_grad_bias, ref_grad_bias)
+        _assert_gradient_close(
+            res_grad_bias, ref_grad_bias, ref_grad_output, ref_inp, bias=True
+        )
 
 
 def _negative_args(case):
