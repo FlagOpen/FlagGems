@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .__iand__ import __iand___scalar, __iand___tensor  # noqa: F401
 from .__irshift__ import __irshift__  # noqa: F401
 from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
@@ -48,6 +49,15 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__Scalar,
     _foreach_sub__Scalar,
 )
+from ._foreach_copy import _foreach_copy  # noqa: F401
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_neg import _foreach_neg, _foreach_neg_
+from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
+from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
+from ._foreach_sigmoid import _foreach_sigmoid
+from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_tan import _foreach_tan  # noqa: F401
+from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -181,6 +191,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
+from .cauchy import cauchy, cauchy_  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -189,6 +200,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
+from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
 from .clamp import (
     clamp,
     clamp_,
@@ -252,6 +264,7 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dropout_ import dropout_  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .empty import empty  # noqa: F401
@@ -288,6 +301,8 @@ from .fill import (
     fill_tensor_,
     fill_tensor_out,
 )
+from .fix import fix, fix_out  # noqa: F401
+from .fix_ import fix_  # noqa: F401
 from .flip import flip
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
@@ -340,6 +355,8 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
+from .i0 import i0, i0_out  # noqa: F401
+from .i0_ import i0_  # noqa: F401
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -356,6 +373,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -369,7 +387,7 @@ from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
-from .le import le, le_, le_scalar
+from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
@@ -422,6 +440,7 @@ from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor, logical_xor_
+from .logit import logit, logit_out  # noqa: F401  (registered via _FULL_CONFIG)
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
@@ -503,8 +522,10 @@ from .normal import (
 )
 from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pairwise_distance import pairwise_distance
@@ -684,6 +705,7 @@ from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
+from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
@@ -742,6 +764,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "__iand___scalar",
+    "__iand___tensor",
     "__irshift__",
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
@@ -757,6 +781,16 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_copy",
+    "_foreach_copy_",
+    "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_pow__List",
+    "_foreach_pow_List",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
+    "_foreach_tan",
+    "_foreach_tan_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -900,6 +934,8 @@ __all__ = [
     "bucketize",
     "cat",
     "cat_out",
+    "cauchy",
+    "cauchy_",
     "ceil",
     "ceil_",
     "ceil_out",
@@ -910,6 +946,7 @@ __all__ = [
     "cholesky_solve_out",
     "chunk",
     "chunk_cat",
+    "chunk_gated_delta_rule_fwd",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -1005,6 +1042,9 @@ __all__ = [
     "fill_tensor",
     "fill_tensor_",
     "fill_tensor_out",
+    "fix",
+    "fix_",
+    "fix_out",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
@@ -1069,6 +1109,9 @@ __all__ = [
     "hypot",
     "hypot_",
     "hypot_out",
+    "i0",
+    "i0_",
+    "i0_out",
     "igammac",
     "igammac_",
     "igammac_out",
@@ -1083,6 +1126,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_tensor",
     "isclose",
     "isfinite",
     "isin",
@@ -1104,6 +1148,7 @@ __all__ = [
     "le",
     "le_",
     "le_scalar",
+    "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_backward",
@@ -1172,6 +1217,8 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
+    "logit",
+    "logit_out",
     "logspace",
     "logsumexp",
     "lt",
@@ -1274,8 +1321,10 @@ __all__ = [
     "normed_cumsum",
     "not_equal",
     "not_equal_scalar",
+    "one_hot",
     "ones",
     "ones_like",
+    "or_tensor",
     "ormqr",
     "outplace_fused_experts",
     "pad",

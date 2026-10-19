@@ -182,7 +182,7 @@ class AscendGraphMode(Enum):
     NPUGRAPH = "npugraph"
 
 
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.skipif(
     flag_gems.vendor_name
     not in ("ascend", "thead", "hygon", "mthreads", "nvidia", "metax"),
@@ -204,7 +204,7 @@ def test_topk_w8a16_fp8(baseline, monkeypatch):
     else:
         benchmark_class = TopKFp8W8A16Benchmark
     bench = benchmark_class(
-        op_name="topk_w8a16_fp8",
+        op_name="topk_w8a16",
         torch_op=_torch_topk_w8a16 if baseline == "torch" else _gems_bf16_topk,
         dtypes=[torch.bfloat16],
     )
