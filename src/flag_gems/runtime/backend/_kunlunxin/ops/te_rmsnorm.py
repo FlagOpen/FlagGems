@@ -372,7 +372,7 @@ def te_rmsnorm_bwd(
     dgamma = torch.empty_like(gamma)
 
     bc = _ln_bwd_col_size(N)
-    cdx = _dx_col_size(N)
+    # cdx = _dx_col_size(N)
 
     with torch_device_fn.device(x.device):
         if N == 1:

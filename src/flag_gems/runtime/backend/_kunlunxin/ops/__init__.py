@@ -634,12 +634,7 @@ from .slice_scatter import slice_scatter
 from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
 from .soft_margin_loss import soft_margin_loss, soft_margin_loss_out
 from .soft_margin_loss_backward import soft_margin_loss_backward
-from .softmax import (
-    softmax,
-    softmax_backward,
-    softmax_backward_out,
-    softmax_out,
-)
+from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
