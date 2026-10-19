@@ -188,7 +188,7 @@ def _cudnn_attention_backward_reference(
         utils.to_reference(K_bhsd),
         utils.to_reference(V_bhsd),
         utils.to_reference(out_bhsd),
-        utils.to_reference(lse),
+        utils.to_reference(lse).unsqueeze(-1),
         philox_seed,
         philox_offset,
         attn_bias,
