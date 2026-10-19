@@ -14,6 +14,7 @@
 
 import pytest
 import torch
+import yaml
 
 import flag_gems
 
@@ -115,9 +116,24 @@ class ToPaddedTensorBenchmark(OperatorBenchmark):
         ], kwargs
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
+        # Nested YAML lists cannot use the generic shape merger's hash-based dedup.
+        with open(shape_file_path) as stream:
+            configured = yaml.safe_load(stream) or {}
+        names = [self.op_name] + [cls.__name__ for cls in type(self).__mro__]
+        selected = {}
+        for name in names:
+            if name in configured:
+                selected = configured[name]
+                break
+        self.shape_desc = selected.get("shape_desc", self.DEFAULT_SHAPE_DESC)
+        shapes = list(selected.get("shapes", self.DEFAULT_SHAPES))
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            shapes += self.set_more_shapes()
         rows = []
-        for shape in list(self.shapes) + _BENCH_CASES:
+        for shape in shapes + _BENCH_CASES:
             if shape and isinstance(shape[0], str):
                 row = (shape[0], tuple(shape[1]), tuple(shape[2]))
             else:
