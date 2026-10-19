@@ -172,11 +172,10 @@ def _lstm_recur_kernel(
     pid_h = tl.program_id(1)
     offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
     hmask = offs_h < HIDDEN_SIZE
-    # Rows of W_hh beyond GATES do not exist; rows in [HIDDEN_SIZE, GATES) are
-    # computed but never stored.  Keeping this bound distinct from HIDDEN_SIZE
-    # is required: the XPU core-tiling pass miscompiles a kernel that masks two
-    # different index vectors against the same constant.
-    wmask = (offs_h < GATES)[:, None]
+    # Row offs_h addresses four rows of the (GATES, PAD_K) weight: offs_h,
+    # HIDDEN_SIZE + offs_h, 2 * HIDDEN_SIZE + offs_h and 3 * HIDDEN_SIZE +
+    # offs_h. Only offs_h < HIDDEN_SIZE keeps all four inside the weight.
+    wmask = (offs_h < HIDDEN_SIZE)[:, None]
 
     # The projected input gates seed the accumulators before the reduction
     # loop: the XPU backend miscompiles a load of the same index vector that
