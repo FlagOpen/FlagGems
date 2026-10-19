@@ -23,14 +23,14 @@ from tests.test_scaled_mm import (
     _device_key,
     _unsupported_reason,
     case_id,
-    case_reason,
     cases,
     comparison_tolerance,
     golden,
     make_inputs,
+    require_case,
 )
 
-from . import base, consts
+from . import base, conftest, consts
 
 
 @lru_cache(None)
@@ -54,7 +54,7 @@ def _native_reason(case, shape, use_out, device_key, reference):
     except AssertionError as exc:
         return f"Native probe disagrees with FP32 golden: {str(exc)[:300]}"
     except Exception as exc:
-        return _unsupported_reason(exc)
+        return _unsupported_reason(exc, dtype=case[0], stage="native", scaling=case[3])
     return None
 
 
@@ -65,26 +65,30 @@ def native_reason(case, shape, use_out=False, *, reference):
 CORE_SHAPES = [(16, 16, 16), (128, 128, 128), (512, 512, 512)]
 
 
-def _params(use_out):
-    params = []
-    for case in cases():
-        reason = case_reason(case)
-        for shape in CORE_SHAPES:
-            marks = []
-            if reason:
-                marks.append(pytest.mark.skip(reason=f"FP8 capability: {reason}"))
-            else:
-                baseline_reason = native_reason(case, shape, use_out, reference=golden)
-                if baseline_reason:
-                    marks.append(
-                        pytest.mark.skip_native(
-                            vendors=flag_gems.vendor_name, reason=baseline_reason
-                        )
-                    )
-            params.append(
-                pytest.param(case, shape, marks=marks, id=f"{case_id(case)}-{shape}")
-            )
-    return params
+# Do not compile kernels or call native operators while collecting benchmarks.
+CASES = [
+    pytest.param(case, shape, id=f"{case_id(case)}-{shape}")
+    for case in cases()
+    for shape in CORE_SHAPES
+]
+
+
+def _prepare_benchmark(case, shape, use_out, request, monkeypatch):
+    config = conftest.Config
+    if config.query or config.list_cases:
+        return
+    require_case(case)
+    if config.preflight_only or config.profile_only or config.skip_native:
+        return
+    reason = native_reason(case, shape, use_out, reference=golden)
+    if reason:
+        request.node.add_marker(
+            pytest.mark.skip_native(vendors=flag_gems.vendor_name, reason=reason)
+        )
+        # The autouse baseline fixture has already run; update its per-case
+        # configuration as well as the reporting marker, then restore it.
+        monkeypatch.setattr(config, "skip_native", True)
+        monkeypatch.setattr(config, "native_baseline_skip_reason", reason)
 
 
 class ScaledMMBenchmark(base.Benchmark):
@@ -123,12 +127,14 @@ class ScaledMMBenchmark(base.Benchmark):
 
 
 @pytest.mark.scaled_mm
-@pytest.mark.parametrize("case,shape", _params(False))
-def test_scaled_mm_benchmark(case, shape):
+@pytest.mark.parametrize("case,shape", CASES)
+def test_scaled_mm_benchmark(case, shape, request, monkeypatch):
+    _prepare_benchmark(case, shape, False, request, monkeypatch)
     ScaledMMBenchmark(case, shape, False).run()
 
 
 @pytest.mark.scaled_mm_out
-@pytest.mark.parametrize("case,shape", _params(True))
-def test_scaled_mm_out_benchmark(case, shape):
+@pytest.mark.parametrize("case,shape", CASES)
+def test_scaled_mm_out_benchmark(case, shape, request, monkeypatch):
+    _prepare_benchmark(case, shape, True, request, monkeypatch)
     ScaledMMBenchmark(case, shape, True).run()

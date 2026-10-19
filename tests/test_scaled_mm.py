@@ -59,14 +59,41 @@ def _device_key():
     return str(flag_gems.device), torch_device_fn.current_device()
 
 
-def _unsupported_reason(exc):
+def _unsupported_reason(exc, *, dtype=None, stage=None, scaling=None):
     text = str(exc)
     # Resource exhaustion and device faults are not evidence of dtype support.
     if any(
         s in text.lower()
-        for s in ("out of memory", "device-side assert", "illegal memory")
+        for s in (
+            "out of memory",
+            "device-side assert",
+            "illegal memory",
+            "no space left on device",
+            "unspecified launch failure",
+        )
     ):
         raise exc
+    # Match the unsupported FNUZ conversion, not arbitrary compiler failures.
+    if (
+        flag_gems.vendor_name == "ascend"
+        and stage in ("input_conversion", "output_conversion")
+        and str(dtype) in ("torch.float8_e4m3fnuz", "torch.float8_e5m2fnuz")
+        and type(exc).__name__ == "MLIRCompilationError"
+        and "'hivm.hir.vbrc' op failed to verify" in text
+        and "operand at idx 0 should have element type f8E4M3FN" in text
+        and "f8E5M2 type" in text
+    ):
+        return f"Ascend {stage} does not support {dtype}: {text[-1600:]}"
+    # MetaX rejects this generated rowwise FP8 baseline with INVALID_VALUE;
+    # scalar scaling and failures outside the native probe must still raise.
+    if (
+        flag_gems.vendor_name == "metax"
+        and stage == "native"
+        and scaling == "rowwise"
+        and str(dtype).removeprefix("torch.") in FP8_NAMES
+        and "CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul" in text
+    ):
+        return f"MetaX native FP8 rowwise scaling is unavailable: {text[-1600:]}"
     if not any(
         s in text.lower()
         for s in (
@@ -90,12 +117,14 @@ def _unsupported_reason(exc):
 @lru_cache(None)
 def _dtype_reason(dtype, device_key, output=False):
     device, index = device_key
+    stage = "allocation"
     try:
         with torch_device_fn.device(index):
             # CPU quantization avoids requiring an unrelated vendor cast operator.
             cpu = ((torch.arange(512).float() % 13 - 6) / 16).reshape(16, 32)
             a = cpu.to(dtype).to(device)
             y = torch.empty_like(cpu, device=device)
+            stage = "input_conversion"
             _convert_probe[(2,)](a, y, 511, 256)
             torch_device_fn.synchronize()
             torch.testing.assert_close(
@@ -105,6 +134,7 @@ def _dtype_reason(dtype, device_key, output=False):
                 atol=0,
             )
             if output:
+                stage = "output_conversion"
                 _convert_probe[(2,)](y, a, 511, 256)
                 torch_device_fn.synchronize()
                 torch.testing.assert_close(
@@ -116,6 +146,7 @@ def _dtype_reason(dtype, device_key, output=False):
             else:
                 b = cpu.t().contiguous().to(dtype).to(device)
                 c = torch.empty((16, 16), dtype=torch.float32, device=device)
+                stage = "dot"
                 _dot_probe[(1,)](a, b, c)
                 torch_device_fn.synchronize()
                 torch.testing.assert_close(
@@ -125,7 +156,7 @@ def _dtype_reason(dtype, device_key, output=False):
                     atol=1e-4,
                 )
     except Exception as exc:
-        reason = _unsupported_reason(exc)
+        reason = _unsupported_reason(exc, dtype=dtype, stage=stage)
         logger.info(
             "FP8 feature check failed: device=%s dtype=%s output=%s reason=%s",
             device_key,
@@ -208,16 +239,14 @@ SHAPES = (
 )
 
 
-def _params():
-    result = []
-    for case in cases():
-        reason = case_reason(case)
-        marks = [pytest.mark.skip(reason=f"FP8 capability: {reason}")] if reason else []
-        result.append(pytest.param(case, id=case_id(case), marks=marks))
-    return result
+# Collection only enumerates metadata; device probes run for selected cases.
+CASES = [pytest.param(case, id=case_id(case)) for case in cases()]
 
 
-CASES = _params()
+def require_case(case):
+    reason = case_reason(case)
+    if reason:
+        pytest.skip(f"FP8 capability: {reason}")
 
 
 def golden(args, kwargs):
@@ -231,6 +260,7 @@ def golden(args, kwargs):
 
 
 def _check(case, shape, layout, fast, use_out):
+    require_case(case)
     args, kwargs = make_inputs(case, shape, layout=layout, fast=fast)
     expected = golden(args, kwargs)
     if use_out:
@@ -267,6 +297,7 @@ def test_scaled_mm_out(case, shape):
 @pytest.mark.parametrize("case", CASES)
 @pytest.mark.parametrize("shape", [(0, 16, 32), (16, 0, 32), (16, 16, 0)])
 def test_scaled_mm_empty(case, shape):
+    require_case(case)
     args, kwargs = make_inputs(case, shape)
     actual = flag_gems.scaled_mm(*args, **kwargs)
     torch.testing.assert_close(
@@ -277,6 +308,7 @@ def test_scaled_mm_empty(case, shape):
 @pytest.mark.scaled_mm
 @pytest.mark.parametrize("case", CASES)
 def test_scaled_mm_schema(case):
+    require_case(case)
     args, kwargs = make_inputs(case, (16, 16, 32))
     with pytest.raises(RuntimeError, match="Float32"):
         flag_gems.scaled_mm(args[0], args[1], args[2].half(), args[3], **kwargs)
