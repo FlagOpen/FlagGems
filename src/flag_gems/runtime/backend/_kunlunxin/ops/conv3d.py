@@ -573,10 +573,10 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     output_dtype = input.dtype
 
-    # For float16 inputs, promote to float32 for computation to prevent overflow
-    # Same issue as conv2d: float16 max value ~65504, 3D convolution with large
-    # channels/kernels easily overflows causing NaN propagation
-    use_fp32_compute = input.dtype == torch.float16
+    # Half-precision inputs are promoted to float32 for computation: the kernel
+    # body does not compile for fp16/bf16 operands, and fp16 also overflows
+    # (max ~65504) over large channels/kernels causing NaN propagation.
+    use_fp32_compute = input.dtype in (torch.float16, torch.bfloat16)
     compute_dtype = torch.float32 if use_fp32_compute else output_dtype
 
     def _launch(xi, wi, bi):
