@@ -169,6 +169,9 @@ class BaddbmmBenchmark(BlasBenchmark):
             (4, 8192, 152064, 3584),
         ]
 
+        if flag_gems.vendor_name == "kunlunxin":
+            skip_shapes = skip_shapes + consts.KUNLUNXIN_BADDBMM_VENDOR_FAULT_SHAPES
+
         filtered = []
         for shape in model_shapes_list:
             if shape not in skip_shapes:

@@ -584,61 +584,52 @@ def _input_grad(
     dxsc,
     dxsh,
     dxsw,
-    BM: tl.constexpr,
-    BC: tl.constexpr,
-    BO: tl.constexpr,
+    CPG: tl.constexpr,
+    OPG: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    pm, pc = tl.program_id(0), tl.program_id(1)
-    m = pm * BM + tl.arange(0, BM)
-    c = pc * BC + tl.arange(0, BC)
-    plane = hin * win
-    ni = m // plane
-    q = m - ni * plane
-    ih, iw = q // win, q % win
-    g, lc = c // cpg, c % cpg
-    acc = tl.zeros((BM, BC), tl.float32)
-    for r in range(0, kh):
+    # Flat 1D indexing mirrors _forward above. The tiled 2D/3D formulation that
+    # reads naturally here cannot be compiled by this backend: TritonXPULegalize
+    # rejects 3D shapes outright, and its 2D form hits a type-inference bug in
+    # the same pass on the `tensor +/- scalar` index arithmetic below.
+    m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    iw = m % win
+    q = m // win
+    ih = q % hin
+    q = q // hin
+    c = q % cin
+    ni = q // cin
+    g = c // CPG
+    lc = c % CPG
+    pmask = m < n * cin * hin * win
+    acc = tl.zeros((BLOCK,), tl.float32)
+    for r in range(KH):
         hnum = ih + ph - r * dh
         oh = hnum // sh
         hvalid = (hnum == oh * sh) & (oh >= 0) & (oh < hout)
-        for s in range(0, kw):
+        for s in range(KW):
             wnum = iw + pw - s * dw
             ow = wnum // sw
             wvalid = (wnum == ow * sw) & (ow >= 0) & (ow < wout)
-            for obase in range(0, opg, BO):
-                o = obase + tl.arange(0, BO)
+            valid = pmask & hvalid & wvalid
+            safe_oh = tl.where(valid, oh, 0)
+            safe_ow = tl.where(valid, ow, 0)
+            for o in range(OPG):
                 gy = tl.load(
                     dy
-                    + ni[:, None, None] * dysn
-                    + (g[None, :, None] * opg + o[None, None, :]) * dysc
-                    + oh[:, None, None] * dysh
-                    + ow[:, None, None] * dysw,
-                    mask=(ni[:, None, None] < n)
-                    & (c[None, :, None] < cin)
-                    & (o[None, None, :] < opg)
-                    & hvalid[:, None, None]
-                    & wvalid[:, None, None],
+                    + ni * dysn
+                    + (g * OPG + o) * dysc
+                    + safe_oh * dysh
+                    + safe_ow * dysw,
+                    mask=pmask,
                     other=0.0,
                 )
-                ww = tl.load(
-                    w
-                    + (g[:, None] * opg + o[None, :]) * wso
-                    + lc[:, None] * wsi
-                    + r * wsh
-                    + s * wsw,
-                    mask=(c[:, None] < cin) & (o[None, :] < opg),
-                    other=0.0,
-                )
-                acc += tl.sum(gy * ww[None, :, :], axis=2)
-    tl.store(
-        dx
-        + ni[:, None] * dxsn
-        + c[None, :] * dxsc
-        + ih[:, None] * dxsh
-        + iw[:, None] * dxsw,
-        acc,
-        mask=(ni[:, None] < n) & (c[None, :] < cin),
-    )
+                gy = tl.where(valid, gy, 0.0).to(tl.float32)
+                wv = tl.load(w + (g * OPG + o) * wso + lc * wsi + r * wsh + s * wsw)
+                acc += gy * wv.to(tl.float32)
+    tl.store(dx + ni * dxsn + c * dxsc + ih * dxsh + iw * dxsw, acc, mask=pmask)
 
 
 @libentry()
@@ -675,9 +666,13 @@ def _weight_grad(
     gws1,
     gws2,
     gws3,
-    BP: tl.constexpr,
     BK: tl.constexpr,
 ):
+    # Reduction over output positions runs as a scalar loop and every scalar term
+    # is splatted with tl.full before touching a tensor. A 2D [BK, BP] tile cannot
+    # be compiled here (TritonXPUCoreTiling rejects the broadcast masks), and
+    # leaving `ph`/`pw` as bare scalars in the index arithmetic makes this backend
+    # silently miscompile the padded cases rather than fail.
     k = tl.program_id(0) * BK + tl.arange(0, BK)
     area = cpg * kh * kw
     oc = k // area
@@ -686,40 +681,33 @@ def _weight_grad(
     rem = rem % (kh * kw)
     r, s = rem // kw, rem % kw
     g = oc // opg
+    kvalid = oc < cout
     acc = tl.zeros((BK,), tl.float32)
-    total = n * hout * wout
-    for pbase in range(0, total, BP):
-        p = pbase + tl.arange(0, BP)
-        ni = p // (hout * wout)
-        q = p % (hout * wout)
-        oh, ow = q // wout, q % wout
-        ih = oh[:, None] * sh - ph + r[None, :] * dh
-        iw = ow[:, None] * sw - pw + s[None, :] * dw
+    plane = hout * wout
+    rbase = r * dh - tl.full((BK,), ph, tl.int32)
+    sbase = s * dw - tl.full((BK,), pw, tl.int32)
+    for p in range(0, n * plane):
+        ni = p // plane
+        q = p % plane
+        oh = q // wout
+        ow = q % wout
+        ih = rbase + tl.full((BK,), oh * sh, tl.int32)
+        iw = sbase + tl.full((BK,), ow * sw, tl.int32)
+        valid = kvalid & (ih >= 0) & (ih < hin) & (iw >= 0) & (iw < win)
+        safe_ih = tl.where(valid, ih, 0)
+        safe_iw = tl.where(valid, iw, 0)
         xv = tl.load(
-            x
-            + ni[:, None] * xsn
-            + (g[None, :] * cpg + ci[None, :]) * xsc
-            + ih * xsh
-            + iw * xsw,
-            mask=(p[:, None] < total)
-            & (oc[None, :] < cout)
-            & (ih >= 0)
-            & (ih < hin)
-            & (iw >= 0)
-            & (iw < win),
+            x + ni * xsn + (g * cpg + ci) * xsc + safe_ih * xsh + safe_iw * xsw,
+            mask=valid,
             other=0.0,
         )
         gy = tl.load(
-            dy
-            + ni[:, None] * dysn
-            + oc[None, :] * dysc
-            + oh[:, None] * dysh
-            + ow[:, None] * dysw,
-            mask=(p[:, None] < total) & (oc[None, :] < cout),
+            dy + ni * dysn + oc * dysc + oh * dysh + ow * dysw,
+            mask=kvalid,
             other=0.0,
         )
-        acc += tl.sum(xv * gy, axis=0)
-    tl.store(grad_w + oc * gws0 + ci * gws1 + r * gws2 + s * gws3, acc, mask=oc < cout)
+        acc += tl.where(valid, xv.to(tl.float32) * gy.to(tl.float32), 0.0)
+    tl.store(grad_w + oc * gws0 + ci * gws1 + r * gws2 + s * gws3, acc, mask=kvalid)
 
 
 @libentry()
@@ -735,28 +723,25 @@ def _bias_grad(
     dysc,
     dysh,
     dysw,
-    BP: tl.constexpr,
     BO: tl.constexpr,
 ):
+    # Scalar spatial loop, as in _weight_grad: the 2D tiled form does not compile
+    # on this backend.
     o = tl.program_id(0) * BO + tl.arange(0, BO)
-    total = n * hout * wout
+    ovalid = o < cout
     acc = tl.zeros((BO,), tl.float32)
-    for pbase in range(0, total, BP):
-        p = pbase + tl.arange(0, BP)
-        ni = p // (hout * wout)
-        q = p % (hout * wout)
-        oh, ow = q // wout, q % wout
-        value = tl.load(
-            dy
-            + ni[:, None] * dysn
-            + o[None, :] * dysc
-            + oh[:, None] * dysh
-            + ow[:, None] * dysw,
-            mask=(p[:, None] < total) & (o[None, :] < cout),
+    plane = hout * wout
+    for p in range(0, n * plane):
+        ni = p // plane
+        q = p % plane
+        oh = q // wout
+        ow = q % wout
+        acc += tl.load(
+            dy + ni * dysn + o * dysc + oh * dysh + ow * dysw,
+            mask=ovalid,
             other=0.0,
-        )
-        acc += tl.sum(value, axis=0)
-    tl.store(grad_b + o, acc, mask=o < cout)
+        ).to(tl.float32)
+    tl.store(grad_b + o, acc, mask=ovalid)
 
 
 def _pair(value, name):
@@ -828,7 +813,10 @@ class Conv2d(torch.autograd.Function):
         use_channels8 = use_spatial_tile and groups == 1 and cout % 8 == 0
         use_channels4 = use_spatial_tile and groups == 1 and cout % 4 == 0
         if use_channels16:
-            block = 128
+            # BLOCK must stay <= 64: at 128 these tiled kernels exceed what
+            # TritonXPUUnrollControl can allocate and compilation fails with a
+            # bogus "out of resource: uni_sram" error.
+            block = 64
             _forward_spatial_channels16[
                 (triton.cdiv(n * hout * wout, block), cout // 16)
             ](
@@ -862,7 +850,7 @@ class Conv2d(torch.autograd.Function):
                 num_warps=4,
             )
         elif use_channels8:
-            block = 128
+            block = 64
             _forward_spatial_channels8[
                 (triton.cdiv(n * hout * wout, block), cout // 8)
             ](
@@ -896,7 +884,7 @@ class Conv2d(torch.autograd.Function):
                 num_warps=4,
             )
         elif use_channels4:
-            block = 128
+            block = 64
             _forward_spatial_channels4[
                 (triton.cdiv(n * hout * wout, block), triton.cdiv(cout, 4))
             ](
@@ -930,7 +918,7 @@ class Conv2d(torch.autograd.Function):
                 num_warps=4,
             )
         else:
-            block = 128 if use_spatial_tile else 64
+            block = 64
             kernel = _forward_spatial_tile if use_spatial_tile else _forward
             grid = (
                 (triton.cdiv(n * hout * wout, block), cout)
@@ -995,7 +983,8 @@ class Conv2d(torch.autograd.Function):
         grad_x = grad_w = grad_b = None
         if need_x:
             grad_x = torch.empty_like(input)
-            _input_grad[(triton.cdiv(n * hin * win, 32), triton.cdiv(cin, 32))](
+            block = 64
+            _input_grad[(triton.cdiv(n * cin * hin * win, block),)](
                 out_grad,
                 weight,
                 grad_x,
@@ -1018,9 +1007,11 @@ class Conv2d(torch.autograd.Function):
                 *out_grad.stride(),
                 *weight.stride(),
                 *grad_x.stride(),
-                BM=32,
-                BC=32,
-                BO=32,
+                CPG=cpg,
+                OPG=cout // groups,
+                KH=kh,
+                KW=kw,
+                BLOCK=block,
             )
         if need_w:
             grad_w = torch.empty_like(weight)
@@ -1047,13 +1038,12 @@ class Conv2d(torch.autograd.Function):
                 *input.stride(),
                 *out_grad.stride(),
                 *grad_w.stride(),
-                BP=64,
                 BK=64,
             )
         if has_bias and need_b:
             grad_b = torch.empty((cout,), device=out_grad.device, dtype=out_grad.dtype)
             _bias_grad[(triton.cdiv(cout, 64),)](
-                out_grad, grad_b, n, cout, hout, wout, *out_grad.stride(), BP=128, BO=64
+                out_grad, grad_b, n, cout, hout, wout, *out_grad.stride(), BO=64
             )
         return grad_x, grad_w, grad_b, None, None, None, None
 
@@ -1069,6 +1059,13 @@ def _square_pad_conv2d(input, weight, bias, stride, padding, dilation, groups):
     output so only positions computed from real windows remain."""
     ih = input.shape[-2]
     iw = input.shape[-1]
+    # A degenerate spatial dim of 1 with a matching kernel extent of 1 (the
+    # shape conv1d delegates here) needs no squaring: every output position
+    # along that dim comes from a single column, so the conv runs as-is.
+    # Squaring it would instead inflate the input by max(ih, iw)x, which for
+    # long 1D signals exhausts device memory and faults the kernel.
+    if (iw == 1 and weight.shape[-1] == 1) or (ih == 1 and weight.shape[-2] == 1):
+        return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)
     m = max(ih, iw)
     # zero-pad via the backend's own implementation
     xp = _klx_pad(input, (0, m - iw, 0, m - ih))

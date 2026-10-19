@@ -21,6 +21,18 @@ from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
+# NOTE: the kunlunxin XPU backend (xdnn_pytorch), not upstream PyTorch, cannot run the
+# native aten::_weight_norm baseline in float16: for fp16 input PyTorch promotes the
+# `norm` output of _weight_norm_interface to fp32, and the vendor wrapper rejects that
+# with "scalar type of norm : kfloat32 is unsupported" ([NOT IMPLEMENTED] code 4).
+# So latency_base cannot be measured here. The flag_gems kernel handles fp16 fine,
+# which is why the accuracy tests (whose reference runs on CPU) pass.
+WEIGHT_NORM_DTYPES = (
+    [torch.float32, torch.bfloat16]
+    if vendor_name == "kunlunxin"
+    else consts.FLOAT_DTYPES
+)
+
 
 def weight_norm_input_fn(shape, dtype, device):
     dim = 0
@@ -53,7 +65,7 @@ def test_weight_norm_dim0():
         op_name="weight_norm",
         input_fn=weight_norm_input_fn,
         torch_op=torch.ops.aten._weight_norm.default,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=WEIGHT_NORM_DTYPES,
     )
     bench.run()
 
@@ -67,6 +79,6 @@ def test_weight_norm_dim_last():
         op_name="weight_norm",
         input_fn=weight_norm_input_fn_last,
         torch_op=torch.ops.aten._weight_norm.default,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=WEIGHT_NORM_DTYPES,
     )
     bench.run()

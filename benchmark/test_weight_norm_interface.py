@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 
 vendor_name = flag_gems.vendor_name
 
@@ -48,6 +48,14 @@ def test_weight_norm_interface():
         op_name="weight_norm_interface",
         input_fn=weight_norm_input_fn,
         torch_op=torch._weight_norm,
+        # NOTE: the kunlunxin XPU backend cannot run the native torch._weight_norm
+        # baseline in fp16 -- it rejects the fp32 `norm` output that PyTorch produces
+        # for fp16 input ([NOT IMPLEMENTED] code 4). The gems kernel itself is fine.
+        dtypes=(
+            [torch.float32, torch.bfloat16]
+            if vendor_name == "kunlunxin"
+            else consts.FLOAT_DTYPES
+        ),
     )
     bench.set_gems(flag_gems.weight_norm)
 

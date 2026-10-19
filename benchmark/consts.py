@@ -90,6 +90,26 @@ def model_shapes():
     return [(4, bs, n, k) for bs, (n, k) in itertools.product(BS, NK)]
 
 
+# The vendor batched-GEMM backend on kunlunxin XPU hits an illegal memory
+# access on these (b, m, n, k) shapes: a tiny m (1 or 2) against a large n/k
+# takes a GEMV-like path that faults.  The fault is in the baseline (torch_op)
+# leg, before FlagGems is reached -- torch.bmm and torch.matmul fault on the
+# same shapes, while FlagGems' Triton kernel returns correct results.  Which n
+# faults depends on the dtype, so there is no clean predicate to filter on;
+# list the shapes explicitly instead.
+KUNLUNXIN_BADDBMM_VENDOR_FAULT_SHAPES = [
+    (4, 1, 3584, 3584),
+    (4, 1, 4608, 3584),
+    (4, 1, 18944, 3584),
+    (4, 1, 28672, 4096),
+    (4, 1, 37888, 3584),
+    (4, 1, 128256, 4096),
+    (4, 1, 152064, 3584),
+    (4, 2, 37888, 3584),
+    (4, 2, 152064, 3584),
+]
+
+
 @dataclass
 class BenchmarkMetrics:
     # Legacy shape information for backward compatibility
