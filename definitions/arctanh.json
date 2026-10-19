@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "arctanh",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::arctanh(Tensor self) -> Tensor. Computes inverse hyperbolic tangent elementwise; the shared suite also covers in-place and out variants. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

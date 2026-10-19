@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_max",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_max(Tensor[] self) -> Tensor[]. Computes one maximum per input tensor and returns zero-dimensional tensors while preserving input dtype and precision.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

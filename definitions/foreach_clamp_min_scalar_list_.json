@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_clamp_min_scalar_list_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_clamp_min_.ScalarList(...) -> (). Applies foreach clamp_min between a Tensor list and a scalar list paired with the input list; it mutates every tensor in self and returns no value. The correctness suite covers contiguous and noncontiguous floating inputs, exact overload dispatch, list-output values or in-place storage preservation, and mismatched list lengths where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "scalars",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Number]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_pinv",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_pinv.atol_rtol_float(Tensor self, *, float? atol=None, float? rtol=None, bool hermitian=False) -> Tensor. Computes the Moore-Penrose pseudoinverse using the default optional absolute and relative tolerances. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "atol",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float?"
+    },
+    {
+      "name": "rtol",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float?"
+    },
+    {
+      "name": "hermitian",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

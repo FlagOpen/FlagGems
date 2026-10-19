@@ -25,7 +25,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_arctanh(shape, dtype):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(-0.99, 0.99)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.arctanh(ref_inp)
     res_out = flag_gems.arctanh(inp)
@@ -38,7 +38,7 @@ def test_arctanh(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_arctanh_(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 1.8 - 0.9
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = ref_inp.arctanh_()
     res_out = flag_gems.arctanh_(inp)
@@ -52,7 +52,7 @@ def test_arctanh_(shape, dtype):
 def test_arctanh_out(shape, dtype):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(-0.99, 0.99)
     out = torch.empty_like(inp)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_out = torch.empty_like(ref_inp)
 
     torch.arctanh(ref_inp, out=ref_out)

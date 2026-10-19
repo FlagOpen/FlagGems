@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_div_tensor_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_div_.Tensor(...) -> (). Applies foreach div between a Tensor list and one scalar Tensor; it mutates every tensor in self and returns no value. The correctness suite covers contiguous and noncontiguous floating inputs, exact overload dispatch, list-output values or in-place storage preservation, and mismatched list lengths where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

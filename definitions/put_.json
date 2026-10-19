@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "put_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::put_(Tensor(a!) self, Tensor index, Tensor source, bool accumulate=False) -> Tensor(a!). Writes source values into self at flattened indices, optionally accumulating repeated indices. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "source",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "accumulate",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

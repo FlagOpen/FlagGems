@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "sign_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::sign.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Writes the elementwise sign into out and returns that same tensor.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

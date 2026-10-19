@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_add_list_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_add_.List(...) -> (). Applies foreach add between a Tensor list and a paired tensor list; it mutates every tensor in self and returns no value. The correctness suite covers contiguous and noncontiguous floating inputs, exact overload dispatch, list-output values or in-place storage preservation, and mismatched list lengths where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "Number"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

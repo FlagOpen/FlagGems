@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_modified_bessel_k0",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_modified_bessel_k0(Tensor self) -> Tensor. Computes the modified Bessel function K0 elementwise; the shared suite also covers out behavior. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

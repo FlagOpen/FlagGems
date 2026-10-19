@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "softplus_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::softplus_backward(Tensor grad_output, Tensor self, Scalar beta, Scalar threshold) -> Tensor. Computes the Softplus input gradient without mutating its inputs.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "beta",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "threshold",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

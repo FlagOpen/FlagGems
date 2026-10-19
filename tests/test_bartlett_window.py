@@ -39,8 +39,11 @@ def test_bartlett_window(window_length, periodic, dtype):
     )
     # Compare against the float64 window: torch's low-precision path accumulates
     # in the output dtype and drifts by 1-2 ULP, so it is not a tight reference.
-    ref_out = torch.bartlett_window(
-        window_length, periodic=periodic, dtype=torch.float64, device=device
+    ref_out = utils.to_reference(
+        torch.bartlett_window(
+            window_length, periodic=periodic, dtype=torch.float64, device=device
+        ),
+        True,
     ).to(dtype)
     if window_length > 1:
         utils.gems_assert_close(res_out, ref_out, dtype)

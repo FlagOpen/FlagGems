@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "hspmm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::hspmm(Tensor mat1, Tensor mat2) -> Tensor. Multiplies a sparse COO matrix by a dense matrix and returns a sparse result. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

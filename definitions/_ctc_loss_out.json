@@ -1,0 +1,72 @@
+{
+  "api_version": "v6.0",
+  "name": "_ctc_loss_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_ctc_loss.out(Tensor log_probs, Tensor targets, SymInt[] input_lengths, SymInt[] target_lengths, int blank=0, bool zero_infinity=False, *, Tensor(a!) out0, Tensor(b!) out1) -> (Tensor(a!), Tensor(b!)). Writes both CTC loss outputs into the supplied buffers and returns those buffers.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "out0",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out1",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out0",
+    "out1"
+  ],
+  "effects": {
+    "mutates": [
+      "out0",
+      "out1"
+    ],
+    "returns_alias_of": {
+      "out0": "out0",
+      "out1": "out1"
+    }
+  }
+}

@@ -35,8 +35,8 @@ def test_l1_loss(shape, dtype, reduction):
     if len(shape) >= 2 and shape[0] > 0:
         inp = inp.transpose(0, 1).contiguous().transpose(0, 1)
 
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
+    ref_inp = utils.to_reference(inp, True).to(torch.float32)
+    ref_target = utils.to_reference(target, True).to(torch.float32)
     ref_out = torch.nn.functional.l1_loss(ref_inp, ref_target, reduction=reduction)
 
     res_out = flag_gems.l1_loss(inp, target, REDUCTION_ENUM[reduction])
@@ -52,8 +52,8 @@ def test_l1_loss_int_reduction(shape, dtype, reduction):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
+    ref_inp = utils.to_reference(inp, True).to(torch.float32)
+    ref_target = utils.to_reference(target, True).to(torch.float32)
     ref_out = torch.ops.aten.l1_loss(ref_inp, ref_target, reduction)
 
     res_out = flag_gems.l1_loss(inp, target, reduction)
@@ -68,8 +68,8 @@ def test_l1_loss_broadcast(dtype, reduction):
     inp = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
     target = torch.randn((4,), dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
+    ref_inp = utils.to_reference(inp, True).to(torch.float32)
+    ref_target = utils.to_reference(target, True).to(torch.float32)
     ref_out = torch.ops.aten.l1_loss(ref_inp, ref_target, reduction)
 
     res_out = flag_gems.l1_loss(inp, target, reduction)

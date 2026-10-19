@@ -1,0 +1,55 @@
+{
+  "api_version": "v6.0",
+  "name": "bartlett_window",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::bartlett_window.periodic(int window_length, bool periodic, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor. Materializes periodic and symmetric Bartlett windows across edge and representative lengths and floating dtypes. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "window_length",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "periodic",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "ScalarType?"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Layout?"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Device?"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "bool?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

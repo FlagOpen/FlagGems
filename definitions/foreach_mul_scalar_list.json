@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_mul_scalar_list",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_mul.ScalarList(...) -> Tensor[]. Applies foreach mul between a Tensor list and a scalar list paired with the input list; it returns a newly allocated Tensor list without aliasing self. The correctness suite covers contiguous and noncontiguous floating inputs, exact overload dispatch, list-output values or in-place storage preservation, and mismatched list lengths where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "scalars",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Number]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

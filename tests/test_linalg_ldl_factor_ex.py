@@ -22,7 +22,7 @@ def test_linalg_ldl_factor_ex(shape, dtype):
     # Make it symmetric: A = A @ A^T + small diagonal for numerical stability
     A = A @ A.mT + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.ldl_factor_ex(ref_A)
     with flag_gems.use_gems():

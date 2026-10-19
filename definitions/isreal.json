@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "isreal",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::isreal(Tensor self) -> Tensor. Tests elementwise whether values have zero imaginary component across real and complex dtypes. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

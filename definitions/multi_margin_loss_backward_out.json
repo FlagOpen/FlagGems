@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "multi_margin_loss_backward_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::multi_margin_loss_backward.grad_input(Tensor grad_output, Tensor self, Tensor target, Scalar p, Scalar margin, Tensor? weight=None, int reduction=Mean, *, Tensor(a!) grad_input) -> Tensor(a!). Writes the multi-margin-loss gradient into grad_input and returns that same tensor.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "margin",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    },
+    {
+      "name": "grad_input",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [
+      "grad_input"
+    ],
+    "returns_alias_of": {
+      "grad_input": "grad_input"
+    }
+  }
+}

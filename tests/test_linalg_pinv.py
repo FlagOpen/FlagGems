@@ -60,7 +60,7 @@ def _well_conditioned(m, n, dtype, seed=0):
 def test_linalg_pinv(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -74,7 +74,7 @@ def test_linalg_pinv_batched(shape, dtype):
     batch = 4
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -86,7 +86,7 @@ def test_linalg_pinv_batched(shape, dtype):
 def test_linalg_pinv_large(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)
@@ -100,7 +100,7 @@ def test_linalg_pinv_large_batched(shape, dtype):
     batch = 2
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = torch.linalg.pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
     utils.gems_assert_close(res_out, ref_out, dtype)

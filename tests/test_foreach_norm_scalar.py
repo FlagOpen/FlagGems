@@ -1,0 +1,63 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+
+_ATEN_OP = torch.ops.aten._foreach_norm.Scalar
+
+
+def _gems_op(*args, **kwargs):
+    with flag_gems.use_gems():
+        return _ATEN_OP(*args, **kwargs)
+
+
+@pytest.mark.foreach_norm_scalar
+@pytest.mark.parametrize("ord_", [0, 1, 2, 3, float("inf"), float("-inf")])
+def test_foreach_norm_scalar(ord_):
+    values = [0.0, 2.0, -3.0, 0.5]
+    tensors = [
+        torch.tensor(values, dtype=torch.float32, device=flag_gems.device),
+        torch.tensor(
+            list(reversed(values)), dtype=torch.float32, device=flag_gems.device
+        ),
+    ]
+    refs = [utils.to_reference(tensor, True) for tensor in tensors]
+    expected = _ATEN_OP(refs, ord_)
+    actual = _gems_op(tensors, ord_)
+
+    assert len(actual) == len(expected)
+    for result, want in zip(actual, expected):
+        assert result.shape == torch.Size([])
+        assert result.dtype == want.dtype
+        utils.gems_assert_close(result, want, want.dtype)
+
+
+@pytest.mark.foreach_norm_scalar
+def test_foreach_norm_scalar_noncontiguous():
+    tensors = [
+        torch.arange(
+            24, dtype=torch.float32, device=flag_gems.device
+        ).reshape(4, 6).transpose(0, 1)
+    ]
+    refs = [utils.to_reference(tensor, True) for tensor in tensors]
+    ord_ = 2
+    expected = _ATEN_OP(refs, ord_)
+    actual = _gems_op(tensors, ord_)
+
+    utils.gems_assert_close(actual[0], expected[0], expected[0].dtype)

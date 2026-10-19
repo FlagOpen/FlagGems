@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "expand_copy",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::expand_copy(Tensor self, SymInt[] size, *, bool implicit=False) -> Tensor. Materializes a copy of an expanded tensor without aliasing the source. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "implicit",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -63,11 +63,11 @@ def gen_index_and_source(inp, dtype, device, accumulate, count=None):
 @pytest.mark.parametrize("accumulate", [False, True])
 def test_put_(shape, dtype, accumulate):
     inp = gen_input(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     index, source = gen_index_and_source(inp, dtype, flag_gems.device, accumulate)
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
 
     ref_inp.put_(ref_index, ref_source, accumulate=accumulate)
     res = flag_gems.put_(inp, index, source, accumulate=accumulate)
@@ -86,7 +86,7 @@ def test_put_(shape, dtype, accumulate):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_put__negative_index(shape, dtype):
     inp = gen_input(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     numel = inp.numel()
     count = max(1, numel // 2)
@@ -98,7 +98,7 @@ def test_put__negative_index(shape, dtype):
     source = torch.randn(count, dtype=dtype, device=flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
 
     ref_inp.put_(ref_index, ref_source)
     flag_gems.put_(inp, index, source)
@@ -112,11 +112,11 @@ def test_put__negative_index(shape, dtype):
 def test_put__non_contiguous(shape, dtype):
     # A transposed (non-contiguous) tensor exercises the multi-dim offset path.
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device).transpose(0, 1)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     index, source = gen_index_and_source(inp, dtype, flag_gems.device, accumulate=False)
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
 
     ref_inp.put_(ref_index, ref_source)
     flag_gems.put_(inp, index, source)
@@ -149,7 +149,7 @@ def test_put__non_contiguous_narrow_accumulate(dtype, layout):
         "row_slice": lambda t: t[::2],
     }[layout](base)
     assert not inp.is_contiguous()
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     numel = inp.numel()
     index = torch.randint(
@@ -157,7 +157,7 @@ def test_put__non_contiguous_narrow_accumulate(dtype, layout):
     )
     source = _gen_typed((index.numel(),), dtype, flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source), accumulate=True)
+    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True), accumulate=True)
     res = flag_gems.put_(inp, index, source, accumulate=True)
 
     assert res is inp
@@ -170,7 +170,7 @@ def test_put__non_contiguous_narrow_accumulate(dtype, layout):
 def test_put__index_source_diff_shapes(shape, dtype):
     # index and source may have different shapes as long as they share numel.
     inp = gen_input(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     count = max(1, inp.numel() // 2)
     # Unique indices for a deterministic, order-independent overwrite.
@@ -183,7 +183,7 @@ def test_put__index_source_diff_shapes(shape, dtype):
     )
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
 
     ref_inp.put_(ref_index, ref_source)
     flag_gems.put_(inp, index, source)
@@ -195,7 +195,7 @@ def test_put__index_source_diff_shapes(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 def test_put__integer(dtype):
     inp = torch.zeros(100, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     import numpy as np
 
@@ -205,7 +205,7 @@ def test_put__integer(dtype):
     source = torch.randint(0, 1000, (50,), dtype=dtype, device=flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
     ref_inp.put_(ref_index, ref_source)
     flag_gems.put_(inp, index, source)
 
@@ -219,7 +219,7 @@ def test_put__accumulate_duplicates(dtype):
     # kernel accumulates in the tensor's own (low-precision) dtype.
     utils.init_seed(0)
     inp = torch.randn(64, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     import numpy as np
 
@@ -229,7 +229,7 @@ def test_put__accumulate_duplicates(dtype):
     source = torch.randn(n * 8, dtype=dtype, device=flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
     ref_inp.put_(ref_index, ref_source, accumulate=True)
     flag_gems.put_(inp, index, source, accumulate=True)
 
@@ -273,7 +273,7 @@ def test_put__dtypes(dtype, accumulate):
     utils.init_seed(0)
     numel = 64
     inp = _gen_typed((numel,), dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     # Duplicate indices only when accumulating: with `accumulate=False` a
     # repeated index is last-writer-wins and ATen does not specify the winner.
@@ -287,7 +287,7 @@ def test_put__dtypes(dtype, accumulate):
     source = _gen_typed((count,), dtype, flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source)
+    ref_source = utils.to_reference(source, True)
 
     ref_inp.put_(ref_index, ref_source, accumulate=accumulate)
     res = flag_gems.put_(inp, index, source, accumulate=accumulate)
@@ -310,14 +310,14 @@ def test_put__narrow_int_accumulate_wraparound(dtype):
     info = torch.iinfo(dtype)
     for init in [0, info.max - 3, info.min + 3]:
         inp = torch.full((4,), init, dtype=dtype, device=flag_gems.device)
-        ref_inp = utils.to_reference(inp.clone())
+        ref_inp = utils.to_reference(inp.clone(), True)
 
         n = 20
         index = torch.zeros(n, dtype=torch.int64, device=flag_gems.device)
         source = torch.ones(n, dtype=dtype, device=flag_gems.device)
 
         ref_inp.put_(
-            utils.to_reference(index), utils.to_reference(source), accumulate=True
+            utils.to_reference(index), utils.to_reference(source, True), accumulate=True
         )
         flag_gems.put_(inp, index, source, accumulate=True)
 
@@ -332,13 +332,13 @@ def test_put__bool_accumulate_is_logical_or():
         for k in [1, 2, 3, 257]:
             inp = torch.zeros(2, dtype=torch.bool, device=flag_gems.device)
             inp[0] = init
-            ref_inp = utils.to_reference(inp.clone())
+            ref_inp = utils.to_reference(inp.clone(), True)
 
             index = torch.zeros(k, dtype=torch.int64, device=flag_gems.device)
             source = torch.ones(k, dtype=torch.bool, device=flag_gems.device)
 
             ref_inp.put_(
-                utils.to_reference(index), utils.to_reference(source), accumulate=True
+                utils.to_reference(index), utils.to_reference(source, True), accumulate=True
             )
             flag_gems.put_(inp, index, source, accumulate=True)
 
@@ -359,14 +359,14 @@ def test_put__high_rank(rank, contiguous):
         # A fully reversed permutation is the worst case for dim collapsing:
         # no two dimensions are memory-adjacent, so the rank survives intact.
         inp = inp.permute(*reversed(range(rank)))
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     numel = inp.numel()
     count = max(1, numel // 3)
     index = torch.randperm(numel, device=flag_gems.device)[:count].to(torch.int64)
     source = torch.randn(count, dtype=torch.float32, device=flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source))
+    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True))
     res = flag_gems.put_(inp, index, source)
     assert res is inp
 
@@ -394,12 +394,12 @@ def test_put__empty_self_raises():
 def test_put__empty_index_is_noop(self_numel):
     # An empty index is valid even on an empty tensor, and writes nothing.
     inp = torch.randn(self_numel, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     index = torch.zeros(0, dtype=torch.int64, device=flag_gems.device)
     source = torch.zeros(0, dtype=torch.float32, device=flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source))
+    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True))
     res = flag_gems.put_(inp, index, source)
     assert res is inp
 
@@ -446,12 +446,12 @@ def test_put__index_out_of_range(bad):
 def test_put__index_boundary_valid(boundary):
     # The values just inside the valid range must still be accepted.
     inp = torch.zeros(4, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     index = torch.tensor([boundary], dtype=torch.int64, device=flag_gems.device)
     source = torch.ones(1, dtype=torch.float32, device=flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source))
+    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True))
     flag_gems.put_(inp, index, source)
 
     utils.gems_assert_equal(inp, ref_inp)
@@ -578,14 +578,14 @@ def test_put__disjoint_views_same_storage():
 @pytest.mark.parametrize("accumulate", [False, True])
 def test_put__strided_source(accumulate):
     inp = torch.zeros(8, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     src_base = torch.arange(1, 17, dtype=torch.float32, device=flag_gems.device)
     source = src_base[::2]  # 1-D, stride 2
     index = torch.arange(8, dtype=torch.int64, device=flag_gems.device)
 
     ref_inp.put_(
-        utils.to_reference(index), utils.to_reference(source), accumulate=accumulate
+        utils.to_reference(index), utils.to_reference(source, True), accumulate=accumulate
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
@@ -596,7 +596,7 @@ def test_put__strided_source(accumulate):
 @pytest.mark.parametrize("accumulate", [False, True])
 def test_put__strided_index(accumulate):
     inp = torch.zeros(8, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     # Interleave the real indices with a sentinel so a unit-stride read would
     # pick up the wrong values instead of silently working.
@@ -609,7 +609,7 @@ def test_put__strided_index(accumulate):
     source = torch.arange(1, 9, dtype=torch.float32, device=flag_gems.device)
 
     ref_inp.put_(
-        utils.to_reference(index), utils.to_reference(source), accumulate=accumulate
+        utils.to_reference(index), utils.to_reference(source, True), accumulate=accumulate
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
@@ -622,7 +622,7 @@ def test_put__transposed_index_and_source(accumulate):
     # A transposed 2-D index/source flattens in row-major order, which differs
     # from its memory order.
     inp = torch.zeros(6, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone(), True)
 
     index = torch.arange(6, dtype=torch.int64, device=flag_gems.device).reshape(2, 3).T
     source = (
@@ -630,7 +630,7 @@ def test_put__transposed_index_and_source(accumulate):
     )
 
     ref_inp.put_(
-        utils.to_reference(index), utils.to_reference(source), accumulate=accumulate
+        utils.to_reference(index), utils.to_reference(source, True), accumulate=accumulate
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
@@ -663,7 +663,7 @@ def test_put__view_of_larger_storage(make_view, base_numel, index_vals):
         1, len(index_vals) + 1, dtype=torch.float32, device=flag_gems.device
     )
 
-    make_view(ref_base).put_(utils.to_reference(index), utils.to_reference(source))
+    make_view(ref_base).put_(utils.to_reference(index), utils.to_reference(source, True))
     view = make_view(base)
     res = flag_gems.put_(view, index, source)
     assert res is view

@@ -1,0 +1,55 @@
+{
+  "api_version": "v6.0",
+  "name": "avg_pool1d",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::avg_pool1d(Tensor self, int[1] kernel_size, int[1] stride=[], int[1] padding=0, bool ceil_mode=False, bool count_include_pad=True) -> Tensor. Applies one-dimensional average pooling with explicit stride, padding, ceil-mode, and divisor behavior. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[1]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "int[1]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int[1]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "count_include_pad",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

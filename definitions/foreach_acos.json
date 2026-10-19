@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_acos",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_acos(Tensor[] self) -> Tensor[]. Applies acos independently to each tensor in self and returns one newly allocated tensor per input without aliasing the input storage. The correctness suite covers floating dtypes, contiguous and noncontiguous tensors, heterogeneous shapes, integer promotion or rejection, list semantics, and exact value/dtype/shape parity with ATen.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

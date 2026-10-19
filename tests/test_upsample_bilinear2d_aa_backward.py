@@ -84,7 +84,7 @@ def test_upsample_bilinear2d_aa_backward(
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    ref_grad = utils.to_reference(res_grad)
+    ref_grad = utils.to_reference(res_grad, True)
 
     ref_out = upsample_bilinear2d_aa_backward_call(
         ref_grad,

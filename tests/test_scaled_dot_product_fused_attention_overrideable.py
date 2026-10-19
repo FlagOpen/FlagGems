@@ -31,7 +31,8 @@ def test_scaled_dot_product_fused_attention_overrideable(
 
     # Reference from torch scaled_dot_product_attention
     ref_output = utils.to_reference(
-        torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=is_causal),
+        True,
     )
 
     # Get result from our implementation

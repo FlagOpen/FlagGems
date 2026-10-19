@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_norm_scalar",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_norm.Scalar(Tensor[] self, Scalar ord=2, ScalarType? dtype=None) -> Tensor[]. Computes one vector norm per input tensor and returns zero-dimensional tensors; tests cover finite and infinite orders, noncontiguous inputs, output shape, dtype, and value.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "ord",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "dtype",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "ScalarType?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

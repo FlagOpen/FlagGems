@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_lerp_scalar_list",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_lerp.ScalarList(Tensor[] self, Tensor[] tensors1, Scalar[] weight) -> Tensor[]. Computes elementwise linear interpolation for each tensor pair. In-place variants mutate every tensor in self and return no value; functional variants return a new tensor list with no input aliasing.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "tensors1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar[]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

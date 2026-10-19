@@ -154,11 +154,11 @@ def test_scaled_dot_product_fused_attention_overrideable_backward(
     )
     # The reference math runs on the reference device (CPU under --ref cpu),
     # while the flag_gems call always takes the original device tensors.
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
 
     ref_dQ, ref_dK, ref_dV, _ = _fused_overrideable_attn_backward_math(
         ref_dOut_bhsd,
@@ -166,7 +166,7 @@ def test_scaled_dot_product_fused_attention_overrideable_backward(
         ref_K_bhsd,
         ref_V_bhsd,
         ref_out_bhsd,
-        utils.to_reference(p),
+        utils.to_reference(p, True),
         softmax_scale=scale,
     )
 
@@ -205,12 +205,12 @@ def test_scaled_dot_product_fused_attention_overrideable_backward(
     if has_attn_bias:
         assert dBias is not None, "dBias should not be None when bias requires grad"
         _, _, _, ref_dS = _fused_overrideable_attn_backward_math(
-            utils.to_reference(dOut_bhsd),
-            utils.to_reference(Q_bhsd),
-            utils.to_reference(K_bhsd),
-            utils.to_reference(V_bhsd),
-            utils.to_reference(out_bhsd),
-            utils.to_reference(p),
+            utils.to_reference(dOut_bhsd, True),
+            utils.to_reference(Q_bhsd, True),
+            utils.to_reference(K_bhsd, True),
+            utils.to_reference(V_bhsd, True),
+            utils.to_reference(out_bhsd, True),
+            utils.to_reference(p, True),
             softmax_scale=scale,
         )
         utils.gems_assert_close(dBias, ref_dS, dtype, equal_nan=True)
@@ -253,12 +253,12 @@ def test_scaled_dot_product_fused_attention_overrideable_backward_mask(
         Q_bhsd, K_bhsd, V_bhsd, attn_bias=None, is_causal=False, softmax_scale=scale
     )
     ref_dQ, ref_dK, ref_dV, _ = _fused_overrideable_attn_backward_math(
-        utils.to_reference(dOut_bhsd),
-        utils.to_reference(Q_bhsd),
-        utils.to_reference(K_bhsd),
-        utils.to_reference(V_bhsd),
-        utils.to_reference(out_bhsd),
-        utils.to_reference(p),
+        utils.to_reference(dOut_bhsd, True),
+        utils.to_reference(Q_bhsd, True),
+        utils.to_reference(K_bhsd, True),
+        utils.to_reference(V_bhsd, True),
+        utils.to_reference(out_bhsd, True),
+        utils.to_reference(p, True),
         softmax_scale=scale,
     )
 

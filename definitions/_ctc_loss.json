@@ -1,0 +1,54 @@
+{
+  "api_version": "v6.0",
+  "name": "_ctc_loss",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_ctc_loss(Tensor log_probs, Tensor targets, int[] input_lengths, int[] target_lengths, int blank=0, bool zero_infinity=False) -> (Tensor neg_log_likelihood, Tensor log_alpha). Computes CTC negative log-likelihood and the alpha lattice for both integer-list and tensor length overloads. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[]"
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[]"
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "neg_log_likelihood",
+    "log_alpha"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -74,12 +74,10 @@ def test_lstm(
     # tolerance against an accurate reference is both stricter and more informative.
     use_fp64_ref = dtype is torch.float32
 
-    ref_input = utils.to_reference(input, upcast=use_fp64_ref)
-    ref_h0 = utils.to_reference(h0, upcast=use_fp64_ref)
-    ref_c0 = utils.to_reference(c0, upcast=use_fp64_ref)
-    ref_params = tuple(
-        utils.to_reference(param, upcast=use_fp64_ref) for param in params
-    )
+    ref_input = utils.to_reference(input, True)
+    ref_h0 = utils.to_reference(h0, True)
+    ref_c0 = utils.to_reference(c0, True)
+    ref_params = tuple(utils.to_reference(param, True) for param in params)
     ref_out, ref_hn, ref_cn = torch.lstm(
         ref_input,
         (ref_h0, ref_c0),
