@@ -128,9 +128,9 @@ def conv3d_forward_kernel(
     input_height,
     input_width,
     out_c,
-    out_depth,
-    out_height,
-    out_width,
+    kernel_depth,
+    kernel_height,
+    kernel_width,
     input_n_stride,
     input_c_stride,
     input_depth_stride,
@@ -172,6 +172,16 @@ def conv3d_forward_kernel(
     pid_ni_do_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
+
+    out_depth = (
+        input_depth + 2 * padding_depth - dilation_depth * (kernel_depth - 1) - 1
+    ) // stride_depth + 1
+    out_height = (
+        input_height + 2 * padding_height - dilation_height * (kernel_height - 1) - 1
+    ) // stride_height + 1
+    out_width = (
+        input_width + 2 * padding_width - dilation_width * (kernel_width - 1) - 1
+    ) // stride_width + 1
 
     # caculate in_n out_depth out_height out_weight value in kernel
     ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
@@ -596,9 +606,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             input_height,
             input_width,
             out_c,
-            out_depth,
-            out_height,
-            out_width,
+            weight_depth,
+            weight_height,
+            weight_width,
             *xi.stride(),
             *wi.stride(),
             *out.stride(),
