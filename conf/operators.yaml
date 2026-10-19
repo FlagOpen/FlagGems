@@ -53,6 +53,33 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts the unique coordinates ascending and sums the
+    duplicated values. Returns a fresh coalesced tensor.
+
+    '
+  for:
+  - _coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _coalesce_out
+  description: A variant of `_coalesce()` that writes the coalesced result into
+    the `out` sparse tensor.
+  for:
+  - _coalesce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _conj
   description: 'The private conjugate primitive backing ``torch.conj`` and
     ``torch._conj``. Raises on non-complex inputs.
@@ -558,6 +585,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: adaptive_avg_pool3d
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, producing an output of the requested
+    size.
+
+    '
+  for:
+  - _adaptive_avg_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
 
@@ -572,6 +614,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: adaptive_avg_pool3d_out
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, writing the result into a
+    pre-allocated output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_max_pool1d
   description: 'Applies a one-dimensional adaptive max pooling over an input signal,
 
@@ -2822,6 +2879,30 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices_copy
+  description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
+    array as an int64 tensor shaped batch dims plus `ncols + 1`.
+  for:
+  - ccol_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: ccol_indices_copy_out
+  description: A variant of `ccol_indices_copy()` that assigns the output to the `out`
+    tensor.
+  for:
+  - ccol_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cdist
   description: 'Computes the p-norm distance between each pair of the two collections
     of row vectors.
@@ -4731,6 +4812,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dimV
+  description: 'Returns the number of dense dimensions of a sparse COO tensor.
+    '
+  for:
+  - _dimV
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dirichlet_grad
   description: 'Computes the reparameterized-gradient of the Dirichlet distribution
     with respect
@@ -5809,6 +5902,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_ifftshift
+  description: Shifts the zero-frequency component to the beginning of the
+    tensor, the inverse of torch.fft.fftshift().
+  for:
+  - fft_ifftshift
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_irfftn
   description: Computes the N-dimensional inverse of torch.fft.rfftn.
   for:
@@ -14095,6 +14200,32 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: neg_view_copy
+  description: 'Returns a fresh contiguous tensor holding the element-wise negation
+    of `self`, the materialized (copied) counterpart of the `_neg_view` view.
+
+    '
+  for:
+  - _neg_view_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: neg_view_copy_out
+  description: A variant of `_neg_view_copy()` that writes the result into the
+    `out` tensor.
+  for:
+  - _neg_view_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: negative
   description: negative operator
   for:
@@ -17971,6 +18102,21 @@ ops:
     `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
   for:
   - slow_conv_transpose2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_transpose3d
+  description: |
+    Applies a 3D transposed convolution operator over an input image composed of
+    several input planes, using the slow (im2col/col2im) reference algorithm.
+    The ``weight`` tensor uses the transposed-convolution layout
+    ``(in_channels, out_channels, kD, kH, kW)``.
+  for:
+  - slow_conv_transpose3d
   labels:
   - aten
   - KernelGen

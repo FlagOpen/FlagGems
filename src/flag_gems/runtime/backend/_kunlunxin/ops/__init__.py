@@ -50,10 +50,17 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__Scalar,
     _foreach_sub__Scalar,
 )
+from ._foreach_copy import _foreach_copy  # noqa: F401
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_neg import _foreach_neg, _foreach_neg_
+from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
+from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_round_ import _foreach_round_
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign_ import _foreach_sign_
+from ._foreach_tan import _foreach_tan  # noqa: F401
+from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -381,7 +388,7 @@ from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
-from .le import le, le_, le_scalar
+from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
@@ -434,6 +441,7 @@ from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor, logical_xor_
+from .logit import logit, logit_out  # noqa: F401  (registered via _FULL_CONFIG)
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
@@ -515,6 +523,7 @@ from .normal import (
 )
 from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .or_tensor import or_tensor
@@ -773,10 +782,18 @@ __all__ = [
     "_euclidean_dist",
     "_flash_attention_forward",
     "_foreach_abs_",
+    "_foreach_copy",
+    "_foreach_copy_",
+    "_foreach_neg",
+    "_foreach_neg_",
+    "_foreach_pow__List",
+    "_foreach_pow_List",
     "_foreach_round_",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign_",
+    "_foreach_tan",
+    "_foreach_tan_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -1133,6 +1150,7 @@ __all__ = [
     "le",
     "le_",
     "le_scalar",
+    "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_backward",
@@ -1201,6 +1219,8 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
+    "logit",
+    "logit_out",
     "logspace",
     "logsumexp",
     "lt",
@@ -1303,6 +1323,7 @@ __all__ = [
     "normed_cumsum",
     "not_equal",
     "not_equal_scalar",
+    "one_hot",
     "ones",
     "ones_like",
     "or_tensor",
