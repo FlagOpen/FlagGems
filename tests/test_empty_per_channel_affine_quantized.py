@@ -52,7 +52,10 @@ def test_empty_per_channel_affine_quantized(dtype, shape, channels_last):
     golden = torch.zeros(raw.shape, dtype=torch.uint8, device=res.device)
     utils.gems_assert_equal(raw, utils.to_reference(golden))
     assert res.q_per_channel_axis() == ref.q_per_channel_axis()
-    utils.gems_assert_equal(res.q_per_channel_scales(), ref.q_per_channel_scales())
     utils.gems_assert_equal(
-        res.q_per_channel_zero_points(), ref.q_per_channel_zero_points()
+        res.q_per_channel_scales(), utils.to_reference(ref.q_per_channel_scales())
+    )
+    utils.gems_assert_equal(
+        res.q_per_channel_zero_points(),
+        utils.to_reference(ref.q_per_channel_zero_points()),
     )
