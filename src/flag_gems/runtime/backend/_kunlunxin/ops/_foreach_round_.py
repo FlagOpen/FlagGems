@@ -23,14 +23,14 @@ Three fixes over the generic executor:
 2. **Direct pointer arguments.**  Passing the tensor pointers as scalar kernel
    arguments keeps block-DMA on the load/store (see ``_foreach_direct``).
 
-3. **Hardware round.**  ``round`` (round half to even) promotes to fp32 and uses
-   ``tl_extra_shim.rint`` -- the native ``xpu::rint`` extern -- instead of the
-   generic executor's hand-rolled ``round_half_to_even_impl``.  The latter
-   builds the result out of two ``tl.floor`` calls (each a slow soft extern on
-   this backend) plus a ``tl.where``; ``rint`` is a single extern and is ~2.6x
-   faster on the large benchmark shapes.  It is still a soft extern rather than
-   a free hardware instruction, so ``round`` remains compute-bound, but this is
-   the fastest correct round-half-to-even available on the backend.
+3. **Extern-free round.**  ``round`` (round half to even) promotes to fp32 and
+   uses the magic-number construction in ``_round_half_to_even`` instead of a
+   libdevice extern.  The generic executor's ``round_half_to_even_impl`` needs
+   two ``tl.floor`` calls, and ``tl_extra_shim.rint`` is a soft extern; both are
+   slow, and on flagtree the ``rint`` extern cannot be legalized inside the
+   unmasked store (``triton_xpu.unpack reached lowering without a bufPtr``).
+   The add/sub construction uses only scalar arithmetic and is exact over the
+   whole finite range.
 
 Everything else -- mixed dtypes/shapes, gappy/overlapping views, non-divisible
 sizes, integral inputs (which ``round`` leaves unchanged), and the rejected bool
@@ -44,7 +44,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.foreach import check_tensor_list, foreach_unary, same_dtype
-from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 from ._foreach_direct import _launch_fast, _select_ptr
 
@@ -63,11 +62,43 @@ _NO_BOOL_NO_COMPLEX = frozenset(
 
 
 @triton.jit
+def _round_half_to_even(x):
+    """Round an fp32 value to nearest, ties to even, without an extern call.
+
+    ``libdevice.rint`` is a soft extern on this backend, and on flagtree its
+    result cannot be legalized inside the unmasked store (``triton_xpu.unpack
+    reached lowering without a bufPtr``).  The magic-number construction uses
+    only scalar arithmetic and is exact for every finite fp32 value:
+
+    * ``(x + 1.5*2**23) - 1.5*2**23`` is RNE for ``|x| <= 2**22``: the sum
+      lands in [2**23, 2**24) where fp32 has ulp 1, so the add rounds to an
+      integer with ties-to-even and the subtraction is exact.
+    * ``(x + 2**22) - 2**22`` does the same for ``2**22 < |x| < 2**23``,
+      where a value is a multiple of 0.5.
+    * ``|x| >= 2**23`` is already integral in fp32 and is returned unchanged.
+
+    The arithmetic runs on ``|x|`` and the sign is restored afterwards: adding
+    a positive constant to a large negative value cancels exactly and would
+    skip the rounding step.
+    """
+    ax = tl.abs(x)
+    small = (ax + 12582912.0) - 12582912.0  # 1.5 * 2**23
+    middle = (ax + 4194304.0) - 4194304.0  # 2**22
+    r = tl.where(
+        ax <= 4194304.0,
+        small,
+        tl.where(ax < 8388608.0, middle, ax),
+    )
+    return tl.where(x < 0.0, -r, r)
+
+
+@triton.jit
 def _round_fast(x):
-    # Integral inputs are already rounded; only floats go through rint.  The
-    # int guard avoids an fp32 round-trip that would corrupt large int64 values.
+    # Integral inputs are already rounded; only floats need the fp32 path.
+    # The int guard avoids an fp32 round-trip that would corrupt large int64
+    # values.
     if x.dtype.is_floating():
-        return tl_extra_shim.rint(x.to(tl.float32)).to(x.dtype)
+        return _round_half_to_even(x.to(tl.float32)).to(x.dtype)
     else:
         return x
 
@@ -101,7 +132,7 @@ def _foreach_round_unmasked_kernel(
     ).to(tl.pointer_type(DT))
     idx = chunk * BLOCK + tl.arange(0, BLOCK)
     x = tl.load(ptr + idx).to(tl.float32)
-    tl.store(ptr + idx, tl_extra_shim.rint(x).to(DT))
+    tl.store(ptr + idx, _round_half_to_even(x).to(DT))
 
 
 def _foreach_round_(self):

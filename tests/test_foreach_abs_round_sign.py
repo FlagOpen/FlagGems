@@ -210,6 +210,37 @@ def test_foreach_round_inplace_half_to_even():
 
 
 @pytest.mark.foreach_round_
+def test_foreach_round_inplace_large_magnitude():
+    # Values around the 2**22 / 2**23 range boundaries of the magic-number
+    # construction, including odd integers and half-integers where a plain
+    # ``(x + 1.5*2**23) - 1.5*2**23`` would round incorrectly.
+    vals = torch.tensor(
+        [
+            4194303.5,
+            4194304.0,
+            4194304.5,
+            4194305.0,
+            4194305.5,
+            8388607.5,
+            8388608.0,
+            8388609.0,
+            -4194303.5,
+            -4194304.0,
+            -4194304.5,
+            -4194305.0,
+            -4194305.5,
+            -8388607.5,
+            -8388608.0,
+            -8388609.0,
+        ],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    _check_inplace("round", [vals.repeat(8)])  # 128 elements -> fast path
+    _check_inplace("round", [vals.repeat(4)])  # 64 elements -> fallback
+
+
+@pytest.mark.foreach_round_
 def test_foreach_round_inplace_fallback_cases():
     _check_fallback_cases("round")
 
