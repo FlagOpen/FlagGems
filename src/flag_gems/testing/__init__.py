@@ -59,6 +59,14 @@ def _maybe_move_to_cpu(res, ref):
     if res.device.type == "cpu" or ref.device.type == "cpu":
         return res, ref
 
+    # Not every backend has a complex comparison kernel: Kunlunxin XPU raises
+    # "[XDNN_UNIMPLEMENTED] scalar type of (self, ret): (kcomplex32, kbool)" out
+    # of torch.isclose, and Ascend NPU rejects isclose/equal for complex64
+    # ("aclnnIsClose failed, error code is 161002"). The comparison is plain
+    # arithmetic, so fall back to the host, where all complex dtypes work.
+    if res.is_complex():
+        return res.cpu(), ref.cpu()
+
     required = res.numel() * res.element_size()
 
     free_mem = None
