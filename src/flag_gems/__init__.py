@@ -1984,6 +1984,7 @@ _FULL_CONFIG = (
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
+    ("values", values, None, (SPARSE_DISPATCH_KEY,)),
     ("values_copy", values_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("values_copy.out", values_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("vander", vander),

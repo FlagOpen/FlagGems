@@ -21677,6 +21677,19 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values
+  description: 'Returns the stored values of a coalesced sparse COO tensor as a
+    view aliasing the underlying values buffer.
+    '
+  for:
+  - values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: values_copy
   description: 'Returns a fresh non-aliasing copy of the stored values of a
     compressed sparse tensor (CSR/CSC/BSR/BSC).
