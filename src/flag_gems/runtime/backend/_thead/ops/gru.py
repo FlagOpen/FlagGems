@@ -1191,7 +1191,7 @@ def gru(
     bidirectional=False,
     batch_first=False,
 ):
-    logger.debug("GEMS GRU")
+    logger.debug("GEMS_THEAD GRU")
     _validate_args(input, hx, params, has_biases, num_layers, dropout, bidirectional)
 
     if batch_first:
