@@ -21,6 +21,21 @@ import flag_gems
 
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::new_empty_strided allocates uninitialized storage for an explicit size and
 # stride; `self` contributes dtype/device only and is never aliased. The normal path
 # computes no element, so the result payload is undefined and is read only under
@@ -136,8 +151,27 @@ _DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.new_empty_strided
-@pytest.mark.parametrize("shape,layout", _GRID_ROWS)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "shape,layout,dtype,value_range",
+    [
+        pytest.param(
+            shape,
+            layout,
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_")
+                and 0 not in shape,
+                reason="Ascend cannot construct nonempty FP8 inputs with device casts or fills",
+            ),
+            # Keep the original IDs while marking dtype and source shape together.
+            id=f"dtype{case_index}-value_range{case_index}-shape{shape_index}-{layout}",
+        )
+        for case_index, (dtype, value_range) in enumerate(_DTYPE_RANGE_CASES)
+        for shape_index, (shape, layout) in enumerate(_GRID_ROWS)
+    ],
+)
 def test_new_empty_strided_allocation(shape, layout, value_range, dtype):
     size = tuple(shape)
     stride = _stride_for(size, layout)
@@ -148,7 +182,7 @@ def test_new_empty_strided_allocation(shape, layout, value_range, dtype):
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride))
 
     _assert_allocation(res_out, ref_out, inp, size, stride, dtype)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 # (requested size, stride, buffer kind, storage retained). The native out
@@ -168,24 +202,24 @@ _OUT_ROWS = [
 ]
 
 
-def _make_out_buffer(kind, size, dtype):
+def _make_out_buffer(kind, size, dtype, device):
     base = None
     if kind == "transposed":
-        buf = torch.empty(size[1], size[0], dtype=dtype, device=flag_gems.device).t()
+        buf = torch.empty(size[1], size[0], dtype=dtype, device=device).t()
     elif kind == "int8_buffer":
         # The out buffer's dtype is authoritative for the result.
-        buf = torch.empty(size, dtype=torch.int8, device=flag_gems.device)
+        buf = torch.empty(size, dtype=torch.int8, device=device)
     elif kind == "flat_buffer":
-        buf = torch.empty(math.prod(size), dtype=dtype, device=flag_gems.device)
+        buf = torch.empty(math.prod(size), dtype=dtype, device=device)
     elif kind == "zero_size_buffer":
-        buf = torch.empty(0, dtype=dtype, device=flag_gems.device)
+        buf = torch.empty(0, dtype=dtype, device=device)
     elif kind == "offset_window":
         # A window inside a larger allocation; the guard bytes around it are outside
         # the requested extent and are compared through the parent storage.
-        base = torch.empty(math.prod(size) + 2, dtype=dtype, device=flag_gems.device)
+        base = torch.empty(math.prod(size) + 2, dtype=dtype, device=device)
         buf = base[2:]
     else:
-        buf = torch.empty(size, dtype=dtype, device=flag_gems.device)
+        buf = torch.empty(size, dtype=dtype, device=device)
     if base is not None:
         base.fill_(False if base.dtype == torch.bool else 7)
     buf.fill_(False if buf.dtype == torch.bool else 7)
@@ -193,16 +227,41 @@ def _make_out_buffer(kind, size, dtype):
 
 
 @pytest.mark.new_empty_strided
-@pytest.mark.parametrize("deterministic", [False, True])
+@pytest.mark.parametrize(
+    "deterministic",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend",
+                reason="Ascend native allocation does not implement deterministic uninitialized fill",
+            ),
+        ),
+    ],
+)
 @pytest.mark.parametrize("size,stride,kind,keeps_storage", _OUT_ROWS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_new_empty_strided_out_reuses_buffer(
     size, stride, kind, keeps_storage, dtype, deterministic
 ):
     inp = tu.make_input(dtype, (3, 4), ["-1", "1"])
     inp_before = tu.to_reference(inp)
-    buf, base = _make_out_buffer(kind, size, dtype)
-    ref_buf, ref_base = _make_out_buffer(kind, size, dtype)
+    buf, base = _make_out_buffer(kind, size, dtype, inp.device)
+    ref_buf, ref_base = _make_out_buffer(kind, size, dtype, inp_before.device)
     storage_ptr = buf.untyped_storage().data_ptr()
     storage_nbytes = buf.untyped_storage().nbytes()
 
@@ -237,13 +296,13 @@ def test_new_empty_strided_out_reuses_buffer(
         assert res_out.untyped_storage().data_ptr() == storage_ptr
         assert res_out.untyped_storage().nbytes() == storage_nbytes
     if deterministic:
-        tu.assert_result_equal(res_out, ref_out)
+        _assert_result_equal(res_out, ref_out)
     if base is not None:
         if deterministic:
-            tu.assert_result_equal(base, ref_base)
+            _assert_result_equal(base, ref_base)
         else:
-            tu.assert_result_equal(base[:2], ref_base[:2])
-    tu.assert_result_equal(inp, inp_before)
+            _assert_result_equal(base[:2], ref_base[:2])
+    _assert_result_equal(inp, inp_before)
 
 
 # Optional-keyword coverage. pin_memory=True is rejected for a non-CPU source and is a
@@ -261,7 +320,20 @@ _KWARG_ROWS = [
     [row[1] for row in _KWARG_ROWS],
     ids=[row[0] for row in _KWARG_ROWS],
 )
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_new_empty_strided_optional_kwargs(kwargs, dtype):
     size, stride = (2, 19, 7), (133, 7, 1)
     inp = tu.make_input(dtype, size, ["-1", "1"])
@@ -273,7 +345,7 @@ def test_new_empty_strided_optional_kwargs(kwargs, dtype):
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride), **kwargs)
 
     _assert_allocation(res_out, ref_out, inp, size, stride, dtype)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 _DTYPE_OVERRIDE_CASES = [
@@ -285,7 +357,20 @@ _DTYPE_OVERRIDE_CASES = [
 
 @pytest.mark.new_empty_strided
 @pytest.mark.parametrize("override", _DTYPE_OVERRIDE_CASES, ids=lambda d: str(d))
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_new_empty_strided_dtype_override(override, dtype):
     size, stride = (2, 19, 7), (133, 7, 1)
     inp = tu.make_input(dtype, (2, 2), ["-1", "1"])
@@ -297,7 +382,7 @@ def test_new_empty_strided_dtype_override(override, dtype):
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride), dtype=override)
 
     _assert_allocation(res_out, ref_out, inp, size, stride, override)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 # Pinning is defined for a dense CPU source: both the oracle and the candidate receive
@@ -361,7 +446,7 @@ def test_new_empty_strided_source_layout_independent(layout, storage_shape, dtyp
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride))
 
     _assert_allocation(res_out, ref_out, inp, size, stride, dtype)
-    tu.assert_result_equal(base, base_before)
+    _assert_result_equal(base, base_before)
 
 
 # Default-only: the source carries special values, but it contributes dtype/device
@@ -375,7 +460,21 @@ _SPECIAL_SOURCE_CASES = tu.selected_cases(
 
 
 @pytest.mark.new_empty_strided
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_SOURCE_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_SOURCE_CASES
+    ],
+)
 def test_new_empty_strided_special_source_values(dtype, scenario):
     size, stride = (2, 3), (3, 1)
     inp = tu.make_special_input(dtype, scenario)
@@ -385,7 +484,7 @@ def test_new_empty_strided_special_source_values(dtype, scenario):
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride))
 
     _assert_allocation(res_out, ref_out, inp, size, stride, dtype)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 # A fresh allocation owns its storage: writing the result (a write only, the undefined
@@ -405,14 +504,21 @@ def test_new_empty_strided_result_storage_isolated(shape, layout, dtype):
     res_out = flag_gems.new_empty_strided(inp, list(size), list(stride))
     res_out.fill_(1)
 
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.new_empty_strided
 @pytest.mark.parametrize(
     "dtype",
     [
-        dtype
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
         for dtype in SUPPORTED_DTYPES
         if dtype.is_floating_point or dtype.is_complex
     ],
@@ -426,10 +532,14 @@ def test_new_empty_strided_result_has_no_autograd(dtype):
     # An allocation is not a function of `self`, so it stays out of the graph.
     assert res_out.requires_grad is False
     assert res_out.grad_fn is None
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.new_empty_strided
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native allocation does not implement deterministic uninitialized fill",
+)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_new_empty_strided_deterministic_fill(dtype):
     # Deterministic algorithms with fill_uninitialized_memory are the one path that
@@ -453,7 +563,7 @@ def test_new_empty_strided_deterministic_fill(dtype):
             previous_enabled, warn_only=previous_warn_only
         )
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # Negative rows run in both modes: invalid arguments must be rejected before any
@@ -463,8 +573,24 @@ _INVALID_ROWS = [
     (3, [1], {}),  # size is not a sequence
     ([2.5, 3], [3, 1], {}),  # non-integer extent
     ([-2, 3], [3, 1], {}),  # negative extent
-    ([2, 3], [-1, 2], {}),  # negative stride
-    ([2, 3], [1 << 62, 1], {}),  # stride overflow
+    pytest.param(
+        [2, 3],
+        [-1, 2],
+        {},
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend",
+            reason="Ascend native new_empty_strided accepts negative strides",
+        ),
+    ),
+    pytest.param(
+        [2, 3],
+        [1 << 62, 1],
+        {},
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend",
+            reason="Ascend native new_empty_strided accepts overflowing strides",
+        ),
+    ),
     ([2, 3], [3, 1], {"layout": torch.sparse_coo}),  # no sparse allocation backend
 ]
 if torch.device(flag_gems.device).type != "cpu":

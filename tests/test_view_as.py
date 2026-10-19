@@ -20,7 +20,39 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+
+def _to_reference(inp):
+    # Copy storage before rebuilding the view: device transfers can compact
+    # strides and resolve lazy bits, which would change the reference contract.
+    storage = inp.untyped_storage()
+    if utils.TO_CPU:
+        storage = storage.cpu()
+    reference = torch.empty(
+        0, dtype=inp.dtype, device="cpu" if utils.TO_CPU else inp.device
+    ).set_(storage.clone(), inp.storage_offset(), inp.shape, inp.stride())
+    if inp.is_conj():
+        reference = reference.conj()
+    if inp.is_neg():
+        reference = torch._neg_view(reference)
+    return reference.requires_grad_(inp.requires_grad)
+
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
 
 # aten::view_as(self, other) is the view-only sibling of reshape_as: the result
 # takes its shape from 'other' and its element count from 'self', shares the
@@ -119,7 +151,7 @@ def _apply_layout(base, layout, expand_shape=None):
 # the backing base of the reference.
 def _layout_pair(storage_shape, layout, dtype, expand_shape=None):
     base = tu.make_input(dtype, storage_shape, ["-1", "1"])
-    ref_base = tu.to_reference(base.detach())
+    ref_base = _to_reference(base.detach())
     inp = _apply_layout(base, layout, expand_shape)
     ref_inp = _apply_layout(ref_base, layout, expand_shape)
     return inp, ref_inp, base, ref_base
@@ -138,10 +170,10 @@ def _assert_operands_unchanged(
     inp, inp_before, other, other_before, base=None, base_before=None
 ):
     # Building a view never writes to its operands. Snapshots come from
-    # tu.to_reference so they sit on the configured reference device, the
+    # _to_reference so they retain view metadata on the reference device, the
     # placement the shared accuracy helpers expect for the reference operand.
-    tu.assert_result_equal(inp, inp_before)
-    tu.assert_result_equal(other, other_before)
+    _assert_result_equal(inp, inp_before)
+    _assert_result_equal(other, other_before)
     for operand, before in ((inp, inp_before), (other, other_before)):
         assert operand.shape == before.shape
         assert operand.stride() == before.stride()
@@ -149,7 +181,7 @@ def _assert_operands_unchanged(
     if base is not None and base is not inp:
         # Sliced and expanded operands share storage with a full backing tensor,
         # which has to stay intact as well.
-        tu.assert_result_equal(base, base_before)
+        _assert_result_equal(base, base_before)
 
 
 def _exact_upstream(shape, dtype):
@@ -312,17 +344,31 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.view_as
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_view_as(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     other = torch.zeros(_TARGET_SHAPES[shape], dtype=dtype, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(inp_before, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before)
 
@@ -332,13 +378,13 @@ def test_view_as(shape, value_range, dtype):
 def test_view_as_with_size(shape, target):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(inp_before, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before)
 
@@ -351,13 +397,13 @@ def test_view_as_scalar_operand(self_shape, other_shape, dtype):
     # 'other', and the complementary 0-dim 'self' supplies the element count.
     inp = tu.make_input(dtype, self_shape, ["-1", "1"])
     other = torch.zeros(other_shape, dtype=dtype, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(inp_before, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before)
 
@@ -367,14 +413,14 @@ def test_view_as_scalar_operand(self_shape, other_shape, dtype):
 def test_view_as_strided_input(storage, layout, target):
     inp, ref_inp, base, ref_base = _layout_pair(storage, layout, torch.float32)
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    base_before = tu.to_reference(base.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    base_before = _to_reference(base.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_inp, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
@@ -386,14 +432,14 @@ def test_view_as_broadcast_input(storage, expand, target):
         storage, "expanded", torch.float32, expand
     )
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    base_before = tu.to_reference(base.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    base_before = _to_reference(base.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_inp, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
@@ -411,8 +457,8 @@ def test_view_as_other_operand(shape, dtype, other_shape, other_dtype, other_kin
         # Only the shape of 'other' is read, so its device must not matter
         # either.
         other = other.cpu()
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(inp_before, other_before)
     res_out = flag_gems.view_as(inp, other)
@@ -420,7 +466,7 @@ def test_view_as_other_operand(shape, dtype, other_shape, other_dtype, other_kin
     # An exact comparison against a native result built from a sentinel operand
     # detects any candidate that reads 'other' as values or as its own dtype
     # instead of taking its shape.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before)
 
@@ -430,15 +476,15 @@ def test_view_as_other_operand(shape, dtype, other_shape, other_dtype, other_kin
 def test_view_as_view_writes_through(storage, layout, target):
     inp, ref_inp, base, ref_base = _layout_pair(storage, layout, torch.float32)
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    base_before = tu.to_reference(base.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    base_before = _to_reference(base.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_inp, other_before)
     res_out = flag_gems.view_as(inp, other)
 
     # Compare the untouched result first, then the operand contract.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
@@ -447,16 +493,16 @@ def test_view_as_view_writes_through(storage, layout, target):
     # operands and both sides are compared afterwards.
     res_out.fill_(3.0)
     ref_out.fill_(3.0)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
     if base is not inp:
-        tu.assert_result_equal(base, ref_base)
+        _assert_result_equal(base, ref_base)
 
 
 @pytest.mark.view_as
 @pytest.mark.parametrize("layout,target,bit,dtype", LAZY_CASES)
 def test_view_as_lazy_bits(layout, target, bit, dtype):
     base = tu.make_input(dtype, (4, 6), ["-1", "1"])
-    ref_base = tu.to_reference(base.detach())
+    ref_base = _to_reference(base.detach())
     inp = _apply_layout(base, layout)
     ref_inp = _apply_layout(ref_base, layout)
     if bit == "conj":
@@ -466,9 +512,9 @@ def test_view_as_lazy_bits(layout, target, bit, dtype):
         inp = torch._neg_view(inp)
         ref_inp = torch._neg_view(ref_inp)
     other = torch.zeros(target, dtype=dtype, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    base_before = tu.to_reference(base.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    base_before = _to_reference(base.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_inp, other_before)
     res_out = flag_gems.view_as(inp, other)
@@ -477,33 +523,48 @@ def test_view_as_lazy_bits(layout, target, bit, dtype):
     # would drop them and be caught here.
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
 
 @pytest.mark.view_as
-@pytest.mark.parametrize("shape,target,dtype", BACKWARD_CASES)
+@pytest.mark.parametrize(
+    "shape,target,dtype",
+    [
+        pytest.param(
+            shape,
+            target,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for shape, target, dtype in BACKWARD_CASES
+    ],
+)
 def test_view_as_backward(shape, target, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
-    ref_base = tu.to_reference(base.detach()).requires_grad_(True)
+    ref_base = _to_reference(base.detach()).requires_grad_(True)
     other = torch.zeros(target, dtype=dtype, device=flag_gems.device)
     upstream = tu.make_input(dtype, target, ["-1", "1"])
-    ref_upstream = tu.to_reference(upstream.detach())
-    base_before = tu.to_reference(base.detach())
-    other_before = tu.to_reference(other.detach())
+    ref_upstream = _to_reference(upstream.detach())
+    base_before = _to_reference(base.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_base, other_before)
     res_out = flag_gems.view_as(base, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, base)
     _assert_operands_unchanged(base, base_before, other, other_before)
 
     res_grad = torch.autograd.grad(res_out, base, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_base, grad_outputs=ref_upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.view_as
@@ -514,51 +575,64 @@ def test_view_as_expanded_base_backward(dtype):
     # upstream is 1..15, so every partial sum stays exactly representable and the
     # native accumulation is matched exactly instead of within a tolerance.
     base = tu.make_input(dtype, (1, 1), ["-1", "1"]).requires_grad_(True)
-    ref_base = tu.to_reference(base.detach()).requires_grad_(True)
+    ref_base = _to_reference(base.detach()).requires_grad_(True)
     inp = base.expand(3, 5)
     ref_inp = ref_base.expand(3, 5)
 
     other = torch.zeros((15,), dtype=dtype, device=flag_gems.device)
     upstream = _exact_upstream((15,), dtype)
-    ref_upstream = tu.to_reference(upstream.detach())
-    base_before = tu.to_reference(base.detach())
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    ref_upstream = _to_reference(upstream.detach())
+    base_before = _to_reference(base.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(ref_inp, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before, base, base_before)
 
     res_grad = torch.autograd.grad(res_out, base, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_base, grad_outputs=ref_upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.view_as
-@pytest.mark.parametrize("dtype", NO_GRAD_CASES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in NO_GRAD_CASES
+    ],
+)
 def test_view_as_other_has_no_gradient(dtype):
     inp = tu.make_input(dtype, (4, 6), ["-1", "1"])
     other = tu.make_input(dtype, (24,), ["-1", "1"])
 
     ref_out = torch.ops.aten.view_as(
-        tu.to_reference(inp.detach()), tu.to_reference(other.detach())
+        _to_reference(inp.detach()), _to_reference(other.detach())
     )
     inp.requires_grad_(True)
     other.requires_grad_(True)
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     res_out = flag_gems.view_as(inp, other)
 
     # The candidate still has to return the right values and to leave both
     # operands untouched, before the gradient contract is checked.
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, inp_before)
-    tu.assert_result_equal(other, other_before)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, inp_before)
+    _assert_result_equal(other, other_before)
 
     res_other_grad = torch.autograd.grad(
         res_out, other, grad_outputs=torch.ones_like(res_out), allow_unused=True
@@ -569,17 +643,31 @@ def test_view_as_other_has_no_gradient(dtype):
 
 
 @pytest.mark.view_as
-@pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUE_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in SPECIAL_VALUE_CASES
+    ],
+)
 def test_view_as_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     other = torch.zeros((1, inp.numel()), dtype=dtype, device=flag_gems.device)
-    inp_before = tu.to_reference(inp.detach())
-    other_before = tu.to_reference(other.detach())
+    inp_before = _to_reference(inp.detach())
+    other_before = _to_reference(other.detach())
 
     ref_out = torch.ops.aten.view_as(inp_before, other_before)
     res_out = flag_gems.view_as(inp, other)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
     _assert_operands_unchanged(inp, inp_before, other, other_before)
 

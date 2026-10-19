@@ -21,6 +21,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # Scalars become (1, 1), vectors become (1, N), and ndim >= 2 is unchanged.
 _SUPPORTED_DTYPES = (
     utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.bool] + utils.COMPLEX_DTYPES
@@ -63,7 +78,22 @@ _SEQUENCE_CASES = [
 
 @pytest.mark.atleast_2d
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _VALUE_CASES, ids=_VALUE_CASE_IDS)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _VALUE_CASES
+    ],
+    ids=_VALUE_CASE_IDS,
+)
 def test_atleast_2d_value_ranges(shape, dtype, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -75,7 +105,7 @@ def test_atleast_2d_value_ranges(shape, dtype, value_range):
     assert res_out.device == inp.device
     # atleast_2d returns a view: it must alias the input storage.
     assert res_out.data_ptr() == inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.atleast_2d
@@ -103,7 +133,7 @@ def test_atleast_2d_shape_metadata(shape, expected):
 
     assert tuple(res_out.shape) == expected
     assert res_out.data_ptr() == inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.atleast_2d_sequence
@@ -134,7 +164,7 @@ def test_atleast_2d_sequence(shape, dtype, value_range):
     assert len(res_out) == len(ref_out)
     for res, ref, src in zip(res_out, ref_out, inp):
         assert res.data_ptr() == src.data_ptr()
-        tu.assert_result_equal(res, ref)
+        _assert_result_equal(res, ref)
 
 
 @pytest.mark.atleast_2d_sequence
@@ -171,7 +201,7 @@ def test_atleast_2d_nan_inf(shape, dtype):
     res_out = flag_gems.atleast_2d(inp)
 
     assert res_out.data_ptr() == inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.atleast_2d_complex
@@ -186,16 +216,26 @@ def test_atleast_2d_complex(shape, dtype, value_range):
     res_out = flag_gems.atleast_2d(inp)
 
     assert res_out.data_ptr() == inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.atleast_2d_backward
 @pytest.mark.parametrize("shape", [(), (3,), (16, 64), (7, 13, 29)])
 @pytest.mark.parametrize(
     "dtype",
-    tu.selected_cases(
-        [d for d in _SUPPORTED_DTYPES if d.is_floating_point or d.is_complex]
-    ),
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in tu.selected_cases(
+            [d for d in _SUPPORTED_DTYPES if d.is_floating_point or d.is_complex]
+        )
+    ],
 )
 def test_atleast_2d_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
@@ -208,11 +248,11 @@ def test_atleast_2d_backward(shape, dtype):
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
     res_out = flag_gems.atleast_2d(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=grad)[0]
-    tu.assert_result_equal(res_in_grad, ref_in_grad)
+    _assert_result_equal(res_in_grad, ref_in_grad)
 
 
 @pytest.mark.atleast_2d_negative
@@ -234,7 +274,21 @@ def test_atleast_2d_rejects_non_tensor():
 
 @pytest.mark.atleast_2d
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_SUPPORTED_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SUPPORTED_DTYPES)
+        )
+    ],
 )
 def test_atleast_2d_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -243,4 +297,4 @@ def test_atleast_2d_special_scenarios(dtype, scenario):
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
     res_out = flag_gems.atleast_2d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)

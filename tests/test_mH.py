@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::mH returns a zero-copy conjugate-transpose view: it swaps the last two
 # dimensions and toggles the lazy conjugate bit (never materialized; a no-op for
 # real dtypes). There is no kernel arithmetic to compare, so values are compared
@@ -138,8 +153,26 @@ _DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.mH
-@pytest.mark.parametrize("shape", _MH_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "shape,dtype,value_range",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_")
+                and 0 not in shape,
+                reason="Ascend cannot construct nonempty FP8 inputs with device casts or fills",
+            ),
+            # Keep the original IDs while marking dtype and source shape together.
+            id=f"dtype{case_index}-value_range{case_index}-shape{shape_index}",
+        )
+        for case_index, (dtype, value_range) in enumerate(_DTYPE_RANGE_CASES)
+        for shape_index, shape in enumerate(_MH_SHAPES)
+    ],
+)
 def test_mH(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -147,7 +180,7 @@ def test_mH(shape, value_range, dtype):
     ref_out = torch.ops.aten.mH(ref_inp)
     res_out = flag_gems.mH(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp, ref_inp)
 
 
@@ -160,7 +193,7 @@ def test_mH_strided_input(shape, layout, dtype):
     ref_out = torch.ops.aten.mH(ref_inp)
     res_out = flag_gems.mH(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp, ref_inp)
 
 
@@ -173,7 +206,7 @@ def test_mH_conjugate_state(layout, dtype):
     res_out = flag_gems.mH(inp)
 
     assert res_out.is_conj() is ref_out.is_conj()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp, ref_inp)
 
 
@@ -191,13 +224,26 @@ def test_mH_write_through(shape, layout, dtype):
     res_out.fill_(2.5)
     ref_out.fill_(2.5)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(base, ref_base)
 
 
 @pytest.mark.mH
-@pytest.mark.parametrize("dtype", _MH_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in _MH_DTYPES
+    ],
+)
 def test_mH_0d_scalar(dtype):
     # aten::mH warns and degrades to conj() on 0-D input: a real tensor comes
     # back as itself, a complex one as a lazy conjugate view on the same storage.
@@ -207,14 +253,28 @@ def test_mH_0d_scalar(dtype):
     ref_out = torch.ops.aten.mH(ref_inp)
     res_out = flag_gems.mH(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert (res_out is inp) == (ref_out is ref_inp)
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.data_ptr() == inp.data_ptr()
 
 
 @pytest.mark.mH
-@pytest.mark.parametrize("shape,dtype", _MH_BACKWARD_ROWS)
+@pytest.mark.parametrize(
+    "shape,dtype",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for shape, dtype in _MH_BACKWARD_ROWS
+    ],
+)
 def test_mH_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp.detach()).requires_grad_(True)
@@ -225,18 +285,32 @@ def test_mH_backward(shape, dtype):
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
     res_out = flag_gems.mH(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp, ref_inp)
 
     # The adjoint of a transpose/conjugate view is the same relayout applied to
     # the upstream gradient, so it is compared exactly.
     assert res_out.requires_grad
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
-    tu.assert_result_equal(res_in_grad, ref_in_grad)
+    _assert_result_equal(res_in_grad, ref_in_grad)
 
 
 @pytest.mark.mH
-@pytest.mark.parametrize("dtype,scenario", _MH_SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in _MH_SPECIAL_CASES
+    ],
+)
 def test_mH_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
     ref_inp = tu.to_reference(inp)
@@ -244,7 +318,7 @@ def test_mH_special_values(dtype, scenario):
     ref_out = torch.ops.aten.mH(ref_inp)
     res_out = flag_gems.mH(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_semantics(res_out, ref_out, inp, ref_inp)
 
 
