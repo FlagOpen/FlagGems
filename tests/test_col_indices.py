@@ -157,10 +157,23 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
         utils.gems_assert_equal(inp.values(), ref_inp.values())
 
 
+_COL_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _COL_DTYPES
+]
+
+
 @pytest.mark.col_indices
 @pytest.mark.parametrize("case,batch_shape,dense_shape", _INDEX_CASES)
 @pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_index_layouts(case, batch_shape, dense_shape, dtype, index_dtype):
     layout, matrix_shape, values_shape, compressed, plain = case
     compressed = torch.tensor(compressed, dtype=index_dtype, device=flag_gems.device)
@@ -184,7 +197,7 @@ def test_col_indices_index_layouts(case, batch_shape, dense_shape, dtype, index_
 
 @pytest.mark.col_indices
 @pytest.mark.parametrize("case", _COL_CASES)
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_layouts(case, dtype):
     layout, shape, nnz, blocks = case
     inp = _build_input(layout, shape, nnz, blocks, dtype, ["-1", "1"])
@@ -199,7 +212,7 @@ def test_col_indices_layouts(case, dtype):
 @pytest.mark.col_indices
 @pytest.mark.parametrize("case", _COL_RANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_value_ranges(case, value_range, dtype):
     layout, shape, nnz, blocks = case
     inp = _build_input(layout, shape, nnz, blocks, dtype, value_range)
@@ -212,7 +225,7 @@ def test_col_indices_value_ranges(case, value_range, dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_empty(dtype):
     # Empty tensors have null data pointers, so pointer equality cannot prove aliasing.
     inp = _build_input("csr", (4, 5), 0, None, dtype, ["-1", "1"])
@@ -225,7 +238,7 @@ def test_col_indices_empty(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_empty_batched(dtype):
     inp = _build_input("csr", (2, 4, 5), 0, None, dtype, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -237,7 +250,7 @@ def test_col_indices_empty_batched(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_empty_bsr(dtype):
     inp = _build_input("bsr", (4, 6), 0, (2, 2), dtype, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -249,7 +262,7 @@ def test_col_indices_empty_bsr(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_single_row(dtype):
     inp = _build_input("csr", (1, 7), 5, None, dtype, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -261,7 +274,7 @@ def test_col_indices_single_row(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_unchecked_uncoalesced(dtype):
     shape = (4, 3)
     crow = torch.tensor([0, 3, 3, 5, 5], dtype=torch.long, device=flag_gems.device)
@@ -278,7 +291,7 @@ def test_col_indices_unchecked_uncoalesced(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_full_storage(dtype):
     shape = (2, 3)
     crow = torch.tensor([0, 3, 6], dtype=torch.long, device=flag_gems.device)
@@ -295,7 +308,7 @@ def test_col_indices_full_storage(dtype):
 
 
 @pytest.mark.col_indices
-@pytest.mark.parametrize("dtype", _COL_DTYPES)
+@pytest.mark.parametrize("dtype", _COL_INPUT_DTYPE_CASES)
 def test_col_indices_bsr_rectangular_blocks(dtype):
     inp = _build_input("bsr", (12, 12), 6, (3, 4), dtype, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -308,7 +321,19 @@ def test_col_indices_bsr_rectangular_blocks(dtype):
 
 @pytest.mark.col_indices
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_COL_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_COL_DTYPES))
+    ],
 )
 def test_col_indices_nan_inf_values_ignored(dtype, scenario):
     shape = (3, 4)

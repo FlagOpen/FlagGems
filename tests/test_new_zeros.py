@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # CPU observes complex values; validate the original tensor metadata first.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # new_zeros is a factory: the source only supplies the default dtype and device
 # of the returned buffer, while size and the keyword overrides describe it.
 # Every gate below is a static accuracy_utils capability flag, so collection
@@ -92,7 +107,18 @@ _EXPLICIT_DTYPES = (
     + _FP8_DTYPES
 )
 _EXPLICIT_DTYPE_CASES = tu.selected_cases(
-    [(src, out) for src in _EXPLICIT_DTYPE_SOURCES for out in _EXPLICIT_DTYPES],
+    [
+        pytest.param(
+            src,
+            out,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and out in _FP8_DTYPES,
+                reason="Ascend native new_zeros cannot fill FP8 output payloads",
+            ),
+        )
+        for src in _EXPLICIT_DTYPE_SOURCES
+        for out in _EXPLICIT_DTYPES
+    ],
     quick=[],
 )
 
@@ -175,7 +201,15 @@ def _source_with_parent(dtype, variant):
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in NEW_ZEROS_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -187,7 +221,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.new_zeros
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_new_zeros(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -195,20 +232,33 @@ def test_new_zeros(shape, value_range, dtype):
     ref_out = torch.ops.aten.new_zeros(ref_inp, shape)
     res_out = flag_gems.new_zeros(inp, shape)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.device == inp.device
     assert res_out.is_contiguous()
     if inp.numel() > 0 and res_out.numel() > 0:
         # a fresh buffer, never an alias of the source storage
         assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
 @pytest.mark.parametrize(
     "shape", tu.selected_cases(_ZERO_SIZE_SHAPES, quick=[(2, 0, 4)])
 )
-@pytest.mark.parametrize("dtype", NEW_ZEROS_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in NEW_ZEROS_DTYPES
+    ],
+)
 def test_new_zeros_zero_size(shape, dtype):
     inp = tu.make_input(dtype, _SMALL_SOURCE, _SOURCE_RANGE)
     ref_inp = tu.to_reference(inp)
@@ -216,8 +266,8 @@ def test_new_zeros_zero_size(shape, dtype):
     ref_out = torch.ops.aten.new_zeros(ref_inp, shape)
     res_out = flag_gems.new_zeros(inp, shape)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -229,12 +279,25 @@ def test_new_zeros_size_forms(size):
     ref_out = torch.ops.aten.new_zeros(ref_inp, size)
     res_out = flag_gems.new_zeros(inp, size)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
-@pytest.mark.parametrize("dtype", _INHERITS_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in _INHERITS_DTYPE_CASES
+    ],
+)
 def test_new_zeros_inherits_source_metadata(dtype):
     inp = tu.make_input(dtype, _SMALL_SOURCE, _SOURCE_RANGE)
     ref_inp = tu.to_reference(inp)
@@ -242,11 +305,11 @@ def test_new_zeros_inherits_source_metadata(dtype):
     ref_out = torch.ops.aten.new_zeros(ref_inp, _TARGET_SIZE)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # with no explicit override the output follows the source dtype and device
     assert res_out.dtype == inp.dtype
     assert res_out.device == inp.device
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -258,9 +321,9 @@ def test_new_zeros_explicit_dtype(src_dtype, out_dtype):
     ref_out = torch.ops.aten.new_zeros(ref_inp, _TARGET_SIZE, dtype=out_dtype)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE, dtype=out_dtype)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.dtype == out_dtype
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -276,12 +339,12 @@ def test_new_zeros_explicit_device(device, dtype):
     # while the shared comparison buffers live in reference placement, so the
     # oracle is placed with the same shared mechanism.  The requested device is
     # asserted on the candidate directly below.
-    tu.assert_result_equal(res_out, tu.to_reference(ref_out))
+    _assert_result_equal(res_out, tu.to_reference(ref_out))
     if torch.device(device).type == inp.device.type:
         assert res_out.device == inp.device
     else:
         assert res_out.device == torch.device(device)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -294,12 +357,12 @@ def test_new_zeros_source_geometry_is_irrelevant(variant, dtype):
     ref_out = torch.ops.aten.new_zeros(ref_inp, _TARGET_SIZE)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # The requested size alone defines the output, and the source storage must be
     # untouched: the whole parent is compared against its pre-call snapshot, so a
     # write outside the view but inside its storage is still detected.
-    tu.assert_result_equal(parent, snapshot)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(parent, snapshot)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -312,12 +375,12 @@ def test_new_zeros_output_is_not_differentiable(dtype):
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE)
 
     # the forward contract still holds for a source that tracks gradients
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.device == inp.device
     # zeros carry no dependency on the source, so autograd must not track them
     assert not res_out.requires_grad
     assert res_out.grad_fn is None
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -329,9 +392,9 @@ def test_new_zeros_dense_layout(layout_kwargs):
     ref_out = torch.ops.aten.new_zeros(ref_inp, _TARGET_SIZE, **layout_kwargs)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE, **layout_kwargs)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.layout == torch.strided
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -345,9 +408,9 @@ def test_new_zeros_sparse_layout(layout, dtype):
     res_out = flag_gems.new_zeros(inp, _SPARSE_SHAPE, layout=layout)
 
     # the exact comparison covers the sparse layout and its index/pointer storage
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.layout == layout
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -362,10 +425,10 @@ def test_new_zeros_out_overload(size, dtype):
     ref_out = torch.ops.aten.new_zeros.out(ref_inp, size, out=ref_buf)
     res_out = flag_gems.new_zeros(inp, size, out=act_buf)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # the supplied (ones-filled) buffer is zeroed in place and returned
     assert res_out is act_buf
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -373,15 +436,15 @@ def test_new_zeros_out_overload(size, dtype):
 def test_new_zeros_out_cross_dtype(src_dtype, out_dtype):
     inp = tu.make_input(src_dtype, _SMALL_SOURCE, _SOURCE_RANGE)
     ref_inp = tu.to_reference(inp)
-    ref_buf = torch.ones(_TARGET_SIZE, dtype=out_dtype, device=ref_inp.device)
-    act_buf = torch.ones(_TARGET_SIZE, dtype=out_dtype, device=inp.device)
+    ref_buf = torch.full(_TARGET_SIZE, 1, dtype=out_dtype, device=ref_inp.device)
+    act_buf = torch.full(_TARGET_SIZE, 1, dtype=out_dtype, device=inp.device)
 
     ref_out = torch.ops.aten.new_zeros.out(ref_inp, _TARGET_SIZE, out=ref_buf)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE, out=act_buf)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out is act_buf
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -395,11 +458,11 @@ def test_new_zeros_out_resizes_buffer(buffer_shape):
     ref_out = torch.ops.aten.new_zeros.out(ref_inp, _TARGET_SIZE, out=ref_buf)
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE, out=act_buf)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # the supplied buffer is adapted to the requested size and returned, not
     # replaced by a freshly allocated tensor
     assert res_out is act_buf
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -421,7 +484,7 @@ def test_new_zeros_out_strided_buffer(row_offset, size):
     ref_out = torch.ops.aten.new_zeros.out(ref_inp, size, out=ref_buf)
     res_out = flag_gems.new_zeros(inp, size, out=act_buf)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out is act_buf
     assert act_buf.storage_offset() == row_offset * (cols + _PAD)
     assert not act_buf.is_contiguous()
@@ -432,8 +495,8 @@ def test_new_zeros_out_strided_buffer(row_offset, size):
     assert (
         act_buf.untyped_storage().data_ptr() == act_parent.untyped_storage().data_ptr()
     )
-    tu.assert_result_equal(act_parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(act_parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -449,10 +512,10 @@ def test_new_zeros_host_pinned_output(dtype):
         inp, _TARGET_SIZE, device=torch.device("cpu"), pin_memory=True
     )
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.device == torch.device("cpu")
     assert res_out.is_pinned()
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.new_zeros
@@ -502,7 +565,21 @@ def test_new_zeros_rejects_1d_compressed_size(layout):
 
 
 @pytest.mark.new_zeros
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test_new_zeros_special_value_source(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
@@ -511,5 +588,5 @@ def test_new_zeros_special_value_source(dtype, scenario):
     res_out = flag_gems.new_zeros(inp, _TARGET_SIZE)
 
     # NaN/Inf source contents must not leak into the freshly zeroed output
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)

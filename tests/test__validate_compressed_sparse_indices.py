@@ -111,7 +111,8 @@ def _descriptor(counts, first, index_dtype):
     ``index_dtype`` itself, so a device without int64 support never sees an
     int64 staging tensor for an int32 descriptor.
     """
-    device = flag_gems.device
+    # Build index contents on CPU so high-rank descriptors do not need NPU arithmetic.
+    device = "cpu"
     counts = counts.to(device=device, dtype=index_dtype)
     first = first.to(device=device, dtype=index_dtype)
     batch = tuple(counts.shape[:-1])
@@ -122,7 +123,7 @@ def _descriptor(counts, first, index_dtype):
     if cdim == 0 or counts.numel() == 0 or int(counts.max().item()) == 0:
         compressed = torch.zeros(batch + (cdim + 1,), dtype=index_dtype, device=device)
         plain = torch.zeros(batch + (0,), dtype=index_dtype, device=device)
-        return compressed, plain, cdim, 0
+        return compressed.to(flag_gems.device), plain.to(flag_gems.device), cdim, 0
 
     flat_counts = counts.reshape(-1, cdim)
     totals = flat_counts.sum(-1, dtype=index_dtype)
@@ -139,7 +140,7 @@ def _descriptor(counts, first, index_dtype):
     compressed[..., 1:] = flat_counts.cumsum(-1, dtype=index_dtype).reshape(
         batch + (cdim,)
     )
-    return compressed, plain, cdim, nnz
+    return compressed.to(flag_gems.device), plain.to(flag_gems.device), cdim, nnz
 
 
 def _descriptor_for_range(shape, value_range, index_dtype, dim):
@@ -148,7 +149,7 @@ def _descriptor_for_range(shape, value_range, index_dtype, dim):
     The row lengths are rotated per batch slice, which keeps ``nnz`` fixed while
     every slice carries a different legal offset sequence.
     """
-    device = flag_gems.device
+    device = "cpu"
     batch = tuple(shape[:-1])
     cdim = shape[-1] - 1
     if cdim == 0:
@@ -200,6 +201,9 @@ def _input_signature(tensor):
         tensor.storage_offset(),
         tuple(tensor.size()),
         tuple(tensor.stride()),
+        tensor.device,
+        tensor.dtype,
+        tensor.layout,
     )
 
 
@@ -226,6 +230,10 @@ def _check_descriptor(is_crow, compressed, plain, cdim, dim, nnz):
     assert result is None
     after = (_input_signature(compressed), _input_signature(plain))
     assert after == before, "the validator must not swap or resize its inputs"
+    if flag_gems.vendor_name == "ascend" and compressed.ndim > 8:
+        # The validator supports high ranks; the NPU comparison kernel does not.
+        compressed, ref_compressed = compressed.cpu(), ref_compressed.cpu()
+        plain, ref_plain = plain.cpu(), ref_plain.cpu()
     tu.assert_result_equal(compressed, ref_compressed)
     tu.assert_result_equal(plain, ref_plain)
 

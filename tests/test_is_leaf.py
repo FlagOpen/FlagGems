@@ -255,7 +255,15 @@ _ARITH_STATES = [
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _IS_LEAF_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -267,7 +275,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.is_leaf
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_is_leaf(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     before = _snapshot(inp)
@@ -283,7 +294,20 @@ def test_is_leaf(shape, value_range, dtype):
 
 @pytest.mark.is_leaf
 @pytest.mark.parametrize("factory", _LEAF_STATES)
-@pytest.mark.parametrize("dtype", _IS_LEAF_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in _IS_LEAF_DTYPES
+    ],
+)
 def test_is_leaf_leaf_state(factory, dtype):
     inp = factory(dtype)
     before = _snapshot(inp)
@@ -299,7 +323,20 @@ def test_is_leaf_leaf_state(factory, dtype):
 
 @pytest.mark.is_leaf
 @pytest.mark.parametrize("factory,expected", _GRAPH_STATES)
-@pytest.mark.parametrize("dtype", _TRACKED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in _TRACKED_DTYPES
+    ],
+)
 def test_is_leaf_graph_state(factory, expected, dtype):
     inp = factory(dtype)
     before = _snapshot(inp)
@@ -332,7 +369,20 @@ def test_is_leaf_arithmetic_state(factory, expected, dtype):
 @pytest.mark.is_leaf
 @pytest.mark.parametrize(
     "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(_IS_LEAF_DTYPES), quick=[]),
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_IS_LEAF_DTYPES), quick=[]
+        )
+    ],
 )
 def test_is_leaf_special_values(dtype, scenario):
     # No kernel reads these payloads; they show the reported state survives
@@ -378,6 +428,13 @@ def test_is_leaf_backward(dtype):
     (grad,) = torch.autograd.grad(loss, inp, grad_outputs=upstream)
     (ref_grad,) = torch.autograd.grad(ref_loss, ref_inp, grad_outputs=ref_upstream)
     assert grad.shape == inp.shape
+    if flag_gems.vendor_name == "ascend" and grad.is_complex():
+        # Observe complex gradients on CPU without relaxing the tensor contract.
+        assert grad.device == inp.device
+        assert grad.dtype == ref_grad.dtype
+        assert grad.layout == ref_grad.layout
+        assert grad.shape == ref_grad.shape
+        grad, ref_grad = grad.cpu(), ref_grad.cpu()
     tu.assert_result_close(grad, ref_grad)
 
     # Reading the state neither consumed nor rebuilt the graph: the input is

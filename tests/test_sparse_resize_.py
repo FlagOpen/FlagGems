@@ -129,9 +129,38 @@ def _assert_resized(res, ref):
     tu.assert_result_equal(res._values(), ref._values())
 
 
+_RESIZE_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _RESIZE_DTYPES
+]
+
+
 @pytest.mark.sparse_resize_
-@pytest.mark.parametrize("case", _RESIZE_CASES)
-@pytest.mark.parametrize("dtype", _RESIZE_DTYPES)
+@pytest.mark.parametrize(
+    "case,dtype",
+    [
+        pytest.param(
+            case,
+            dtype,
+            id=f"dtype{dtype_index}-case{case_index}",
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and case[2] > 0
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare nonempty FP8 payloads",
+            ),
+        )
+        for dtype_index, dtype in enumerate(_RESIZE_DTYPES)
+        for case_index, case in enumerate(_RESIZE_CASES)
+    ],
+)
 def test_sparse_resize_(case, dtype):
     src_shape, sparse_dim, nnz, size, new_sparse_dim, new_dense_dim = case
     inp = _make_sparse_input(src_shape, sparse_dim, nnz, dtype)
@@ -151,7 +180,15 @@ def test_sparse_resize_(case, dtype):
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _RESIZE_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -163,7 +200,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.sparse_resize_
 @pytest.mark.parametrize("case", _VALUE_RANGE_CASES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_sparse_resize_value_ranges(case, dtype, value_range):
     src_shape, sparse_dim, nnz, size, new_sparse_dim, new_dense_dim = case
     dense_shape = tuple(src_shape[sparse_dim:])
@@ -182,7 +222,7 @@ def test_sparse_resize_value_ranges(case, dtype, value_range):
 
 @pytest.mark.sparse_resize_
 @pytest.mark.parametrize("shape", _SPARSE_SHAPE_LEVELS)
-@pytest.mark.parametrize("dtype", _RESIZE_DTYPES)
+@pytest.mark.parametrize("dtype", _RESIZE_INPUT_DTYPE_CASES)
 def test_sparse_resize_shape_levels(shape, dtype):
     sparse_dim = 1
     dense_dim = len(shape) - 1
@@ -199,7 +239,19 @@ def test_sparse_resize_shape_levels(shape, dtype):
 
 @pytest.mark.sparse_resize_
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_RESIZE_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_RESIZE_DTYPES))
+    ],
 )
 def test_sparse_resize_nan_inf(dtype, scenario):
     src_shape, sparse_dim, nnz = (4, 5, 6), 2, 4
@@ -242,7 +294,7 @@ def test_sparse_resize_dense_input_rejected(dtype):
 
 
 @pytest.mark.sparse_resize_
-@pytest.mark.parametrize("dtype", _RESIZE_DTYPES)
+@pytest.mark.parametrize("dtype", _RESIZE_INPUT_DTYPE_CASES)
 def test_sparse_resize_uncoalesced(dtype):
     indices = torch.tensor(
         [[0, 0, 1, 2], [0, 0, 1, 3]], dtype=torch.long, device=flag_gems.device

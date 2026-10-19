@@ -60,7 +60,15 @@ SUPPORTED_DTYPES = tu.REQUIRED_DTYPES + [
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in SUPPORTED_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -72,7 +80,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.empty_like
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_empty_like_allocation_metadata(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -119,7 +130,24 @@ def _format_input(shape, permutation, memory_format):
 
 
 @pytest.mark.empty_like
-@pytest.mark.parametrize("case", _FORMAT_ROWS)
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            case,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and (
+                    case[2] == torch.channels_last
+                    or case[3].get("memory_format")
+                    in (torch.channels_last, torch.channels_last_3d)
+                ),
+                reason="Ascend cannot construct or honor channels_last / channels_last_3d memory formats",
+            ),
+        )
+        for case in _FORMAT_ROWS
+    ],
+)
 def test_empty_like_memory_format(case):
     shape, permutation, input_format, kwargs = case
     inp = _format_input(shape, permutation, input_format)
@@ -182,7 +210,10 @@ _INDEPENDENCE_ROWS = [
 
 
 @pytest.mark.empty_like
-@pytest.mark.parametrize("dtype,shape,needs_grad", _INDEPENDENCE_ROWS)
+@pytest.mark.parametrize(
+    "dtype,shape,needs_grad",
+    _INDEPENDENCE_ROWS,
+)
 def test_empty_like_allocates_independent_tensor(dtype, shape, needs_grad):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     if needs_grad:
@@ -268,7 +299,20 @@ _OUT_DTYPES = [torch.float32, torch.int8, torch.float8_e4m3fn]
 @pytest.mark.empty_like
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _OUT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in _OUT_DTYPES
+    ],
+)
 def test_empty_like_out(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -325,6 +369,10 @@ _FILL_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 
 
 @pytest.mark.empty_like
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native empty_like does not implement deterministic uninitialized fill",
+)
 @pytest.mark.parametrize("dtype", _FILL_DTYPES)
 def test_empty_like_deterministic_fill(dtype):
     inp = tu.make_input(dtype, (64, 64), ["-1", "1"])
@@ -366,7 +414,21 @@ _SPECIAL_CASES = tu.selected_cases(
 
 
 @pytest.mark.empty_like
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test_empty_like_special_value_inputs(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
@@ -397,7 +459,22 @@ _NEGATIVE_ROWS = [
 
 
 @pytest.mark.empty_like
-@pytest.mark.parametrize("case", _NEGATIVE_ROWS, ids=[row[0] for row in _NEGATIVE_ROWS])
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            case,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and case[0]
+                in ("channels_last_on_2d", "channels_last_3d_on_2d", "sparse_layout"),
+                reason="Ascend native empty_like accepts and ignores this layout/format argument",
+            ),
+        )
+        for case in _NEGATIVE_ROWS
+    ],
+    ids=[row[0] for row in _NEGATIVE_ROWS],
+)
 def test_empty_like_rejects_invalid_arguments(case):
     _, kwargs = case
     inp = tu.make_input(torch.float32, (2, 6), ["-1", "1"])

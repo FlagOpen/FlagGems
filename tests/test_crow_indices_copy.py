@@ -250,10 +250,23 @@ def _make_index_layout(case, batch_shape, dense_shape, dtype, index_dtype):
     return inp
 
 
+_CROW_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _CROW_DTYPES
+]
+
+
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize("case,batch_shape,dense_shape", _INDEX_CASES)
 @pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_index_layouts(
     case, batch_shape, dense_shape, dtype, index_dtype
 ):
@@ -267,7 +280,7 @@ def test_crow_indices_copy_index_layouts(
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize("case,batch_shape,dense_shape", _INDEX_CASES)
 @pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_out_index_layouts(
     case, batch_shape, dense_shape, dtype, index_dtype
 ):
@@ -283,7 +296,7 @@ def test_crow_indices_copy_out_index_layouts(
 
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize("case", _CROW_CASES)
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy(case, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
@@ -297,7 +310,7 @@ def test_crow_indices_copy(case, dtype):
 
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize("case", _CROW_CASES)
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_out(case, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
@@ -319,7 +332,7 @@ def test_crow_indices_copy_out(case, dtype):
 
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize("case", _SHAPE_CASES)
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_spec_shapes(case, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
@@ -333,7 +346,7 @@ def test_crow_indices_copy_spec_shapes(case, dtype):
 
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize("case", _SHAPE_CASES)
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_out_spec_shapes(case, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
@@ -355,7 +368,15 @@ def test_crow_indices_copy_out_spec_shapes(case, dtype):
 # Only indices are copied; one ordinary values range per dtype is sufficient.
 # uint8 keeps nonzero samples when available to detect unintended values writes.
 _VALUE_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _VALUE_RANGE_DTYPES
     for value_range in (
         [["0", "max"]]
@@ -367,7 +388,10 @@ _VALUE_DTYPE_RANGE_CASES = [
 
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize("case", _CROW_RANGE_CASES)
-@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _VALUE_DTYPE_RANGE_CASES,
+)
 def test_crow_indices_copy_value_ranges(case, value_range, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)
@@ -381,7 +405,10 @@ def test_crow_indices_copy_value_ranges(case, value_range, dtype):
 
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize("case", _CROW_RANGE_CASES)
-@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _VALUE_DTYPE_RANGE_CASES,
+)
 def test_crow_indices_copy_out_value_ranges(case, value_range, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)
@@ -401,7 +428,7 @@ def test_crow_indices_copy_out_value_ranges(case, value_range, dtype):
 
 
 @pytest.mark.crow_indices_copy
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_empty_bsr(dtype):
     inp = _make_input("bsr", (4, 6), 0, (2, 2), dtype)
     ref_inp = tu.to_reference(inp)
@@ -413,7 +440,7 @@ def test_crow_indices_copy_empty_bsr(dtype):
 
 
 @pytest.mark.crow_indices_copy_out
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_out_empty_bsr(dtype):
     inp = _make_input("bsr", (4, 6), 0, (2, 2), dtype)
     ref_inp = tu.to_reference(inp)
@@ -437,7 +464,7 @@ def _uncoalesced_csr(dtype):
 
 
 @pytest.mark.crow_indices_copy
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_unchecked_uncoalesced(dtype):
     inp = _uncoalesced_csr(dtype)
     ref_inp = tu.to_reference(inp)
@@ -449,7 +476,7 @@ def test_crow_indices_copy_unchecked_uncoalesced(dtype):
 
 
 @pytest.mark.crow_indices_copy_out
-@pytest.mark.parametrize("dtype", _CROW_DTYPES)
+@pytest.mark.parametrize("dtype", _CROW_INPUT_DTYPE_CASES)
 def test_crow_indices_copy_out_unchecked_uncoalesced(dtype):
     inp = _uncoalesced_csr(dtype)
     ref_inp = tu.to_reference(inp)
@@ -475,7 +502,19 @@ def _special_csr(dtype, scenario):
 
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_CROW_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_CROW_DTYPES))
+    ],
 )
 def test_crow_indices_copy_nan_inf_values(dtype, scenario):
     inp = _special_csr(dtype, scenario)
@@ -489,7 +528,19 @@ def test_crow_indices_copy_nan_inf_values(dtype, scenario):
 
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_CROW_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_CROW_DTYPES))
+    ],
 )
 def test_crow_indices_copy_out_nan_inf_values(dtype, scenario):
     inp = _special_csr(dtype, scenario)

@@ -25,6 +25,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # CPU observes complex values; validate the original tensor metadata first.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # Stored coordinates force int64 index storage: the validator accepts no other
 # index dtype, so recasting valid coordinates to int32 would test a different
 # contract. That is a required *operand* storage capability rather than a values
@@ -200,7 +215,7 @@ def _sorted_unique_indices(size, nnz):
 def _snapshot(*tensors):
     return [
         (
-            tensor.detach().clone(),
+            tu.to_reference(tensor),
             tensor.shape,
             tensor.stride(),
             tensor.storage_offset(),
@@ -213,7 +228,7 @@ def _assert_operands_unchanged(snapshot, *tensors):
     # Both the stored contents and the geometry of every operand must survive the
     # call: a validator may neither rewrite coordinates nor normalize layouts.
     for (stored, shape, stride, offset), tensor in zip(snapshot, tensors):
-        tu.assert_result_equal(tensor, stored)
+        _assert_result_equal(tensor, stored)
         assert (tensor.shape, tensor.stride(), tensor.storage_offset()) == (
             shape,
             stride,
@@ -755,7 +770,18 @@ def _invalid_operands(row):
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _LAYOUT_DTYPE_RANGE_CASES = [
-    pytest.param(layout, dtype, value_range, id=f"{case_id}-range{range_index}")
+    pytest.param(
+        layout,
+        dtype,
+        value_range,
+        id=f"{case_id}-range{range_index}",
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and layout[1] > 0
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct FP8 payloads with device casts or fills",
+        ),
+    )
     for (layout, dtype), case_id in zip(_LAYOUT_ROWS, _LAYOUT_IDS)
     for range_index, value_range in enumerate(
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -860,7 +886,22 @@ def test__validate_sparse_coo_tensor_args_call_forms(
 
 
 @pytest.mark.validate_sparse_coo_tensor_args
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES, ids=_SPECIAL_CASE_IDS)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+    ids=_SPECIAL_CASE_IDS,
+)
 def test__validate_sparse_coo_tensor_args_special_values(dtype, scenario):
     size = [4, 4]
     # The shared maker returns exactly one payload for this dtype / scenario

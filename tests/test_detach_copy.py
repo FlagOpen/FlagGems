@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # CPU observes complex values; validate the original tensor metadata first.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # Copy values into independent contiguous storage; backward is unsupported.
 _DETACH_COPY_DTYPES = (
     utils.ALL_FLOAT_DTYPES
@@ -48,14 +63,27 @@ def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
     # no-alias check is only meaningful for non-empty inputs.
     if inp.numel() > 0:
         assert res_out.data_ptr() != inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # The input must be untouched by the copy.
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
+
+
+_DETACH_COPY_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _DETACH_COPY_DTYPES
+]
 
 
 @pytest.mark.detach_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DETACH_COPY_DTYPES)
+@pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     # to_reference creates an independent snapshot for the input mutation check.
@@ -70,7 +98,15 @@ def test_detach_copy(shape, dtype):
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _DETACH_COPY_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -81,7 +117,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.detach_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_detach_copy_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -115,15 +154,17 @@ def test_detach_copy_special_values(dtype):
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # -0.0 must copy with its sign bit intact (equal_nan-tolerant compares treat
     # -0.0 == 0.0, so pin the sign explicitly).
-    assert torch.equal(torch.signbit(res_out), torch.signbit(ref_out))
+    # Read bits on CPU: Ascend signbit does not distinguish -0.0 from +0.0.
+    assert res_out.device == inp.device
+    assert torch.equal(torch.signbit(res_out.cpu()), torch.signbit(ref_out.cpu()))
 
 
 @pytest.mark.detach_copy_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DETACH_COPY_DTYPES)
+@pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy_out(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -142,7 +183,10 @@ def test_detach_copy_out(shape, dtype):
 
 @pytest.mark.detach_copy_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_detach_copy_out_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -159,7 +203,7 @@ def test_detach_copy_out_value_ranges(shape, value_range, dtype):
 
 @pytest.mark.detach_copy
 @pytest.mark.parametrize("shape", _DETACH_COPY_NONCONTIG_SHAPES)
-@pytest.mark.parametrize("dtype", _DETACH_COPY_DTYPES)
+@pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy_non_contiguous(shape, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -196,11 +240,11 @@ def test_detach_copy_independent_storage(shape, dtype):
     ref_out = torch.ops.aten.detach_copy(ref_inp)
     res_out = flag_gems.detach_copy(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     res_out.fill_(3.25)
     if inp.numel() > 0:
         assert res_out.data_ptr() != inp.data_ptr()
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.detach_copy
@@ -219,8 +263,8 @@ def test_detach_copy_no_backward(shape, dtype):
         torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
 
     res_out = flag_gems.detach_copy(inp)
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
     with pytest.raises(RuntimeError):
         torch.autograd.grad(res_out, inp, grad_outputs=grad)
@@ -249,11 +293,25 @@ def test_detach_copy_out_rejects_wrong_dtype():
 
 @pytest.mark.detach_copy
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_DETACH_COPY_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_DETACH_COPY_DTYPES)
+        )
+    ],
 )
 def test_detach_copy_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
     expected = torch.ops.aten.detach_copy(reference)
     actual = flag_gems.detach_copy(inp)
-    tu.assert_result_equal(actual, expected)
+    _assert_result_equal(actual, expected)
