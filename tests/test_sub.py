@@ -275,7 +275,6 @@ def test_sub__cpu_0dim_tensor(dtype):
     ref_other = utils.to_reference(other, True)
 
     ref_inp.sub_(ref_other)
-    with flag_gems.use_gems():
-        res_out = inp.sub_(other)
+    res_out = flag_gems.sub_(inp, other)
 
     utils.gems_assert_close(res_out, ref_inp, dtype)
