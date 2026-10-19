@@ -11,8 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Kunlunxin (XPU3/P800) logit / logit_out.
 #
-# Kunlunxin XPU specialization of ``logit``.
+# Root cause of the ~0.001x-0.5x baseline: the generic implementation
+# (src/flag_gems/ops/logit.py) launches with a *callable* grid
+#     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+# On the XPU backend (binary_ext == "xpubin") the launch grid is folded into
+# XPUOptions and therefore into the Triton compile cache key
+# (triton/runtime/jit.py, run(): `if backend.binary_ext == 'xpubin':
+# kwargs['grid'] = grid`, before binder/parse_options/compute_cache_key).
+# A freshly-created lambda is a new object on every call, so the cache key
+# changes every launch and the kernel is fully RECOMPILED on every call.
+# Measured on KL3: 8 launches with a lambda grid -> 8 _do_compile calls;
+# with a tuple grid -> 0. The recompile is a shape-independent ~120 ms/call,
+# which is exactly the flat Gems latency the baseline benchmark reported for
+# every shape (0.001x for 4096 elements, 0.47x for 16.7M).
+#
+# Fix: a concrete tuple grid (cache hit, ~14-25 us/call) and a larger fixed
+# BLOCK_SIZE (8192). No pointwise_dynamic here: the op is a pure elementwise
+# map, and the hand-written kernel already emits contiguous block-DMA tiles;
+# the only defect was the grid form.
+#
+# BLOCK_SIZE=8192 measured best-or-tied across all benchmark shapes/dtypes
+# (median of 5x100 iters): large shapes 0.82 ms vs 1.51 ms at BLOCK=1024;
+# small shapes all sit on the ~14.2 us launch floor regardless of BLOCK.
+# A single fixed BLOCK_SIZE keeps the specialization set bounded.
+
 import logging
 
 import torch
@@ -23,7 +48,7 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_SIZE = 1024
+BLOCK_SIZE = 8192
 
 
 @triton.jit
@@ -93,7 +118,8 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             work_out = out
 
         n_elements = in_kernel.numel()
-        grid = (triton.cdiv(n_elements, _BLOCK_SIZE),)
+        # Concrete tuple grid: a callable grid recompiles on every launch on XPU.
+        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
         triton_dtype = _to_triton_dtype(work_out.dtype)
         with torch_device_fn.device(input.device):
@@ -103,7 +129,7 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
                 n_elements,
                 eps if eps is not None else 0.0,
                 HAS_EPS=(eps is not None),
-                BLOCK_SIZE=_BLOCK_SIZE,
+                BLOCK_SIZE=BLOCK_SIZE,
                 OUT_DTYPE=triton_dtype,
             )
 
@@ -120,7 +146,7 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
         work_out = torch.empty_like(input, dtype=torch.float32)
 
     n_elements = in_kernel.numel()
-    grid = (triton.cdiv(n_elements, _BLOCK_SIZE),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     triton_dtype = _to_triton_dtype(work_out.dtype)
     with torch_device_fn.device(input.device):
@@ -130,7 +156,7 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             n_elements,
             eps if eps is not None else 0.0,
             HAS_EPS=(eps is not None),
-            BLOCK_SIZE=_BLOCK_SIZE,
+            BLOCK_SIZE=BLOCK_SIZE,
             OUT_DTYPE=triton_dtype,
         )
 
@@ -214,7 +240,7 @@ def logit_(*args, **kwargs):
     compute_in_fp32 = dtype in (torch.float16, torch.bfloat16)
     compute_in_fp64 = dtype == torch.float64
 
-    grid = (triton.cdiv(n_elements, _BLOCK_SIZE),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     with torch_device_fn.device(x.device):
         logit_inplace_kernel[grid](
@@ -224,7 +250,7 @@ def logit_(*args, **kwargs):
             has_eps=has_eps,
             COMPUTE_FP32=compute_in_fp32,
             COMPUTE_FP64=compute_in_fp64,
-            BLOCK_SIZE=_BLOCK_SIZE,
+            BLOCK_SIZE=BLOCK_SIZE,
         )
 
     if needs_copy_back:

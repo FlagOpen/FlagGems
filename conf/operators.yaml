@@ -53,6 +53,33 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts the unique coordinates ascending and sums the
+    duplicated values. Returns a fresh coalesced tensor.
+
+    '
+  for:
+  - _coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _coalesce_out
+  description: A variant of `_coalesce()` that writes the coalesced result into
+    the `out` sparse tensor.
+  for:
+  - _coalesce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _conj
   description: 'The private conjugate primitive backing ``torch.conj`` and
     ``torch._conj``. Raises on non-complex inputs.
@@ -290,6 +317,41 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _reshape_alias_copy
+  description: 'Returns a contiguous copy of the input tensor viewed through the
+    given size and stride. It is the copy companion of _reshape_alias: the view
+    described by size/stride is formed exactly as _reshape_alias does (reusing
+    the storage offset) and then materialized into fresh contiguous storage, so
+    the result never aliases the input.
+
+    '
+  for:
+  - _reshape_alias_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: _reshape_copy
+  description: 'Returns a contiguous copy of the input tensor reshaped to the requested
+    size. The row-major logical order of the input is materialized into fresh contiguous
+    storage, so the result is never a view and never aliases the input. Unlike _reshape_alias_copy
+    no explicit stride is accepted, and size may contain a single -1 dimension that
+    is inferred from the remaining dimensions and the input numel, exactly like PyTorch''s
+    infer_size.
+
+    '
+  for:
+  - _reshape_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: _saturate_weight_to_fp16
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
@@ -523,6 +585,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: adaptive_avg_pool3d
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, producing an output of the requested
+    size.
+
+    '
+  for:
+  - _adaptive_avg_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
 
@@ -537,6 +614,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: adaptive_avg_pool3d_out
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, writing the result into a
+    pre-allocated output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_max_pool1d
   description: 'Applies a one-dimensional adaptive max pooling over an input signal,
 
@@ -1855,6 +1947,32 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atleast_1d
+  description: Returns a view of the input tensor with at least one dimension (view
+    operation).
+  for:
+  - atleast_1d
+  - atleast_1d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: atleast_3d
+  description: Returns a view of the input tensor with at least three dimensions (view
+    operation).
+  for:
+  - atleast_3d
+  - atleast_3d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: avg_pool1d
   description: 'Applies 1D average-pooling operation in kL regions by step size sL
     steps.
@@ -2025,6 +2143,19 @@ ops:
   labels:
   - aten
   - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: batch_norm_elemt
+  description: |
+    Applies the elementwise Batch Normalization transform using precomputed
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  for:
+  - batch_norm_elemt
+  labels:
+  - aten
   - KernelGen
   kind:
   - NeuralNetwork
@@ -2694,6 +2825,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: cartesian_prod
+  description: Returns the cartesian product of the given sequence of 1-D tensors.
+  for:
+  - cartesian_prod
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cat
   description: Concatenates the given sequence of tensors in tensors in the given
     dimension.
@@ -2737,6 +2879,30 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices_copy
+  description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
+    array as an int64 tensor shaped batch dims plus `ncols + 1`.
+  for:
+  - ccol_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: ccol_indices_copy_out
+  description: A variant of `ccol_indices_copy()` that assigns the output to the `out`
+    tensor.
+  for:
+  - ccol_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cdist
   description: 'Computes the p-norm distance between each pair of the two collections
     of row vectors.
@@ -3117,6 +3283,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts unique coordinates ascending and sums duplicated
+    values.
+
+    '
+  for:
+  - coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: coalesced_
   description: 'Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
 
@@ -3164,6 +3345,32 @@ ops:
   - KernelGen
   kind:
   - Tensor
+  stages:
+  - alpha: '5.5'
+- id: col_indices_copy
+  description: 'Returns a fresh non-aliasing copy of the column indices of a
+    sparse CSR/BSR tensor, shaped (batch_dims + (nnz,)).
+
+    '
+  for:
+  - col_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: col_indices_copy_out
+  description: A variant of `col_indices_copy()` that writes the column indices
+    copy into the `out` tensor.
+  for:
+  - col_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
   stages:
   - alpha: '5.5'
 - id: column_stack
@@ -3571,6 +3778,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: convolution
+  description: Generic N-dimensional convolution forward operator implemented with a Triton implicit-GEMM kernel.
+  for:
+  - convolution
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5'
 - id: convolution_backward_overrideable
   description: 'Computes the gradients of a convolution with respect to the input,
     weight, and bias, returning (grad_input, grad_weight, grad_bias).
@@ -4349,6 +4567,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: dense_dim
+  description: 'Returns the number of dense dimensions of a tensor: dim() for strided
+    tensors, dim() - sparse_dim for sparse layouts.
+
+    '
+  for:
+  - dense_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dequantize
   description: 'Returns an fp32 Tensor by dequantizing a quantized Tensor.
 
@@ -4453,6 +4685,20 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: diagflat
+  description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
+    flattened `input` and whose remaining elements are zero.
+
+    '
+  for:
+  - diagflat
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: diagonal_backward
   description: 'A diagonal operation returns a partial view of `input` with the its
     diagonal elements
@@ -4546,6 +4792,31 @@ ops:
     '
   for:
   - dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: dim_arange
+  description: 'Returns a 1-D int64 tensor containing 0..n-1 where n is the size of `like`
+    along `dim`, mirroring `aten::_dim_arange`.
+    '
+  for:
+  - _dim_arange
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: dimV
+  description: 'Returns the number of dense dimensions of a sparse COO tensor.
+    '
+  for:
+  - _dimV
   labels:
   - aten
   - KernelGen
@@ -4776,6 +5047,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: dstack
+  description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
+    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
+    single depth slot.
+
+    '
+  for:
+  - dstack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -5006,6 +5292,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: embedding_spmdm
+  description: 'Fixed-length embedding lookup followed by an optional per-sample
+    weighted sum; equivalent to F.embedding_bag with mode="sum" for a 2D
+    [B, bag_size] index matrix, returning a [B, D] tensor.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -5602,6 +5902,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_ifftshift
+  description: Shifts the zero-frequency component to the beginning of the
+    tensor, the inverse of torch.fft.fftshift().
+  for:
+  - fft_ifftshift
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_irfftn
   description: Computes the N-dimensional inverse of torch.fft.rfftn.
   for:
@@ -5613,6 +5925,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fft_rfft
+  description: Computes the one-dimensional real-input discrete Fourier transform.
+  for:
+  - fft_rfft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
@@ -8552,6 +8875,22 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: geqrf
+  description: 'Computes the packed Householder QR factorization of a (batched)
+    m x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the
+    Householder vectors below it, `tau` holds the scalar factors with shape
+    (*, min(m, n)).
+
+    '
+  for:
+  - geqrf
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
@@ -8604,6 +8943,38 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_jvp
+  description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
+  for:
+  - glu_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: gradient
+  description: Computes the numerical gradient of a tensor along the given
+    dimensions with second-order accurate central differences in the interior
+    and first- or second-order one-sided differences at the boundaries
+    (edge_order). Spacing may be unspecified, a Scalar, a list of Scalars, or
+    a list of 1-D coordinate Tensors.
+  for:
+  - gradient.array
+  - gradient.scalarint
+  - gradient.scalararray
+  - gradient.scalarrayint
+  - gradient.scalarrayarray
+  - gradient.tensorarrayint
+  - gradient.tensorarray
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
@@ -8691,6 +9062,22 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: grid_sampler
+  description: 'Given an `input` and a flow-field `grid`, computes the `output` using
+    `input` values and pixel locations from `grid`. Supports bilinear, nearest, and
+    bicubic interpolation with zeros, border, and reflection padding for 4D inputs,
+    and trilinear/nearest for 5D inputs.
+
+    '
+  for:
+  - grid_sampler
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: grid_sampler_2d
   description: 'Performs 2D grid sampling of the input tensor using the given grid.
 
@@ -8816,6 +9203,17 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: gru_cell
+  description: A gated recurrent unit (GRU) cell.
+  for:
+  - gru_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: gru_data
   description: Gated recurrent unit (GRU) over packed-sequence data.
   for:
@@ -9214,6 +9612,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: has_same_storage_numel
+  description: 'Returns True if the two tensors have the same number of elements in their
+    underlying storages.
+    '
+  for:
+  - _has_same_storage_numel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: hash_tensor
   description: 'Reduces the input tensor by XOR-ing the raw 64-bit representations
     of its elements over the given dims (an empty dim list reduces over all elements).
@@ -10205,6 +10616,23 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: istft
+  description: |
+    Computes the inverse short-time Fourier transform of an stft spectrogram,
+    equivalent to torch.istft. The spectrum is inverted frame by frame with
+    cuFFT (irfft/ifft), windowed, overlap-added, and normalized by the
+    squared-window envelope; the overlap-add, envelope and normalization run in
+    fused Triton kernels.
+  for:
+  - istft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -10713,6 +11141,17 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_cholesky_ex
+  description: Computes the Cholesky decomposition of a symmetric positive-definite matrix and returns an info tensor.
+  for:
+  - linalg_cholesky_ex
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_cond
   description: Compute the condition number of a matrix with respect to various norms.
   for:
@@ -10826,6 +11265,28 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: linalg_eigvalsh
+  description: Computes the eigenvalues of a real symmetric or complex Hermitian matrix.
+  for:
+  - linalg_eigvalsh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: linalg_eigvalsh_out
+  description: A variant of `linalg_eigvalsh` that allows the output to be assigned to `out`.
+  for:
+  - linalg_eigvalsh.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_householder_product
   description: Compute the matrix product of Householder matrices from QR decomposition.
   for:
@@ -10837,6 +11298,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_inv
+  description: Computes the inverse of a square matrix.
+  for:
+  - linalg_inv
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_inv_ex
   description: Compute the inverse of a square matrix using LU factorization with
     partial pivoting.
@@ -11455,6 +11927,17 @@ ops:
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.5'
+- id: linalg_tensorsolve
+  description: Solves a tensor equation using a square tensorized linear system.
+  for:
+  - linalg_tensorsolve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
   stages:
   - alpha: '5.5'
 - id: linalg_vander
@@ -12092,6 +12575,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: lstm_cell
+  description: A long short-term memory (LSTM) cell.
+  for:
+  - lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: lt
   description: Computes that `input` is less than `other` element-wise.
   for:
@@ -12728,6 +13222,18 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: mH
+  description: Returns a view of this tensor with the last two dimensions conjugated
+    and transposed.
+  for:
+  - mH
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
@@ -12945,31 +13451,25 @@ ops:
   - BLAS
   stages:
   - beta: '5.4'
-- id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
-    their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+- id: mm_w8a8
+  description: 'W8A8 matrix multiplication with FP32 scales. Precisions: FP8 E4M3
+    (dynamically quantizes BF16 activations and weights, FP8 Tensor Cores) and INT8
+    (prequantized INT8 matrices with scalar or per-row/column scales and optional
+    bias; input quantization is external).
+
+    '
   for:
-  - None
+  - mm_w8a8_int8
   labels:
   - NoCPU
+  - non-aten
   - Quantization
   kind:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: mm_w8a8_int8
-  description: Multiplies prequantized INT8 matrices with scalar or per-row/column
-    FP32 scales and optional bias; input quantization is external.
-  for:
-  - mm_w8a8_int8
-  labels:
-  - non-aten
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.5'
-- id: mm_w8a8_int8_out
-  description: A variant of mm_w8a8_int8 with caller-owned output.
+- id: mm_w8a8_out
+  description: A variant of mm_w8a8 with caller-owned output.
   for:
   - mm_w8a8_int8_out
   labels:
@@ -13010,6 +13510,23 @@ ops:
   stages:
   - beta: '4.0'
   - stable: '4.2'
+- id: moe_load_balance_loss
+  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
+    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
+    frequency and P_i its mean routing probability. Both statistics are computed
+    in fp32 from the router logits; an optional attention_mask excludes zero
+    entries from both statistics and the denominator. Returns a float32 scalar.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  - MoE
+  kind:
+  - MoE
+  stages:
+  - beta: '5.5'
 - id: moe_sum
   description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
 
@@ -13205,6 +13722,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: multiply_scalar
+  description: Multiplies a tensor by a scalar element-wise (tensor-scalar overload
+    of multiply).
+  for:
+  - multiply.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: mv
   description: Performs a matrix-vector product of the matrix `input` and the vector
     `vec`.
@@ -13665,6 +14194,32 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: neg_view_copy
+  description: 'Returns a fresh contiguous tensor holding the element-wise negation
+    of `self`, the materialized (copied) counterpart of the `_neg_view` view.
+
+    '
+  for:
+  - _neg_view_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: neg_view_copy_out
+  description: A variant of `_neg_view_copy()` that writes the result into the
+    `out` tensor.
+  for:
+  - _neg_view_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: negative
   description: negative operator
   for:
@@ -15964,26 +16519,10 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
-- id: rms_norm_w8a16_fp8
+- id: rms_norm_w8a16
   description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
 
-    group-wise FP8 E4M3 weights and per-group scales.
-
-    '
-  for:
-  - None
-  labels:
-  - NoCPU
-  - Normalization
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: rms_norm_w8a16_int8
-  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
-
-    group-wise INT8 weights and per-group scales.
+    group-wise 8-bit weights and per-group scales. Precisions: FP8 E4M3 and INT8.
 
     '
   for:
@@ -16008,6 +16547,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: rnn_relu_cell
+  description: An Elman RNN cell with ReLU non-linearity.
+  for:
+  - rnn_relu_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: rnn_tanh
   description: Pure Triton implementation for the rnn_tanh input overload.
   for:
@@ -16023,6 +16573,17 @@ ops:
   - rnn_tanh
   source:
   - aten
+- id: rnn_tanh_cell
+  description: An Elman RNN cell with tanh non-linearity.
+  for:
+  - rnn_tanh_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: rnn_tanh_data
   description: Pure Triton implementation for the rnn_tanh data overload.
   for:
@@ -16959,6 +17520,22 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: select_copy
+  description: |
+    Returns a copy of the input with the selected slice along the given
+    dimension at the given index removed. This is the out-of-place counterpart
+    of `torch.select()`: the output has one dimension less than the input and
+    is freshly created instead of aliasing the input, equivalent to
+    `self.select(dim, index).clone()`.
+  for:
+  - select_copy.int
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: select_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given index.
 
@@ -17466,6 +18043,19 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv2d_backward
+  description: |
+    Backward computation for the slow reference conv2d, returning the gradients
+    of the input, weight, and bias.
+  for:
+  - _slow_conv2d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: slow_conv2d_forward
   description: |
     An internal slow reference implementation of the 2-D convolution forward
@@ -17473,6 +18063,38 @@ ops:
     kernel.
   for:
   - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_transpose2d
+  description: |
+    Applies a 2D transposed convolution operator over an input image composed of
+    several input planes, sometimes also called a fractionally-strided
+    convolution or a deconvolution. It can be seen as the gradient of `Conv2d`
+    with respect to its input: the input is promoted to 4D, scattered onto the
+    output grid according to `stride`, `padding`, `output_padding` and
+    `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
+  for:
+  - slow_conv_transpose2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_transpose3d
+  description: |
+    Applies a 3D transposed convolution operator over an input image composed of
+    several input planes, using the slow (im2col/col2im) reference algorithm.
+    The ``weight`` tensor uses the transposed-convolution layout
+    ``(in_channels, out_channels, kD, kH, kW)``.
+  for:
+  - slow_conv_transpose3d
   labels:
   - aten
   - KernelGen
@@ -17735,6 +18357,20 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: sparse_broadcast_to
+  description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
+    entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
+
+    '
+  for:
+  - _sparse_broadcast_to
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
@@ -18545,6 +19181,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_modified_bessel_i1
+  description: 'Computes the modified Bessel function of the first kind of order 1
+
+    (I_1(x)) for each element of `input`.
+
+    '
+  for:
+  - special_modified_bessel_i1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: special_modified_bessel_i1_out
+  description: 'A variant of `special_modified_bessel_i1()` with output saved to
+
+    provided `out`.
+
+    '
+  for:
+  - special_modified_bessel_i1.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: special_modified_bessel_k0
   description: Triton kernel implementation for special_modified_bessel_k0.
   for:
@@ -19909,7 +20577,7 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
-- id: topk_w8a16_fp8
+- id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 
@@ -19999,6 +20667,28 @@ ops:
     - Math
   stages:
     - alpha: '5.5'
+- id: triangular_solve
+  description: Solves a dense triangular system and returns a full coefficient clone.
+  for:
+  - triangular_solve
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: triangular_solve_out
+  description: Writes the triangular solution and coefficient clone to supplied outputs.
+  for:
+  - triangular_solve.X
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
@@ -20987,6 +21677,32 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values_copy
+  description: 'Returns a fresh non-aliasing copy of the stored values of a
+    compressed sparse tensor (CSR/CSC/BSR/BSC).
+
+    '
+  for:
+  - values_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: values_copy_out
+  description: A variant of `values_copy()` that writes the values copy into the
+    `out` tensor.
+  for:
+  - values_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: vander
   description: Generates a Vandermonde matrix from a 1-D input tensor.
   for:
