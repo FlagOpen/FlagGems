@@ -610,7 +610,9 @@ def conv2d_forward_kernel(
     if EVEN_CO:
         output_mask = tl.broadcast_to(row_in_range[:, None], (BLOCK_NI_HO_WO, BLOCK_CO))
     else:
-        output_mask = row_in_range[:, None] & (output_c_offset < out_per_group_c)[None, :]
+        output_mask = (
+            row_in_range[:, None] & (output_c_offset < out_per_group_c)[None, :]
+        )
 
     tl.store(output_pointer, accum, mask=output_mask)
 
@@ -1090,9 +1092,10 @@ class Conv2d(torch.autograd.Function):
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if isinstance(padding, str):
         if padding == "same":
-            assert (
-                stride == 1
-            ), f"Doesn't support any stride values other than 1 in padding = 'same' mode, received stride value {stride}"
+            assert stride == 1, (
+                "Doesn't support any stride values other than 1 "
+                f"in padding = 'same' mode, received stride value {stride}"
+            )
             ih = input.shape[-2]
             iw = input.shape[-1]
             kernel_size_h = weight.shape[-2]
