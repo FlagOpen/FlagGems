@@ -84,7 +84,7 @@ def _sparse_semi_structured_mm(mat1, mat1_meta, mat2, *, out_dtype=None):
     mat2:      (4*K4, N)
     returns:   (M, N)
     """
-    logger.debug("GEMS_KUNLUNXIN SPARSE_SEMI_STRUCTURED_MM")
+    logger.debug("GEMS_KUNLUNXIN _SPARSE_SEMI_STRUCTURED_MM")
 
     M = mat1.shape[0]
     K4 = mat1_meta.shape[1]

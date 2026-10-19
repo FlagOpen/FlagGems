@@ -11,28 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Kunlunxin host fast-path for scaled_mm / scaled_mm_out.
-
-The generic implementation rebuilds the full launch machinery on every call
-(libentry wrapper -> LibTuner config bookkeeping -> triton heuristics ->
-JITFunction.run parameter binding), which dominates the per-call cost for the
-official benchmark shapes. For steady-state calls that share the same
-processed config key, the first call delegates to the generic path and
-captures the deepest JITFunction.run arguments; later calls replay them with
-fresh tensors spliced into the captured positional table. A last-call identity
-cache skips all per-call preprocessing when the same tensors are reused, which
-is the common steady-state (repeated op) pattern. The first replay is verified
-bitwise against a second plain run on the same inputs; any doubt (unexpected
-capture table, stream change, verification failure, replay failure) blocks the
-key and falls back to the generic path.
-FG_SCALED_MM_FASTPATH=0 disables the fast path entirely.
-"""
-
+import logging
 import os
 import threading
 
 import torch
+logger = logging.getLogger(__name__)
 
 _ENABLED = os.environ.get("FG_SCALED_MM_FASTPATH", "1") != "0"
 _LOCK = threading.Lock()
@@ -309,6 +293,7 @@ def scaled_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
+    logger.debug("GEMS_KUNLUNXIN SCALED_MM")
     if not _ENABLED:
         return _load_generic().scaled_mm(
             self, mat2, scale_a, scale_b, bias, scale_result, out_dtype, use_fast_accum
@@ -339,6 +324,7 @@ def scaled_mm_out(
     *,
     out,
 ):
+    logger.debug("GEMS_KUNLUNXIN SCALED_MM_OUT")
     if not _ENABLED:
         return _load_generic().scaled_mm_out(
             self,
