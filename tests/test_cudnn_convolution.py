@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 vendor_name = flag_gems.vendor_name
+IS_KUNLUNXIN = vendor_name == "kunlunxin"
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -192,6 +193,9 @@ def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
     ndim = inp.ndim - 2
     ref_inp = utils.to_reference(inp, True)
     ref_weight = utils.to_reference(weight, True)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_inp = ref_inp.cpu()
+        ref_weight = ref_weight.cpu()
     out = _CONV_REF_FN[ndim](
         ref_inp,
         ref_weight,
@@ -201,7 +205,7 @@ def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
         dilation=dilation,
         groups=groups,
     )
-    return out.to(dtype)
+    return out.to(inp.device, dtype) if IS_KUNLUNXIN else out.to(dtype)
 
 
 def _gem_output(inp, weight, padding, stride, dilation, groups):
