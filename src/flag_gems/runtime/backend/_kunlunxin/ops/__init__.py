@@ -350,6 +350,7 @@ from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
+from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -1101,6 +1102,7 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_",
     "hardsigmoid_out",
+    "hinge_embedding_loss",
     "histc",
     "hstack",
     "hypot",
