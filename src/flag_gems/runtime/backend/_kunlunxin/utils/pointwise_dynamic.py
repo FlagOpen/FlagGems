@@ -36,6 +36,9 @@ from flag_gems.utils.shape_utils import (
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
+_BAD_TILE_SIZE_1D = 32768
+_BAD_TILE_SIZE_1D_FALLBACK = 16384
+
 
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
@@ -909,6 +912,12 @@ class WrapperGenerator:
                 "triton.next_power_of_2(triton.cdiv(num_tasks, target_ctas)), "
                 "max_tile_size"
                 ")"
+            )
+            code.writeline(
+                f"if tile_size == {_BAD_TILE_SIZE_1D}: # XPU BAD TILE"
+            )
+            code.writeline(
+                f"    tile_size = {_BAD_TILE_SIZE_1D_FALLBACK}"
             )
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
             # P800 schedules pointwise work over 12 clusters.  A partial final
