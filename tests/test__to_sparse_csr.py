@@ -387,7 +387,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _GRID_ROWS)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__to_sparse_csr_shape_value_range(case, value_range, dtype):
@@ -401,7 +401,7 @@ def test__to_sparse_csr_shape_value_range(case, value_range, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _BATCHED_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__to_sparse_csr_batched(case, dtype):
@@ -415,7 +415,7 @@ def test__to_sparse_csr_batched(case, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _PARAM_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__to_sparse_csr_dense_dim_forms(case, dtype):
@@ -434,7 +434,7 @@ def test__to_sparse_csr_dense_dim_forms(case, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__to_sparse_csr_out(case, dtype):
@@ -462,7 +462,7 @@ def test__to_sparse_csr_out(case, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _EMPTY_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__to_sparse_csr_empty(case, dtype):
@@ -476,7 +476,7 @@ def test__to_sparse_csr_empty(case, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("layout", _LAYOUTS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__to_sparse_csr_non_contiguous(layout, dtype):
@@ -500,7 +500,7 @@ def test__to_sparse_csr_non_contiguous(layout, dtype):
     tu.assert_result_equal(parent, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("case", _BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 def test__to_sparse_csr_backward(case, dtype):
@@ -530,7 +530,7 @@ def test__to_sparse_csr_backward(case, dtype):
     tu.assert_result_equal(values, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__to_sparse_csr_nan_inf(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(5, 1)
@@ -542,7 +542,7 @@ def test__to_sparse_csr_nan_inf(dtype, scenario):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("shape", _RANK_REJECT_ROWS)
 def test__to_sparse_csr_rejects_rank_below_two(shape):
     # Measured: dense_to_sparse_csr requires rank >= 2 because the valid dense_dim
@@ -552,7 +552,7 @@ def test__to_sparse_csr_rejects_rank_below_two(shape):
         flag_gems._to_sparse_csr(inp, 0)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("shape,dense_dim", _BATCH_REJECT_ROWS)
 def test__to_sparse_csr_rejects_zero_batch(shape, dense_dim):
     # Measured: 'to_sparse_csr: Expected product of batch dimensions to be
@@ -563,7 +563,7 @@ def test__to_sparse_csr_rejects_zero_batch(shape, dense_dim):
         flag_gems._to_sparse_csr(inp, dense_dim)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("shape,dense_dim", _DENSE_DIM_REJECT_ROWS)
 def test__to_sparse_csr_rejects_out_of_range_dense_dim(shape, dense_dim):
     # Measured: the native error names the [0, rank - 2] range.
@@ -572,7 +572,7 @@ def test__to_sparse_csr_rejects_out_of_range_dense_dim(shape, dense_dim):
         flag_gems._to_sparse_csr(inp, dense_dim)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 def test__to_sparse_csr_rejects_non_integer_dense_dim():
     # Measured: the native schema rejects a fractional dense_dim with RuntimeError;
     # a TypeError is equally valid for a Python implementation.
@@ -581,14 +581,14 @@ def test__to_sparse_csr_rejects_non_integer_dense_dim():
         flag_gems._to_sparse_csr(inp, 1.5)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 def test__to_sparse_csr_rejects_non_tensor_input():
     # Measured: the native schema rejects a non-tensor first argument.
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._to_sparse_csr([1.0, 2.0], 0)
 
 
-@pytest.mark.to_sparse_csr
+@pytest.mark.underscore_to_sparse_csr
 @pytest.mark.parametrize("invalid", _OUT_REJECTS)
 def test__to_sparse_csr_out_rejects_invalid_buffer(invalid):
     # Measured native early checks: a buffer with a different specified-element

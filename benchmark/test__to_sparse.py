@@ -356,7 +356,7 @@ class ToSparseBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 def test__to_sparse():
     bench = ToSparseBenchmark(
         op_name="_to_sparse",

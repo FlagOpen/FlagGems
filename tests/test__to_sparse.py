@@ -292,7 +292,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__to_sparse_default(shape, value_range, dtype):
@@ -322,7 +322,7 @@ _COMPRESSED_LAYOUTS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _COMPRESSED_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("layout,blocksize", _COMPRESSED_LAYOUTS)
@@ -352,7 +352,7 @@ _TO_SPARSE_EXPLICIT_COO_LAYOUT_DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize(
     "dtype,value_range", _TO_SPARSE_EXPLICIT_COO_LAYOUT_DTYPE_RANGE_CASES
 )
@@ -378,7 +378,7 @@ _DENSE_DIM_CASES = tu.selected_cases(
 _DENSE_DIM_DTYPES = tu.selected_cases(_COO_DTYPES, quick=[])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _DENSE_DIM_DTYPES)
 @pytest.mark.parametrize("shape,dense_dim", _DENSE_DIM_CASES)
 def test__to_sparse_dense_dim(shape, dense_dim, dtype):
@@ -411,7 +411,7 @@ _BLOCKSIZE_DTYPES = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _BLOCKSIZE_DTYPES)
 @pytest.mark.parametrize("layout,blocksize", _BLOCKSIZE_CASES)
 def test__to_sparse_blocksize(layout, blocksize, dtype):
@@ -454,7 +454,7 @@ _BATCHED_ROWS = tu.selected_cases(
 _BATCHED_DTYPES = _int64_gated([torch.float32, torch.int8])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _BATCHED_DTYPES)
 @pytest.mark.parametrize("shape,layout,blocksize,dense_dim,value_range", _BATCHED_ROWS)
 def test__to_sparse_batched_compressed(
@@ -487,7 +487,7 @@ _RECT_ROWS = tu.selected_cases(
 _RECT_DTYPES = _int64_gated([torch.float32, torch.int8, torch.uint8])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _RECT_DTYPES)
 @pytest.mark.parametrize("shape,layout,blocksize", _RECT_ROWS)
 def test__to_sparse_rectangular_blocks(shape, layout, blocksize, dtype):
@@ -516,7 +516,7 @@ _DENSITY_ROWS = tu.selected_cases(
 _DENSITY_DTYPES = _int64_gated([torch.float32, torch.int8, torch.uint8])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _DENSITY_DTYPES)
 @pytest.mark.parametrize("pattern,layout,blocksize", _DENSITY_ROWS)
 def test__to_sparse_density_patterns(pattern, layout, blocksize, dtype):
@@ -555,7 +555,7 @@ _ZERO_EXTENT_ROWS = tu.selected_cases(
 _ZERO_EXTENT_DTYPES = _int64_gated([torch.float32, torch.int8])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _ZERO_EXTENT_DTYPES)
 @pytest.mark.parametrize("shape,layout,blocksize", _ZERO_EXTENT_ROWS)
 def test__to_sparse_zero_extent(shape, layout, blocksize, dtype):
@@ -595,7 +595,7 @@ _VIEW_ROWS = tu.selected_cases(
 _VIEW_DTYPES = _int64_gated([torch.float32, torch.int32])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _VIEW_DTYPES)
 @pytest.mark.parametrize("view,shape,layout,blocksize", _VIEW_ROWS)
 def test__to_sparse_input_views(view, shape, layout, blocksize, dtype):
@@ -639,7 +639,7 @@ _OUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype,shape,pad,dense_dim", _OUT_ROWS)
 def test__to_sparse_out_overload(dtype, shape, pad, dense_dim):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -680,7 +680,7 @@ _SPARSE_DIM_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype", _COO_DTYPES)
 @pytest.mark.parametrize("shape,sparse_dim", _SPARSE_DIM_ROWS)
 def test__to_sparse_sparse_dim_overload(shape, sparse_dim, dtype):
@@ -711,7 +711,7 @@ _SPARSE_DIM_OUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("shape,sparse_dim,pad", _SPARSE_DIM_OUT_ROWS)
 def test__to_sparse_sparse_dim_out_overload(shape, sparse_dim, pad):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -756,7 +756,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype,shape,layout,blocksize,dense_dim", _BACKWARD_ROWS)
 def test__to_sparse_backward(dtype, shape, layout, blocksize, dense_dim):
     res_inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
@@ -787,7 +787,7 @@ _SPARSE_DIM_BACKWARD_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("shape,sparse_dim", _SPARSE_DIM_BACKWARD_ROWS)
 def test__to_sparse_sparse_dim_backward(shape, sparse_dim):
     res_inp = tu.make_input(torch.float32, shape, ["-1", "1"]).requires_grad_(True)
@@ -812,7 +812,7 @@ def test__to_sparse_sparse_dim_backward(shape, sparse_dim):
 _SPECIAL_COO = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_COO)
 def test__to_sparse_special_values(dtype, scenario):
     # make_special_input is 1-D, so this is the rank-1 COO call form.
@@ -839,7 +839,7 @@ _SPECIAL_COMPRESSED = tu.selected_cases(
 )
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("layout,blocksize", _SPECIAL_COMPRESSED_LAYOUTS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_COMPRESSED)
 def test__to_sparse_special_values_compressed(layout, blocksize, dtype, scenario):
@@ -889,7 +889,7 @@ _NEGATIVE_ROWS = [
 ]
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("shape,kwargs", _NEGATIVE_ROWS)
 def test__to_sparse_invalid_arguments(shape, kwargs):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -912,7 +912,7 @@ _NEGATIVE_SPARSE_DIM_ROWS = [
 ]
 
 
-@pytest.mark.to_sparse
+@pytest.mark.underscore_to_sparse
 @pytest.mark.parametrize("shape,sparse_dim", _NEGATIVE_SPARSE_DIM_ROWS)
 def test__to_sparse_invalid_sparse_dim(shape, sparse_dim):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])

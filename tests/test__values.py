@@ -84,7 +84,7 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
     utils.gems_assert_equal(inp._values(), ref_inp._values(), equal_nan=True)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize("case", _VALUES_COO_CASES)
 @pytest.mark.parametrize(
     "dtype",
@@ -110,7 +110,7 @@ def test__values_layouts(case, dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize("case", _VALUES_RANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize(
@@ -137,7 +137,7 @@ def test__values_value_ranges(case, value_range, dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -167,7 +167,7 @@ def test__values_empty(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -197,7 +197,7 @@ def test__values_empty_hybrid(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -228,7 +228,7 @@ def test__values_full_storage(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -256,7 +256,7 @@ def test__values_uncoalesced(dtype):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 @pytest.mark.parametrize(
     "dtype, scenario",
     [
@@ -283,7 +283,7 @@ def test__values_nan_inf(dtype, scenario):
     _assert_result(res_out, ref_out, inp, ref_inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 def test__values_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
@@ -292,7 +292,7 @@ def test__values_dense_raises():
         flag_gems._values(inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 def test__values_csr_raises():
     crow_indices = torch.tensor([0, 1, 2], dtype=torch.long)
     col_indices = torch.tensor([0, 1], dtype=torch.long)
@@ -306,7 +306,7 @@ def test__values_csr_raises():
         flag_gems._values(inp)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 def test__values_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._values(3.14)

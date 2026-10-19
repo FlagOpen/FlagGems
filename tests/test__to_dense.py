@@ -583,7 +583,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape", _FLOAT_VALUE_SHAPES)
 @pytest.mark.parametrize("parity", tu.selected_cases([1, 3], quick=[1]))
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
@@ -601,7 +601,7 @@ def test__to_dense_value_ranges(shape, value_range, parity, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("nnz", _RANK0_CASES)
 @pytest.mark.parametrize("dtype", _RANK0_DTYPES)
 def test__to_dense_rank0(nnz, dtype):
@@ -616,7 +616,7 @@ def test__to_dense_rank0(nnz, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape", _STORED_ZERO_SHAPES)
 @pytest.mark.parametrize("dtype", _STORED_ZERO_DTYPES)
 def test__to_dense_stored_zeros(shape, dtype):
@@ -640,7 +640,7 @@ def test__to_dense_stored_zeros(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,parity", _DUPLICATE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _ACCUMULATING_DTYPES)
@@ -666,7 +666,7 @@ def test__to_dense_duplicate_accumulate(shape, parity, value_range, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,parity", _EXACT_CASES)
 @pytest.mark.parametrize("dtype", _EXACT_SUM_DTYPES)
 def test__to_dense_duplicate_small_exact(shape, parity, dtype):
@@ -698,7 +698,7 @@ def test__to_dense_duplicate_small_exact(shape, parity, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,dtype", _CANCELLATION_CASES)
 def test__to_dense_duplicate_cancellation(shape, dtype):
     # +m, +m, -m, -m per cell: every partial sum is an exact small integer, so the
@@ -715,7 +715,7 @@ def test__to_dense_duplicate_cancellation(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype,scenario,shape", _SPECIAL_ROWS)
 def test__to_dense_nan_inf(dtype, scenario, shape):
     payload = tu.make_special_input(dtype, scenario)
@@ -736,7 +736,7 @@ def test__to_dense_nan_inf(dtype, scenario, shape):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype,scenario", _UNSAFE_SPECIAL_ROWS)
 def test__to_dense_nan_inf_duplicate(dtype, scenario):
     # Same special values on colliding coordinates: addition of special values is
@@ -757,7 +757,7 @@ def test__to_dense_nan_inf_duplicate(dtype, scenario):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,sparse_dim,broadcast", _HYBRID_CASES)
 @pytest.mark.parametrize("dtype", _HYBRID_DTYPES)
 def test__to_dense_hybrid(shape, sparse_dim, broadcast, dtype):
@@ -789,7 +789,7 @@ def test__to_dense_hybrid(shape, sparse_dim, broadcast, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,sparse_dim", _HYBRID_DUPLICATE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__to_dense_hybrid_duplicate(shape, sparse_dim, value_range):
@@ -815,7 +815,7 @@ def test__to_dense_hybrid_duplicate(shape, sparse_dim, value_range):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("layout_name,shape,density,share_structure", _COMPRESSED_CASES)
 @pytest.mark.parametrize("dtype", _COMPRESSED_DTYPES)
 def test__to_dense_compressed(layout_name, shape, density, share_structure, dtype):
@@ -840,7 +840,7 @@ def test__to_dense_compressed(layout_name, shape, density, share_structure, dtyp
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("layout_name,shape,block_size,stored_zero_block", _BLOCK_CASES)
 @pytest.mark.parametrize("dtype", _COMPRESSED_DTYPES)
 def test__to_dense_block(layout_name, shape, block_size, stored_zero_block, dtype):
@@ -861,7 +861,7 @@ def test__to_dense_block(layout_name, shape, block_size, stored_zero_block, dtyp
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,dtype", _OUT_CASES)
 def test__to_dense_out(shape, dtype):
     inp = _coo(shape, shape[-1], dtype, ("-1", "1"), seed=11)
@@ -878,7 +878,7 @@ def test__to_dense_out(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,dtype", _OUT_CASES)
 def test__to_dense_out_overwrites_prefilled(shape, dtype):
     # The provided ``out`` is fully owned and starts from a NaN sentinel, so a
@@ -897,7 +897,7 @@ def test__to_dense_out_overwrites_prefilled(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,dtype", _STRIDED_VALUE_CASES)
 def test__to_dense_strided_stored_values(shape, dtype):
     # The stored values are a strided view of their own parent. The reference is
@@ -929,7 +929,7 @@ def test__to_dense_strided_stored_values(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,dtype", _COALESCED_CASES)
 def test__to_dense_explicitly_coalesced(shape, dtype):
     inp = _coo(
@@ -951,7 +951,7 @@ def test__to_dense_explicitly_coalesced(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape", _NO_STORED_SHAPES)
 @pytest.mark.parametrize("dtype", _NO_STORED_DTYPES)
 def test__to_dense_no_stored_entries(shape, dtype):
@@ -968,7 +968,7 @@ def test__to_dense_no_stored_entries(shape, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("masked_grad", _MASKED_GRAD_CASES)
 @pytest.mark.parametrize("dtype", _MASKED_GRAD_DTYPES)
 def test__to_dense_masked_grad_forward(masked_grad, dtype):
@@ -986,7 +986,7 @@ def test__to_dense_masked_grad_forward(masked_grad, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,sparse_dim,duplicate,dtype", _BACKWARD_CASES)
 def test__to_dense_backward_values(shape, sparse_dim, duplicate, dtype):
     inp, values, ref_inp, ref_values = _backward_inputs(
@@ -1016,7 +1016,7 @@ def test__to_dense_backward_values(shape, sparse_dim, duplicate, dtype):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("shape,sparse_dim", _SPARSE_GRAD_CASES)
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES + [torch.complex64])
 @pytest.mark.parametrize("masked_grad", [None, True, False])
@@ -1045,7 +1045,7 @@ def test__to_dense_backward_sparse_input(shape, sparse_dim, dtype, masked_grad):
     _assert_unchanged(inp, ref_inp)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int8])
 def test__to_dense_rejects_dense_input(dtype):
     dense = tu.make_input(dtype, (16, 16), ("-1", "1"))
@@ -1053,7 +1053,7 @@ def test__to_dense_rejects_dense_input(dtype):
         flag_gems._to_dense(dense)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("layout_name", _DTYPE_ARG_LAYOUTS)
 def test__to_dense_rejects_dtype_argument(layout_name):
     # Probed for this target: the COO densify kernel rejects the dtype conversion
@@ -1068,7 +1068,7 @@ def test__to_dense_rejects_dtype_argument(layout_name):
         flag_gems._to_dense(inp, torch.float64)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype", _COO_ARG_DTYPES)
 def test__to_dense_rejects_invalid_dtype_argument_type(dtype):
     inp = _coo((16, 16), 16, dtype, ("-1", "1"), seed=47)
@@ -1076,7 +1076,7 @@ def test__to_dense_rejects_invalid_dtype_argument_type(dtype):
         flag_gems._to_dense(inp, "float32")
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype", _COO_ARG_DTYPES)
 def test__to_dense_rejects_invalid_masked_grad_type(dtype):
     inp = _coo((16, 16), 16, dtype, ("-1", "1"), seed=53)
@@ -1084,7 +1084,7 @@ def test__to_dense_rejects_invalid_masked_grad_type(dtype):
         flag_gems._to_dense(inp, None, "yes")
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 @pytest.mark.parametrize("dtype", _FP8_NEGATIVE_DTYPES)
 def test__to_dense_rejects_fp8_input(dtype):
     # NVIDIA-scoped COO case: the sparse densify path is not implemented for the

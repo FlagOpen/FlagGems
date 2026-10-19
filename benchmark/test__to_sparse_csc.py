@@ -183,7 +183,7 @@ class ToSparseCscBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 def test__to_sparse_csc():
     bench = ToSparseCscBenchmark(
         op_name="_to_sparse_csc",

@@ -214,7 +214,7 @@ class ToSparseBsrBenchmark(generated_operator_utils.OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.to_sparse_bsr
+@pytest.mark.underscore_to_sparse_bsr
 def test__to_sparse_bsr():
     bench = ToSparseBsrBenchmark(
         op_name="_to_sparse_bsr",
