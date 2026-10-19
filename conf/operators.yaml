@@ -5049,7 +5049,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5.0'
 - id: einsum
   description: 'Sums the product of the elements of the input `operands` along dimensions
     specified using a notation
