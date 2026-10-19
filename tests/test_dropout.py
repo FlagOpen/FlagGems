@@ -62,7 +62,9 @@ def test_dropout(shape, p, dtype):
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     # GEMS dropout follows native_dropout semantics and returns (out, mask).
-    res_out, _ = flag_gems.dropout(res_inp, p, True)
+    # The kernel wrapper does not accept NumPy scalars, which the dispatcher
+    # would have boxed into a tensor.
+    res_out, _ = flag_gems.dropout(res_inp, float(p), True)
 
     res_out = utils.to_reference(res_out)
     exp_equal = (p * p + one_minus_p * one_minus_p) * res_inp.numel()
