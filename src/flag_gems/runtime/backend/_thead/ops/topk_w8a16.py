@@ -1102,7 +1102,7 @@ if HAS_TLE_GPU:
         tl.store(Yi + pid * K + offs, y_indices, mask=offs < K)
 
 
-def topk_w8a16_fp8(
+def topk_w8a16(
     x_fp8,
     x_scale,
     k,
@@ -1121,7 +1121,7 @@ def topk_w8a16_fp8(
     if x_fp8.dtype != torch.float8_e5m2:
         if x_fp8.itemsize != 1:
             raise TypeError(
-                f"topk_w8a16_fp8 expects float8_e5m2 (or 8-bit) storage, got {x_fp8.dtype}"
+                f"topk_w8a16 expects float8_e5m2 (or 8-bit) storage, got {x_fp8.dtype}"
             )
         x_fp8 = x_fp8.view(torch.float8_e5m2)
 

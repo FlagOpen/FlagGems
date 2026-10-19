@@ -60,11 +60,11 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
     return dequant.reshape(*leading, padded)[..., :n].to(x_scale.dtype)
 
 
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.skipif(
     getattr(flag_gems, "vendor_name", None)
     not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
-    reason="topk_w8a16_fp8 requires an implemented backend",
+    reason="topk_w8a16 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
 @pytest.mark.parametrize(
@@ -99,7 +99,7 @@ def _dequant_fp8(x_fp8, x_scale, group_size=FP8_GROUP_SIZE):
         ),
     ],
 )
-def test_topk_w8a16_fp8(shape, k, largest, fp8_dtype):
+def test_topk_w8a16(shape, k, largest, fp8_dtype):
     dtype = torch.bfloat16
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     x_fp8, x_scale = _quantize_fp8_grouped(x, fp8_dtype=fp8_dtype)
@@ -108,7 +108,7 @@ def test_topk_w8a16_fp8(shape, k, largest, fp8_dtype):
     ref_value, ref_index = torch.topk(
         utils.to_reference(dequant), k, dim=-1, largest=largest, sorted=True
     )
-    res_value, res_index = flag_gems.topk_w8a16_fp8(
+    res_value, res_index = flag_gems.topk_w8a16(
         x_fp8,
         x_scale,
         k,
@@ -132,17 +132,17 @@ NVIDIA_ONLY = pytest.mark.skipif(
 
 
 @NVIDIA_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 1024), 8)])
 @pytest.mark.parametrize("largest", [True, False])
-def test_topk_w8a16_fp8_grouped_scale_nvidia(shape, topk, largest):
+def test_topk_w8a16_grouped_scale_nvidia(shape, topk, largest):
     x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
     x_fp8, x_scale = _quantize_fp8_grouped(x, fp8_dtype=torch.float8_e4m3fn)
     group_ids = torch.arange(shape[-1], device=x.device) // FP8_GROUP_SIZE
     x_dequant = x_fp8.float() * x_scale.index_select(-1, group_ids).float()
 
     ref_value = torch.topk(x_dequant, topk, dim=-1, largest=largest, sorted=True).values
-    res_value, res_index = flag_gems.topk_w8a16_fp8(
+    res_value, res_index = flag_gems.topk_w8a16(
         x_fp8, x_scale, topk, dim=-1, largest=largest, sorted=True
     )
 
@@ -152,9 +152,9 @@ def test_topk_w8a16_fp8_grouped_scale_nvidia(shape, topk, largest):
 
 
 @NVIDIA_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("shape, topk", [((4, 128), 5), ((8, 256), 16), ((2, 4096), 8)])
-def test_topk_w8a16_fp8_row_scale(shape, topk):
+def test_topk_w8a16_row_scale(shape, topk):
     x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
     x_fp8, x_scale = _quantize_fp8_grouped(
         x, group_size=shape[-1], fp8_dtype=torch.float8_e4m3fn
@@ -162,7 +162,7 @@ def test_topk_w8a16_fp8_row_scale(shape, topk):
     x_dequant = x_fp8.float() * x_scale.float()
 
     ref_value = torch.topk(x_dequant, topk, dim=-1, largest=True, sorted=True).values
-    res_value, res_index = flag_gems.topk_w8a16_fp8(
+    res_value, res_index = flag_gems.topk_w8a16(
         x_fp8, x_scale, topk, group_size=shape[-1]
     )
 
@@ -196,7 +196,7 @@ def _check_topk(
     q, scale, k, group_size=128, out_dtype=torch.bfloat16, largest=True, sorted=True
 ):
     ref = _cpu_dequant(q, scale, group_size, out_dtype)
-    values, indices = flag_gems.topk_w8a16_fp8(
+    values, indices = flag_gems.topk_w8a16(
         q,
         scale,
         k,
@@ -221,7 +221,7 @@ def _check_topk(
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn])
 @pytest.mark.parametrize("out_dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("largest", [False, True])
@@ -244,7 +244,7 @@ def test_topk_fp8_edges(shape, k, group_size, largest, out_dtype, fp8_dtype):
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("fp8_dtype", [torch.float8_e4m3fn])
 @pytest.mark.parametrize("largest", [True, False])
 @pytest.mark.parametrize("k", [1, 17, 256])
@@ -255,7 +255,7 @@ def test_topk_fp8_all_encodings(fp8_dtype, largest, k):
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("shape,k", [((0, 128), 3), ((3, 0), 0), ((2, 128), 0)])
 def test_topk_fp8_empty(shape, k):
     q = torch.empty(shape, device=flag_gems.device, dtype=torch.float8_e4m3fn)
@@ -264,7 +264,7 @@ def test_topk_fp8_empty(shape, k):
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 def test_topk_fp8_strides_graph_and_ties():
     raw = (
         torch.arange(4 * 514, device=flag_gems.device)
@@ -280,14 +280,14 @@ def test_topk_fp8_strides_graph_and_ties():
     stream.wait_stream(device_api.current_stream())
     with device_api.stream(stream):
         for _ in range(3):
-            flag_gems.topk_w8a16_fp8(q, scale, 17)
+            flag_gems.topk_w8a16(q, scale, 17)
     device_api.current_stream().wait_stream(stream)
     graph_type = (
         device_api.MUSAGraph if flag_gems.device == "musa" else device_api.CUDAGraph
     )
     graph = graph_type()
     with device_api.graph(graph):
-        v, i = flag_gems.topk_w8a16_fp8(q, scale, 17)
+        v, i = flag_gems.topk_w8a16(q, scale, 17)
     for change in (0, 1, 2):
         if change == 0:
             scale.neg_()
@@ -308,7 +308,7 @@ def test_topk_fp8_strides_graph_and_ties():
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 def test_topk_fp8_validation():
     q = torch.zeros((2, 128), device=flag_gems.device).to(torch.float8_e4m3fn)
     s = torch.ones((2, 1), device=q.device)
@@ -319,21 +319,21 @@ def test_topk_fp8_validation():
         {"k": 1, "group_size": 0},
     ):
         with pytest.raises(ValueError):
-            flag_gems.topk_w8a16_fp8(q, s, **kwargs)
+            flag_gems.topk_w8a16(q, s, **kwargs)
     with pytest.raises(ValueError):
-        flag_gems.topk_w8a16_fp8(q, s.expand(2, 2), 1)
+        flag_gems.topk_w8a16(q, s.expand(2, 2), 1)
     with pytest.raises(TypeError):
-        flag_gems.topk_w8a16_fp8(q.float(), s, 1)
+        flag_gems.topk_w8a16(q.float(), s, 1)
     with pytest.raises(TypeError, match="float8_e4m3fn"):
-        flag_gems.topk_w8a16_fp8(q.float().to(torch.float8_e5m2), s, 1)
+        flag_gems.topk_w8a16(q.float().to(torch.float8_e5m2), s, 1)
     with pytest.raises(TypeError):
-        flag_gems.topk_w8a16_fp8(q, s, 1, out_dtype=torch.float32)
+        flag_gems.topk_w8a16(q, s, 1, out_dtype=torch.float32)
     with pytest.raises(ValueError):
-        flag_gems.topk_w8a16_fp8(q, s.cpu(), 1)
+        flag_gems.topk_w8a16(q, s.cpu(), 1)
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize("n,k", [(4097, 32), (32769, 256)])
 @pytest.mark.parametrize("largest", [True, False])
 def test_topk_fp8_partition_tails(n, k, largest):
@@ -344,7 +344,7 @@ def test_topk_fp8_partition_tails(n, k, largest):
 
 
 @E4M3_ONLY
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.parametrize(
     "scale_value",
     [1.0, -1.0, 0.0, float("nan"), float("inf"), 1e-35, 1e35, 0.03125, 100.0],

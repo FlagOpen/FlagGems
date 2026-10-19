@@ -591,7 +591,7 @@ if HAS_TLE_GPU:
         tl.store(Yi + pid * stride_ym + offs_k, y_indices, mask=mask_k)
 
 
-def topk_w8a16_fp8(
+def topk_w8a16(
     x_fp8,
     x_scale,
     k,

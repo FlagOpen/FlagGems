@@ -186,7 +186,7 @@ from .special_shifted_chebyshev_polynomial_v import (
 )
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
-from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .topk_w8a16 import topk_w8a16
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -374,7 +374,7 @@ __all__ = [
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
     "tile",
-    "topk_w8a16_fp8",
+    "topk_w8a16",
     "triangular_solve",
     "triangular_solve_out",
     "true_divide",

@@ -127,7 +127,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tanh import tanh
 from .to_copy import to_copy
-from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .topk_w8a16 import topk_w8a16
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
@@ -290,7 +290,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "tanh",
     "to_copy",
-    "topk_w8a16_fp8",
+    "topk_w8a16",
     "triangular_solve",
     "triangular_solve_out",
     "upsample_linear1d",

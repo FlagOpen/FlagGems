@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Grouped E4M3FN TopK for Hygon, with fused decode and selection."""
+"""Grouped E4M3FN TopK for Moore Threads, with fused decode and selection."""
 
 import logging
 import math
@@ -182,7 +182,7 @@ def _single_group(
         _store(fallback_packed, Y, Indices, row * K + col, col < K, DESC, False)
 
 
-def topk_w8a16_fp8(
+def topk_w8a16(
     x_fp8,
     x_scale,
     k,
@@ -194,14 +194,14 @@ def topk_w8a16_fp8(
 ):
     """TopK of group-wise FP8 values dequantized and rounded to A16.
 
-    Only E4M3FN storage is supported on Hygon. Scales have shape
+    Only E4M3FN storage is supported on Moore Threads. Scales have shape
     ``x_fp8.shape[:-1] + (ceil(N/group_size),)`` and may be FP16/BF16/FP32.
     Returns A16 values and INT64 indices along the last dimension. Equal
     values select lower indices first; NaNs sort above finite values.
     Noncontiguous inputs are copied on each invocation. ``sorted=False``
     also returns sorted results. No input contents are cached. Forward only.
     """
-    logger.debug("GEMS_HYGON TOPK_W8A16_FP8")
+    logger.debug("GEMS_MTHREADS TOPK_W8A16_FP8")
     if not isinstance(x_fp8, torch.Tensor) or not isinstance(x_scale, torch.Tensor):
         raise TypeError("x_fp8 and x_scale must be tensors")
     if x_fp8.dtype != torch.float8_e4m3fn:
@@ -210,8 +210,8 @@ def topk_w8a16_fp8(
         raise TypeError("out_dtype must be float16 or bfloat16")
     if x_scale.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         raise TypeError("x_scale must have dtype float16, bfloat16 or float32")
-    if x_fp8.device.type != "cuda" or x_scale.device != x_fp8.device:
-        raise ValueError("inputs must be on the same Hygon CUDA device")
+    if x_fp8.device.type != "musa" or x_scale.device != x_fp8.device:
+        raise ValueError("inputs must be on the same Moore Threads MUSA device")
     if x_fp8.ndim == 0:
         raise ValueError("x_fp8 must have at least one dimension")
     dim, k, group_size = (

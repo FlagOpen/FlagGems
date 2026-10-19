@@ -73,7 +73,7 @@ def _gems_bf16_topk(x_fp8, x_scale, k, dequant, group_size):
 
 
 def _gems_topk_w8a16(x_fp8, x_scale, k, dequant, group_size):
-    return flag_gems.topk_w8a16_fp8(
+    return flag_gems.topk_w8a16(
         x_fp8, x_scale, k, dim=-1, largest=True, sorted=True, group_size=group_size
     )
 
@@ -116,20 +116,20 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
             yield x_fp8, x_scale, k, dequant, group_size
 
 
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.skipif(
     getattr(flag_gems, "vendor_name", None)
     not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
-    reason="topk_w8a16_fp8 requires an implemented backend",
+    reason="topk_w8a16 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")
 @pytest.mark.parametrize(
     "baseline",
     ["torch"] if flag_gems.vendor_name == "nvidia" else ["torch", "flaggems"],
 )
-def test_topk_w8a16_fp8(baseline):
+def test_topk_w8a16(baseline):
     bench = TopKFp8W8A16Benchmark(
-        op_name="topk_w8a16_fp8",
+        op_name="topk_w8a16",
         torch_op=_torch_topk_w8a16 if baseline == "torch" else _gems_bf16_topk,
         dtypes=[torch.bfloat16],
     )

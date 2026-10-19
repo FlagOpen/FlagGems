@@ -90,7 +90,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .tile import tile
-from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .topk_w8a16 import topk_w8a16
 from .unbind_copy import unbind_copy
 
 __all__ = [
@@ -182,6 +182,6 @@ __all__ = [
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
-    "topk_w8a16_fp8",
+    "topk_w8a16",
     "unbind_copy",
 ]

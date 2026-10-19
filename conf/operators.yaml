@@ -20480,7 +20480,7 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
-- id: topk_w8a16_fp8
+- id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 
