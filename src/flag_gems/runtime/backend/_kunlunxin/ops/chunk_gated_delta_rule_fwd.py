@@ -14,42 +14,14 @@
 
 """Kunlunxin backend implementation of ``chunk_gated_delta_rule_fwd``.
 
-Why this file exists
---------------------
-The shared ``flag_gems.fused.FLA`` implementation is a *chunked* decomposition
-whose fused cumsum + KKT + ``solve_tril`` kernel cannot be lowered by the XPU
-Triton backend.  Two independent, compile-time blockers live in that one
-kernel body (``src/flag_gems/fused/FLA/fused_cumsum_kkt_solve_tril.py``), and
-neither is reachable by changing tiles/blocks:
-
-1. ``tl.cumsum`` (line 78) lowers to ``tt.scan`` -> an unregistered
-   ``ttx.cumsum``.  A later pass then rejects the
-   ``memref.reinterpret_cast`` it materialises:
-   ``expected the number of 'strides' to match the number of dynamic entries
-   in 'static_strides' (0 vs 2)``.  The ``loc("b_g_diff")`` at line 102 is
-   only the *reporting* site.
-2. With ``tt.scan`` removed the same kernel still exceeds the XPU pipeline
-   event budget: ``[C-015] event demand 152 exceeds the hardware range 94 for
-   xpu_arch 3``.
-
-This module evaluates the gated delta-rule recurrence directly, one token at a
-time, in a small number of kernels that do lower on XPU.  It computes the same
-mathematics as the reference used by the tests
-(``flag_gems.fused.FLA.chunk.naive_chunk_gated_delta_rule_fwd``)::
+Evaluates the gated delta-rule recurrence directly, one token at a time::
 
     S_t = exp(g_t) * S_{t-1} + beta_t * k_t^T (v_t - k_t @ S_{t-1})
     o_t = q_t @ S_t * scale
 
-Output contract
----------------
-``chunk_gated_delta_rule_fwd`` returns a 7-tuple
-``(g, o, A, final_state, w, h, v_new)``.  ``w``, ``h`` and ``v_new`` are
-already ``None`` on the shared implementation's default path, because they are
-only materialised when ``SUPPRESS_LEVEL >= 3``.  ``A`` (the per-chunk inverse
-of the KKT matrix) and ``g`` (the chunk-local cumulative decay) are
-chunk-decomposition intermediates: ``g`` is produced here by a real kernel,
-while ``A`` is not produced by a recurrence formulation and is returned as
-``None`` rather than being filled with fabricated values.
+Returns ``(g, o, A, final_state, w, h, v_new)``.  ``A``, ``w``, ``h`` and
+``v_new`` are not produced by a recurrence formulation and are returned as
+``None``.
 """
 
 import logging
@@ -60,12 +32,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# The recurrence is evaluated in fp32.  The chunked implementation allocates
-# ``o`` with ``torch.empty_like(v)``; for long sequences with un-normalised
-# keys the delta-rule state legitimately reaches magnitudes that fp16 cannot
-# represent at all (the tests' own fp32 reference reaches ~3e14), so an fp16
-# store would destroy the result rather than round it.  Keep the fp32
-# accumulator value.
+# The recurrence is evaluated in fp32.
 _OUTPUT_DTYPE = torch.float32
 
 
@@ -183,10 +150,8 @@ def _cgdr_chunk_cumsum_kernel(
 ):
     """Within-chunk cumulative decay of ``g`` along the sequence dimension.
 
-    ``g_out[bos + c*chunk + i, h] = sum_{j <= i} g[bos + c*chunk + j, h]``,
-    i.e. the same ``g`` the shared chunked implementation returns as its first
-    output.  Sequential by construction; it is a cheap kernel because ``chunk``
-    is at most 64.
+    ``g_out[bos + c*chunk + i, h] = sum_{j <= i} g[bos + c*chunk + j, h]``.
+    Sequential by construction; ``chunk`` is at most 64.
     """
     i_chunk, i_bh = tl.program_id(0), tl.program_id(1)
     i_h = i_bh % H
@@ -346,7 +311,5 @@ def chunk_gated_delta_rule_fwd(
     )
 
     g_out = _chunk_cumsum(g, chunk_size, cu_seqlens)
-    # A / w / h / v_new are chunk-decomposition intermediates; a recurrence
-    # formulation does not produce them.  Returned as None rather than filled
-    # with placeholder values.  (w/h/v_new are None on the shared path too.)
+    # A / w / h / v_new are not produced by a recurrence formulation.
     return g_out, o, None, final_state, None, None, None

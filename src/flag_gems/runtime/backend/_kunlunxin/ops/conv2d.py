@@ -589,16 +589,9 @@ def _input_grad(
     OPG: tl.constexpr,
     CPG: tl.constexpr,
 ):
-    # One program per (spatial block, input channel); every tensor rank-1.
-    # Two XPU compiler limits force this shape: TritonXPULegalize aborts on
-    # rank-3 tensors (Legalize.cpp "3D Shape Unsupported.") and mis-rewrites
-    # rank-2 expand_dims/broadcast pairs inside the sliced loop it builds, and
-    # it also rejects tl.sum(axis=0) on 2D+ shapes.
-    # The address arithmetic follows the proven _forward idiom: indices are
-    # clamped to 0 whenever they are out of range and the contribution is
-    # zeroed afterwards with tl.where, instead of feeding an out-of-range
-    # index into a masked load. Loop bounds are constexpr for the same reason
-    # _forward uses constexpr KH/KW.
+    # One program per (spatial block, input channel); rank-1 throughout.
+    # Out-of-range indices are clamped to 0 and the contribution is zeroed
+    # afterwards with tl.where, rather than feeding them to a masked load.
     pm = tl.program_id(0)
     c = tl.program_id(1)
     m = pm * BM + tl.arange(0, BM)
@@ -631,8 +624,6 @@ def _input_grad(
                 )
                 gv = tl.where(valid, gv, 0.0)
                 wv = tl.load(w + (g * OPG + o) * wso + lc * wsi + r * wsh + s * wsw)
-                # f32 multiply, as in _forward: an fp16 product over a
-                # 25+-element reduction exceeds the test tolerance.
                 acc += gv.to(tl.float32) * wv.to(tl.float32)
     tl.store(dx + ni * dxsn + c * dxsc + sih * dxsh + siw * dxsw, acc, mask=mmask)
 
@@ -674,13 +665,9 @@ def _weight_grad(
     BP: tl.constexpr,
     BK: tl.constexpr,
 ):
-    # Rank-1 throughout, one program per weight element. The XPU
-    # TritonXPULegalize pass rejects rank-3 tensors outright and mis-rewrites
-    # rank-2 expand_dims/broadcast pairs inside the sliced iteration loop it
-    # builds, and it additionally rejects tl.sum(axis=0) on 2D+ shapes
-    # ("axis must not be 0 for 2D+ shapes, consider manually transpose").
-    # The spatial reduction is therefore carried by a scalar loop over p with a
-    # rank-1 block reduction. grid == weight.numel(), so oc < cout always holds.
+    # Rank-1 throughout, one program per weight element, with the spatial
+    # reduction carried by a scalar loop over p and a rank-1 block reduction.
+    # grid == weight.numel(), so oc < cout always holds.
     k = tl.program_id(0)
     area = cpg * kh * kw
     oc = k // area
@@ -698,10 +685,9 @@ def _weight_grad(
         q = p - ni * (hout * wout)
         oh = q // wout
         ow = q - oh * wout
-        # Clamp every index that can leave the tensor before it reaches an
-        # address, then zero the contribution with tl.where (the _forward
-        # idiom). Feeding an out-of-range index to a masked load returns
-        # garbage on this backend.
+        # Clamp every index that can leave the tensor, then zero the
+        # contribution with tl.where, instead of feeding an out-of-range
+        # index to a masked load.
         pv = p < total
         sni = tl.where(pv, ni, 0)
         soh = tl.where(pv, oh, 0)
@@ -742,7 +728,7 @@ def _bias_grad(
     BP: tl.constexpr,
     BO: tl.constexpr,
 ):
-    # Rank-1, one program per output channel; see _weight_grad for why.
+    # Rank-1, one program per output channel.
     o = tl.program_id(0)
     total = n * hout * wout
     acc = tl.zeros((BP,), tl.float32)
@@ -1096,12 +1082,7 @@ def _vendor_launch(
     dw,
     groups,
 ):
-    """One plain launch of the ABI carrier (intercepted and replaced).
-
-    Kept separate so the cache can capture a launcher-level replay of exactly
-    this call: the Triton JITFunction binder costs ~60 us per launch on this
-    stack, which dominates every small conv shape.
-    """
+    """One plain launch of the forward kernel."""
     from .conv_depthwise2d import conv2d_forward_kernel
 
     out = torch.empty((n, cout, hout, wout), device=input.device, dtype=input.dtype)
@@ -1138,8 +1119,7 @@ def _vendor_launch(
 
 
 def _raw_stream(dev_index):
-    """Cheap current-stream query: `torch.cuda.current_stream()` builds a
-    Stream object and costs ~17 us per call, which dominates a small conv."""
+    """Current-stream query without building a Stream object."""
     try:
         return torch._C._cuda_getCurrentRawStream(dev_index)
     except Exception:
@@ -1162,19 +1142,10 @@ def _vendor_replay(rec, input, weight, bias):
 
 
 def _vendor_conv2d_forward(input, weight, bias, stride, padding, dilation, groups):
-    """Bind the vendor conv2d_fusion kernel through the launcher.
+    """Forward-only fast path; returns None when the call is not eligible.
 
-    A kernel whose symbol name contains "conv2d_forward" is intercepted and
-    routed to the vendor conv2d_fusion instead of executing the (scalar-gather)
-    fallback body. The emitted kernelParams table is decoded by ORIGINAL triton
-    argument index 0..31, so the carrier's parameter ORDER *is* the ABI: it is
-    the ABI-matched carrier already validated for the depthwise case, imported
-    here rather than duplicated.
-
-    Returns None when the call is not eligible, in which case the caller keeps
-    the existing autograd/Triton path.  Only forward-only (no-grad) calls are
-    eligible: the vendor launch is not part of the autograd graph, so a call
-    that needs a backward must stay on `Conv2d.apply`.
+    Only forward-only (no-grad) calls take this path: it is not part of the
+    autograd graph, so a call that needs a backward stays on `Conv2d.apply`.
     """
     if input.ndim != 4 or weight.ndim != 4:
         return None
@@ -1188,10 +1159,8 @@ def _vendor_conv2d_forward(input, weight, bias, stride, padding, dilation, group
         return None
     if not (input.is_contiguous() and weight.is_contiguous()):
         return None
-    # The handler reads the bias slot as `const float*`; a non-fp32 bias would
-    # be reinterpreted.  A None bias becomes a cached fp32 zero tensor so that
-    # the slot is never dropped from the emitted signature (a None pointer
-    # shifts every later index and the handler decodes the wrong scalars).
+    # The bias slot is read as fp32; a None bias becomes a cached fp32 zero
+    # tensor so the slot is never dropped from the signature.
     if bias is not None and (
         bias.dtype != torch.float32 or bias.ndim != 1 or not bias.is_contiguous()
     ):
@@ -1201,15 +1170,7 @@ def _vendor_conv2d_forward(input, weight, bias, stride, padding, dilation, group
     if groups <= 0 or cout % groups or cpg * groups != cin:
         return None
     if min(hin, win) <= 1 and input.dtype == torch.bfloat16:
-        # The handler re-derives the launch extent from a symmetric pad and
-        # faults on this stack when a spatial extent is 1.  Measured: the
-        # fault is bf16-specific -- bf16 (8,8,8192,1)x(16,8,11,1) pad=5 dies
-        # with xpuLaunchKernel err_code 4 on the first call in a fresh
-        # process, while fp16 and fp32 at the same shape, and bf16 at every
-        # smaller extent-1 shape, are correct.  Rejecting the whole family
-        # instead sent every conv1d call (which lowers to an extent-1 2-D
-        # convolution) to the scalar-gather fallback, ~1000x slow.  Only the
-        # dtype that actually faults is rejected now.
+        # bf16 with a unit spatial extent is not supported on this path
         return None
     sh, sw = _pair(stride, "stride")
     dh, dw = _pair(dilation, "dilation")
@@ -1223,8 +1184,8 @@ def _vendor_conv2d_forward(input, weight, bias, stride, padding, dilation, group
                 return None
             th, tw = dh * (kh - 1), dw * (kw - 1)
             if th % 2 or tw % 2:
-                # an odd total pad needs an asymmetric pad; the handler
-                # mirrors pad_up/pad_left, so it cannot express one
+                # an odd total pad needs an asymmetric pad, which is not
+                # expressible here
                 return None
             ph, pw = th // 2, tw // 2
         else:
@@ -1317,12 +1278,7 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         input, weight, bias, stride, padding, dilation, groups
     )
     if vendor_out is not None:
-        logger.debug("GEMS_KUNLUNXIN CONV2D (vendor conv2d_fusion)")
+        logger.debug("GEMS_KUNLUNXIN CONV2D (fast path)")
         return vendor_out
-    # The former `_square_pad_conv2d` workaround padded the smaller spatial
-    # extent up to the larger one (O(L^2) for the conv1d-shaped (N, C, L, 1)
-    # input) because the launcher was believed to require square extents.
-    # The Triton path does not: it derives hout/wout from the actual extents,
-    # so the pad is pure waste and is dropped.
     logger.debug("GEMS_KUNLUNXIN CONV2D")
     return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)

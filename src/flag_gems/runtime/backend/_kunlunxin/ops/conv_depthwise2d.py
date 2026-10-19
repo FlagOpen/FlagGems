@@ -45,23 +45,8 @@ def _zero_bias(out_c, device):
     return t
 
 
-# ---------------------------------------------------------------------------
-# [2026-10-09] ABI-matched carrier for the depthwise (groups == C) case.
-#
-# The gate in conv2d.Conv2d.forward requires reduction >= 64 to pick a tiled
-# kernel, and depthwise has reduction == kh*kw (4..25), so it always fell back
-# to the scalar-gather _forward: measured 15.9-107 ms against a 9.4-45 us
-# device F.conv2d baseline (aggregate 0.0235).
-#
-# The vendor conv2d_fusion kernel is reachable by name substring
-# ("conv2d_forward") and handles groups itself (case 31 does
-# c *= groups, with case 22 the per-group weight_c).  This is the ABI-matched
-# carrier from PR #6914 for conv2d, reused verbatim: the parameter ORDER is
-# the ABI, every scalar is do_not_specialize'd so a value of 1 is not folded
-# out and cannot shift the indices, and bias is ALWAYS a real tensor (a None
-# pointer is dropped from the runtime signature and shifts every later index).
-# ---------------------------------------------------------------------------
-_ABI_SCALARS = [
+# Scalar arguments kept as runtime values so a value of 1 is not folded out.
+_RUNTIME_SCALARS = [
     "n",
     "hin",
     "win",
@@ -95,7 +80,7 @@ _ABI_SCALARS = [
 
 
 @libentry()
-@triton.jit(do_not_specialize=_ABI_SCALARS)
+@triton.jit(do_not_specialize=_RUNTIME_SCALARS)
 def conv2d_forward_kernel(
     x,
     w,
@@ -133,8 +118,7 @@ def conv2d_forward_kernel(
     HAS_BIAS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    # Generic scalar-gather fallback; only executes if the vendor path
-    # declines the launch (it returns INT_MIN for a non-matching signature).
+    # Generic scalar-gather fallback.
     m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     plane = hout * wout
     ow = m % wout
@@ -175,7 +159,7 @@ def conv2d_forward_kernel(
 
 
 def _vendor_depthwise(input, weight, bias, stride, padding, dilation, groups):
-    """Launch the vendor conv2d_fusion kernel through the ABI carrier."""
+    """Launch the depthwise forward kernel."""
     n, cin, hin, win = input.shape
     cout, cpg, kh, kw = weight.shape
     sh, sw = _pair(stride)
@@ -226,9 +210,7 @@ def _pair(value):
 
 
 def _vendor_ok(input, weight, stride, padding, dilation):
-    """The handler re-derives the output extent from a SYMMETRIC pad and
-    faults with an illegal memory access when a spatial extent is 1; only
-    take the vendor path when both hold."""
+    """Eligibility for the fast path: symmetric pad and both spatial extents > 1."""
     if not (input.is_cuda and weight.is_cuda):
         return False
     if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
@@ -254,7 +236,6 @@ def _vendor_ok(input, weight, stride, padding, dilation):
     wout = (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1
     if hout <= 0 or wout <= 0:
         return False
-    # vendor formula must reproduce our extent (symmetric pad, dilation)
     if (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1 != hout:
         return False
     if (win + 2 * pw - dw * (kw - 1) - 1) // sw + 1 != wout:
@@ -470,15 +451,10 @@ def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilatio
     def plain():
         return conv2d(input, weight, bias, stride, padding, dilation, groups)
 
-    # Vendor launch-table carrier: depthwise (groups == C) never satisfies the
-    # reduction >= 64 tiled-kernel gate, so route it to conv2d_fusion directly.
+    # Route depthwise (groups == C) to the fast path directly.
     if user_bias is None and _vendor_ok(input, weight, stride, padding, dilation):
         if input.dtype == torch.bfloat16:
-            # The vendor's bf16 conv2d_fusion entry is ~2-3x slower than its
-            # fp32 entry on this stack and its latency is unstable
-            # (measured 70-209 us for one fixed shape); the fp32 entry is
-            # fast and steady, so reride bf16 in fp32 and cast the result
-            # back.  Same idiom as the conv_transpose2d fp16 reride.
+            # bf16 reride in fp32; rounded back once.
             out = _vendor_depthwise(
                 input.float(), weight.float(), bias, stride, padding, dilation, groups
             )

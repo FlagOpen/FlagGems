@@ -32,13 +32,7 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         dilation_width = dilation
 
-    # The 1-D length axis is mapped onto the W axis of a 2-D convolution with
-    # H == 1, NOT onto H with W == 1.  Both are pure views of the same memory,
-    # but the vendor conv2d_fusion kernel is ~3.5x faster with H == 1: W is
-    # the contiguous axis, so a W == 1 input gives every program a one-element
-    # row.  Measured on (32,64,512)x(64,64,3) fp32: 74 us (W == 1) versus
-    # 21 us (H == 1).  The downstream 2-D helpers all take an (N,C,H,W)
-    # tensor, so this is the only change needed.
+    # Map the 1-D length axis onto the W axis of an H == 1 2-D convolution.
     if isinstance(padding, str):
         if padding == "same":
             assert stride == 1, (
