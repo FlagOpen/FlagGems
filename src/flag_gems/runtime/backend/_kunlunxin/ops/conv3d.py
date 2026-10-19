@@ -441,21 +441,17 @@ def _record3(out, cap, input, out_c, out_dtype, compute_dtype, promote):
     }
 
 
-def _replay3(rec, input, weight, bias):
+def _replay3(rec, input, weight):
     if _raw_stream3(rec["dev"]) != rec["stream"]:
         raise RuntimeError("stream changed")
     a = list(rec["a2"])
     if rec["promote"]:
         xi = input.to(torch.float32)
         wi = weight.to(torch.float32)
-        bi = (
-            bias.to(torch.float32)
-            if bias is not None
-            else _zero_bias3(rec["out_c"], input.device)
-        )
+        bi = _zero_bias3(rec["out_c"], input.device)
     else:
         xi, wi = input, weight
-        bi = bias if bias is not None else _zero_bias3(rec["out_c"], input.device)
+        bi = _zero_bias3(rec["out_c"], input.device)
     out = torch.empty(rec["out_shape"], device=input.device, dtype=rec["compute_dtype"])
     a[rec["j_in"]] = xi
     a[rec["j_w"]] = wi
@@ -653,7 +649,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     rec = _VENDOR3_CACHE.get(key)
     if rec is not None:
         try:
-            raw = _replay3(rec, input, weight, bias)
+            raw = _replay3(rec, input, weight)
             if rec["verified"] or _verify3(rec, raw):
                 out = raw
             else:
@@ -679,12 +675,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                     wi = weight.to(torch.float32)
                 else:
                     xi, wi = input, weight
-                bi = (
-                    bias.to(torch.float32)
-                    if bias is not None
-                    else _zero_bias3(out_c, input.device)
+                raw, cap = _capture_and_delegate(
+                    lambda: _launch(xi, wi, _zero_bias3(out_c, input.device))
                 )
-                raw, cap = _capture_and_delegate(lambda: _launch(xi, wi, bi))
                 rec2 = (
                     _record3(
                         raw,
@@ -712,12 +705,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             wi = weight.to(torch.float32)
         else:
             xi, wi = input, weight
-        bi = (
-            bias.to(torch.float32)
-            if bias is not None
-            else _zero_bias3(out_c, input.device)
-        )
-        out = _launch(xi, wi, bi)
+        out = _launch(xi, wi, _zero_bias3(out_c, input.device))
 
     if crop[0] or crop[1] or crop[2]:
         out = out[
@@ -726,6 +714,11 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             crop[1] : crop[1] + out_height - crop[1],
             crop[2] : crop[2] + out_width - crop[2],
         ]
+
+    # The bias is applied here rather than by the conv kernel, so the result
+    # does not depend on the launched kernel honouring a bias epilogue.
+    if bias is not None:
+        out = out + bias.to(out.dtype).view(1, -1, 1, 1, 1)
 
     if use_fp32_compute:
         out = out.to(output_dtype)
