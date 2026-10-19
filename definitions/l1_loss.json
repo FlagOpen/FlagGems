@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "l1_loss",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::l1_loss(Tensor self, Tensor target, int reduction=Mean) -> Tensor. Computes elementwise absolute-error loss with none, mean, and sum reductions. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

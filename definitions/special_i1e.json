@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_i1e",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_i1e(Tensor self) -> Tensor. Computes the exponentially scaled modified Bessel function I1 elementwise; the shared suite also covers out behavior. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

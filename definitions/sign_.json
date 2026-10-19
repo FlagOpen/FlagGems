@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "sign_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::sign_(Tensor(a!) self) -> Tensor(a!). Mutates self in place and returns the same tensor and storage.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "self"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "self": "self"
+    }
+  }
+}

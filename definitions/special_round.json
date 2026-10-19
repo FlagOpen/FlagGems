@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "special_round",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_round(Tensor self, *, int decimals=0) -> Tensor. Rounds values elementwise with the requested decimal precision; the shared suite also covers out behavior. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "decimals",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

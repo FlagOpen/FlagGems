@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_bessel_y1",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_bessel_y1(Tensor self) -> Tensor. Computes the Bessel function of the second kind of order one elementwise. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_multigammaln",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_multigammaln(Tensor self, int p) -> Tensor. Computes the multivariate log-gamma function without mutating or aliasing self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

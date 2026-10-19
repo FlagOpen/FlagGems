@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "not_equal",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::not_equal.Tensor(Tensor self, Tensor other) -> Tensor. Computes elementwise tensor inequality and returns a boolean tensor. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

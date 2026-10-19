@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_log1p_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_log1p_(Tensor(a!)[] self) -> (). Applies log1p independently to each tensor in self, mutates every list element in place, preserves each element's storage and stride, and returns no value. The correctness suite covers floating dtypes, contiguous and noncontiguous tensors, heterogeneous shapes, integer promotion or rejection, list semantics, and exact value/dtype/shape parity with ATen.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "pack_padded_sequence",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_pack_padded_sequence(Tensor input, Tensor lengths, bool batch_first) -> (Tensor data, Tensor batch_sizes). Packs a padded sequence into contiguous data and batch-size metadata without mutating the inputs.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "lengths",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "batch_first",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "data",
+    "batch_sizes"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

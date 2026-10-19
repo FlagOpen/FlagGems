@@ -119,7 +119,7 @@ class SdpFusedOverrideableAttentionBackwardBenchmark(base.GenericBenchmark):
         return None
 
 
-def sdp_fused_overrideable_attn_bwd_input_fn(config, dtype, device):
+def _build_attention_inputs(config, dtype, device):
     batch, num_heads, seq_len, head_size, is_causal, has_bias, grad_input_mask = config
     if _is_unsafe_decode_causal(seq_len, is_causal):
         return
@@ -156,7 +156,7 @@ def sdp_fused_overrideable_attn_bwd_input_fn(config, dtype, device):
         softmax_scale=scale,
     )
 
-    yield (
+    return (
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
@@ -177,12 +177,37 @@ def sdp_fused_overrideable_attn_bwd_input_fn(config, dtype, device):
     )
 
 
+def _case_fn(config, dtype):
+    del dtype
+    batch, num_heads, seq_len, head_size, is_causal, has_bias, grad_input_mask = config
+    if _is_unsafe_decode_causal(seq_len, is_causal):
+        return
+    yield base.BenchmarkCasePlan(
+        shape={
+            "query": [batch, num_heads, seq_len, head_size],
+            "key": [batch, num_heads, seq_len, head_size],
+            "value": [batch, num_heads, seq_len, head_size],
+        },
+        params={
+            "is_causal": is_causal,
+            "has_bias": has_bias,
+            "grad_input_mask": list(grad_input_mask),
+        },
+        builder_args=(config,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    return _build_attention_inputs(plan.builder_args[0], dtype, device)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.scaled_dot_product_fused_attention_overrideable_backward
 def test_scaled_dot_product_fused_attention_overrideable_backward():
     bench = SdpFusedOverrideableAttentionBackwardBenchmark(
         op_name="scaled_dot_product_fused_attention_overrideable_backward",
-        input_fn=sdp_fused_overrideable_attn_bwd_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=None,
         # The overrideable fused attention kernels only accept float16/bfloat16.
         dtypes=[torch.float16, torch.bfloat16],

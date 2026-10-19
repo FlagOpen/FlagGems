@@ -96,9 +96,9 @@ def test_gather_sparse_backward_float(inp_shape, dim, dtype):
     index = _make_gather_index(inp_shape, dim, duplicate_indices=False)
     grad = torch.randn(index.shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_index = utils.to_reference(index)
-    ref_grad = utils.to_reference(grad)
+    ref_grad = utils.to_reference(grad, True)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
     res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
@@ -119,9 +119,9 @@ def test_gather_sparse_backward_duplicate(inp_shape, dim, dtype, duplicate_indic
     index = _make_gather_index(inp_shape, dim, duplicate_indices)
     grad = torch.randn(index.shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_index = utils.to_reference(index)
-    ref_grad = utils.to_reference(grad)
+    ref_grad = utils.to_reference(grad, True)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
     res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
@@ -138,9 +138,9 @@ def test_gather_sparse_backward_int(inp_shape, dim, dtype):
     index = _make_gather_index(inp_shape, dim, duplicate_indices=False)
     grad = torch.randint(-100, 100, index.shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_index = utils.to_reference(index)
-    ref_grad = utils.to_reference(grad)
+    ref_grad = utils.to_reference(grad, True)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
     res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
@@ -195,9 +195,9 @@ def test_gather_sparse_backward_edge(shape, dim, dtype):
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_index = utils.to_reference(index)
-    ref_grad = utils.to_reference(grad)
+    ref_grad = utils.to_reference(grad, True)
     ref_out = _gather_sparse_backward(ref_inp, dim, ref_index, ref_grad)
 
     res_out = flag_gems._gather_sparse_backward(inp, dim, index, grad)
@@ -218,9 +218,9 @@ def test_gather_sparse_backward_negative_dim(inp_shape, dim, dtype):
     grad = torch.randn(index.shape, dtype=dtype, device=flag_gems.device)
     neg_dim = dim - len(inp_shape)
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     ref_index = utils.to_reference(index)
-    ref_grad = utils.to_reference(grad)
+    ref_grad = utils.to_reference(grad, True)
     ref_out = _gather_sparse_backward(ref_inp, neg_dim, ref_index, ref_grad)
 
     res_out = flag_gems._gather_sparse_backward(inp, neg_dim, index, grad)

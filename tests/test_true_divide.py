@@ -26,8 +26,8 @@ from . import accuracy_utils as utils
 def test_true_divide(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.true_divide(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -42,8 +42,8 @@ def test_true_divide(shape, dtype):
 def test_true_divide_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1.clone(), False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1.clone(), True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_inp1.true_divide_(ref_inp2)
     with flag_gems.use_gems():
@@ -58,8 +58,8 @@ def test_true_divide_(shape, dtype):
 def test_true_divide_out(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.empty_like(ref_inp1)
     res_out = torch.empty_like(inp1)
@@ -78,7 +78,7 @@ def test_true_divide_out(shape, dtype):
 def test_true_divide_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.true_divide(ref_inp1, inp2)
     with flag_gems.use_gems():
@@ -94,7 +94,7 @@ def test_true_divide_tensor_scalar(shape, scalar, dtype):
 def test_true_divide_tensor_scalar_(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_inp1.true_divide_(inp2)
     with flag_gems.use_gems():
@@ -110,7 +110,7 @@ def test_true_divide_tensor_scalar_(shape, scalar, dtype):
 def test_true_divide_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.true_divide(inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -125,8 +125,8 @@ def test_true_divide_scalar_tensor(shape, scalar, dtype):
 def test_true_divide_tensor_dispatch(shape, dtype, caplog):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.true_divide"):
@@ -143,8 +143,8 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog):
 def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1.clone(), False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1.clone(), True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     torch.ops.aten.true_divide_.Tensor(ref_inp1, ref_inp2)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.true_divide_"):

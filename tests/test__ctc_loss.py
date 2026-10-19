@@ -37,7 +37,7 @@ def _make_inputs(T, N, S, C, dtype):
     input_lengths = [T] * N
     target_lengths = [S] * N
 
-    ref_log_probs = utils.to_reference(log_probs.clone().detach())
+    ref_log_probs = utils.to_reference(log_probs.clone().detach(), True)
     ref_targets = utils.to_reference(targets)
 
     gems_args = (log_probs, targets, input_lengths, target_lengths)
@@ -80,7 +80,7 @@ def test__ctc_loss_blank_and_zero_infinity(dtype):
     input_lengths = [T] * N
     target_lengths = [S] * N
 
-    ref_log_probs = utils.to_reference(log_probs.clone().detach())
+    ref_log_probs = utils.to_reference(log_probs.clone().detach(), True)
     ref_targets = utils.to_reference(targets)
 
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(

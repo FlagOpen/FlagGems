@@ -6,54 +6,32 @@ from . import base, consts
 
 class LSTMBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # LSTM core shapes follow generated single-layer benchmark coverage.
-        self.shapes = [
-            (2, 4, 8, 16, 1, False),
-            (4, 8, 16, 32, 1, False),
-            (8, 8, 16, 32, 1, False),
-        ]
+        self.shapes = [(2, 4, 8, 16, 1, False), (4, 8, 16, 32, 1, False), (8, 8, 16, 32, 1, False)]
 
 
-def lstm_input_fn(shape, dtype, device):
-    batch_size, seq_len, input_size, hidden_size, num_layers, bidirectional = shape
-    has_biases = True
-    batch_first = True
+def _case_fn(shape, dtype):
+    del dtype
+    batch, seq, input_size, hidden, layers, bidirectional = shape
+    directions = 2 if bidirectional else 1
+    yield base.BenchmarkCasePlan(
+        shape={"input": [batch, seq, input_size], "hx": [layers * directions, batch, hidden]},
+        params={"has_biases": True, "num_layers": layers, "dropout": 0.0, "train": False, "bidirectional": bidirectional, "batch_first": True},
+        builder_args=(tuple(shape),),
+    )
 
-    lstm = torch.nn.LSTM(
-        input_size=input_size,
-        hidden_size=hidden_size,
-        num_layers=num_layers,
-        bias=has_biases,
-        bidirectional=bidirectional,
-        batch_first=batch_first,
-    ).to(device=device, dtype=dtype)
 
-    input = torch.randn(batch_size, seq_len, input_size, dtype=dtype, device=device)
-    num_directions = 2 if bidirectional else 1
-    state_shape = (num_layers * num_directions, batch_size, hidden_size)
+def _build_inputs_fn(plan, dtype, device):
+    batch, seq, input_size, hidden, layers, bidirectional = plan.builder_args[0]
+    module = torch.nn.LSTM(input_size, hidden, layers, bias=True, bidirectional=bidirectional, batch_first=True).to(device=device, dtype=dtype)
+    directions = 2 if bidirectional else 1
+    state_shape = (layers * directions, batch, hidden)
+    inp = torch.randn((batch, seq, input_size), dtype=dtype, device=device)
     h0 = torch.randn(state_shape, dtype=dtype, device=device)
     c0 = torch.randn(state_shape, dtype=dtype, device=device)
-    params = tuple(lstm._flat_weights)
-
-    yield (
-        input,
-        (h0, c0),
-        params,
-        has_biases,
-        num_layers,
-        0.0,
-        False,
-        bidirectional,
-        batch_first,
-    )
+    p = plan.params
+    return inp, (h0, c0), tuple(module._flat_weights), p["has_biases"], p["num_layers"], p["dropout"], p["train"], p["bidirectional"], p["batch_first"]
 
 
 @pytest.mark.lstm
 def test_lstm():
-    bench = LSTMBenchmark(
-        input_fn=lstm_input_fn,
-        op_name="lstm",
-        torch_op=torch.lstm,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    LSTMBenchmark(op_name="lstm", torch_op=torch.lstm, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()

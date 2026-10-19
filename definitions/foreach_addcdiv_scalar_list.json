@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_addcdiv_scalar_list",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen operator aten::_foreach_addcdiv.ScalarList. Migrated from the shared foreach family suite on FlagGems master commit c778fea4. The tests cover three heterogeneous tensor-list shapes, float16/float32/bfloat16 accuracy against the exact ATen overload, empty lists, and TensorList length, shape, dtype, value, and non-aliasing.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "tensor1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "tensor2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "scalars",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar[]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_lu_solve",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_lu_solve(Tensor LU, Tensor pivots, Tensor B, *, bool left=True, bool adjoint=False) -> Tensor. Solves a linear system from an LU factorization without mutating or aliasing the inputs.",
+  "parameters": [
+    {
+      "name": "LU",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "pivots",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "left",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "bool",
+      "default": true
+    },
+    {
+      "name": "adjoint",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

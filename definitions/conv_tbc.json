@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "conv_tbc",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::conv_tbc(Tensor self, Tensor weight, Tensor bias, int pad=0) -> Tensor. Applies time-batch-channel convolution; the shared suite also checks the out variant. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "pad",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

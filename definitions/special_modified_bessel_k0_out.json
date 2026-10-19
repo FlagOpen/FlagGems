@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "special_modified_bessel_k0_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_modified_bessel_k0.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Writes the modified Bessel K0 result into out and returns that tensor.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

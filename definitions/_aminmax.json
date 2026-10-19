@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "_aminmax",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_aminmax(Tensor self) -> (Tensor min, Tensor max). Computes scalar minimum and maximum tensors without mutating or aliasing the input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "min",
+    "max"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

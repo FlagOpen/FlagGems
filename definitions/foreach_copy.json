@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "foreach_copy",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_foreach_copy(Tensor[] self, Tensor[] src, bool non_blocking=False) -> Tensor[] self_out. Copies each source tensor into the corresponding destination dtype. The functional form returns newly allocated copies; the in-place form preserves destination storage, mutates self, and returns no value.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "non_blocking",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "self_out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

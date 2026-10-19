@@ -3,20 +3,8 @@ import torch
 
 from . import base
 
-# Match the worktree accuracy-test square matrices; LDL requires N x N inputs.
-LDL_FACTOR_EX_SHAPES = [
-    (4, 4),
-    (8, 8),
-    (16, 16),
-    (32, 32),
-]
 
-
-def linalg_ldl_factor_ex_input_fn(shape, cur_dtype, device):
-    n = shape[-1]
-    a = torch.randn(shape, dtype=cur_dtype, device=device)
-    # Symmetric positive definite input avoids singular LDL cases.
-    yield (a @ a.mT + torch.eye(n, dtype=cur_dtype, device=device) * 0.1,)
+LDL_FACTOR_EX_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 
 
 class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
@@ -25,13 +13,25 @@ class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
         self.shape_desc = "N, N"
 
 
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(shape={"input": list(dims)}, params={}, builder_args=(dims,))
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    n = shape[-1]
+    a = torch.randn(shape, dtype=dtype, device=device)
+    return (a @ a.mT + torch.eye(n, dtype=dtype, device=device) * 0.1,)
+
+
 @pytest.mark.linalg_ldl_factor_ex
 def test_linalg_ldl_factor_ex():
-    bench = LinalgLdlFactorExBenchmark(
+    LinalgLdlFactorExBenchmark(
         op_name="linalg_ldl_factor_ex",
         torch_op=torch.linalg.ldl_factor_ex,
-        input_fn=linalg_ldl_factor_ex_input_fn,
-        # PyTorch linalg_ldl_factor_ex only supports float32 on CUDA.
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.run()
+    ).run()

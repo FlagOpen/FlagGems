@@ -1,0 +1,68 @@
+{
+  "api_version": "v6.0",
+  "name": "triplet_margin_loss",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::triplet_margin_loss(Tensor anchor, Tensor positive, Tensor negative, float margin=1.0, float p=2, float eps=1e-06, bool swap=False, int reduction=Mean) -> Tensor. Computes triplet margin loss with configurable margin, norm, epsilon, swap, and reduction. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "anchor",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "positive",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "negative",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "margin",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2,
+      "type_hint": "float"
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1e-06,
+      "type_hint": "float"
+    },
+    {
+      "name": "swap",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

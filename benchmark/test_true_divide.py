@@ -1,77 +1,37 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import pytest
 import torch
 
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 
-def _true_divide_scalar_input_fn(shape, dtype, device):
+def _tensor_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(shape={"self": list(dims), "other": list(dims)}, params={}, builder_args=(dims, "tensor"))
+
+
+def _scalar_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(shape={"self": list(dims)}, params={"other": 0.5}, builder_args=(dims, "scalar"))
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, kind = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, 0.5
-
-
-@pytest.mark.div_tensor
-def test_true_divide():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="div_tensor",
-        torch_op=torch.true_divide,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.div_scalar
-def test_true_divide_scalar():
-    bench = base.GenericBenchmark(
-        input_fn=_true_divide_scalar_input_fn,
-        op_name="div_scalar",
-        torch_op=torch.true_divide,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.div_scalar_
-def test_true_divide_inplace_scalar():
-    bench = base.GenericBenchmark(
-        input_fn=_true_divide_scalar_input_fn,
-        op_name="div_scalar_",
-        torch_op=lambda a, b: a.true_divide_(b),
-        dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
+    if kind == "scalar":
+        return inp, plan.params["other"]
+    other = utils.generate_tensor_input(shape, dtype, device)
+    other = other.sign().masked_fill_(other == 0, 1) * (other.abs() + 0.5)
+    return inp, other
 
 
 @pytest.mark.true_divide
 def test_true_divide_tensor_dispatch():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="true_divide",
-        torch_op=torch.ops.aten.true_divide.Tensor,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    OperatorBenchmark(op_name="true_divide", torch_op=torch.ops.aten.true_divide.Tensor, case_fn=_tensor_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
 
 
-@pytest.mark.true_divide_
-def test_true_divide_tensor_inplace_dispatch():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="true_divide_",
-        torch_op=torch.ops.aten.true_divide_.Tensor,
-        dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
+@pytest.mark.div_scalar
+def test_true_divide_scalar():
+    OperatorBenchmark(op_name="div_scalar", torch_op=torch.true_divide, case_fn=_scalar_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
