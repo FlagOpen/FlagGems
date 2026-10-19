@@ -4731,6 +4731,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dimV
+  description: 'Returns the number of dense dimensions of a sparse COO tensor.
+    '
+  for:
+  - _dimV
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dirichlet_grad
   description: 'Computes the reparameterized-gradient of the Dirichlet distribution
     with respect
@@ -13623,6 +13635,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: multiply_scalar
+  description: Multiplies a tensor by a scalar element-wise (tensor-scalar overload
+    of multiply).
+  for:
+  - multiply.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: mv
   description: Performs a matrix-vector product of the matrix `input` and the vector
     `vec`.
@@ -17959,6 +17983,21 @@ ops:
     `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
   for:
   - slow_conv_transpose2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_transpose3d
+  description: |
+    Applies a 3D transposed convolution operator over an input image composed of
+    several input planes, using the slow (im2col/col2im) reference algorithm.
+    The ``weight`` tensor uses the transposed-convolution layout
+    ``(in_channels, out_channels, kD, kH, kW)``.
+  for:
+  - slow_conv_transpose3d
   labels:
   - aten
   - KernelGen
