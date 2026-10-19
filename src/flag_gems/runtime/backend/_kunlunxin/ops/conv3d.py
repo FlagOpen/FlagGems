@@ -468,14 +468,9 @@ def _replay3(rec, input, weight, bias):
     if rec["promote"]:
         xi = input.to(torch.float32)
         wi = weight.to(torch.float32)
-        bi = (
-            bias.to(torch.float32)
-            if bias is not None
-            else _zero_bias3(rec["out_c"], input.device)
-        )
     else:
         xi, wi = input, weight
-        bi = bias if bias is not None else _zero_bias3(rec["out_c"], input.device)
+    bi = _zero_bias3(rec["out_c"], input.device)
     out = torch.empty(rec["out_shape"], device=input.device, dtype=rec["compute_dtype"])
     a[rec["j_in"]] = xi
     a[rec["j_w"]] = wi
@@ -701,11 +696,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                     wi = weight.to(torch.float32)
                 else:
                     xi, wi = input, weight
-                bi = (
-                    bias.to(torch.float32)
-                    if bias is not None
-                    else _zero_bias3(out_c, input.device)
-                )
+                bi = _zero_bias3(out_c, input.device)
                 raw, cap = _capture_and_delegate(lambda: _launch(xi, wi, bi))
                 rec2 = (
                     _record3(
@@ -734,11 +725,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             wi = weight.to(torch.float32)
         else:
             xi, wi = input, weight
-        bi = (
-            bias.to(torch.float32)
-            if bias is not None
-            else _zero_bias3(out_c, input.device)
-        )
+        bi = _zero_bias3(out_c, input.device)
         out = _launch(xi, wi, bi)
 
     if crop[0] or crop[1] or crop[2]:
@@ -748,6 +735,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             crop[1] : crop[1] + out_height - crop[1],
             crop[2] : crop[2] + out_width - crop[2],
         ]
+
+    if bias is not None:
+        out = out + bias.to(out.dtype).view(1, -1, 1, 1, 1)
 
     if use_fp32_compute:
         out = out.to(output_dtype)
