@@ -158,7 +158,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name in ("mm", "mm_w8a8_fp8"):
+        if self.op_name in ("mm", "mm_w8a8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -600,6 +600,13 @@ def _parallel_device_label():
 
 class ParallelBenchmarkMixin:
     SHAPE_CONFIG_KEYS = ()
+    # Operator name used to estimate per-shape cost when splitting shapes
+    # across GPUs; defaults to op_name. Set it when one op_name covers several
+    # precisions that need different cost models.
+    SHAPE_COST_OP_NAME = None
+    # Record the merged metrics in --record json. Opt-in so ops whose kanban
+    # number comes from a dedicated single-process benchmark keep that source.
+    RECORD_PARALLEL_RESULTS = False
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -769,11 +776,13 @@ class ParallelBenchmarkMixin:
 
         fixed_overhead = self._get_tuning_fixed_overhead()
 
+        cost_op_name = self.SHAPE_COST_OP_NAME or self.op_name
+
         def estimate_shape_cost(shape):
-            if self.op_name == "mul":
+            if cost_op_name == "mul":
                 return _estimate_mul_shape_cost(shape) + fixed_overhead
 
-            if self.op_name == "sparse_attention":
+            if cost_op_name == "sparse_attention":
                 if len(shape) != 6:
                     return 1 + fixed_overhead
                 batch, seq_len, _, topk, heads, dim = shape
@@ -789,9 +798,8 @@ class ParallelBenchmarkMixin:
                     * 4
                 ) + fixed_overhead
 
-            if self.op_name in {
+            if cost_op_name in {
                 "mm",
-                "mm_w8a8_fp8",
                 "addmm",
                 "bmm",
                 "baddbmm",
@@ -810,9 +818,8 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1 + fixed_overhead
 
-                if self.op_name in {
+                if cost_op_name in {
                     "mm",
-                    "mm_w8a8_fp8",
                     "bmm",
                     "w8a8_block_fp8_matmul",
                     "router_gemm",
@@ -1050,6 +1057,14 @@ class ParallelBenchmarkMixin:
             else:
                 metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
 
+            if self.RECORD_PARALLEL_RESULTS and not os.environ.get(
+                PARALLEL_RESULT_FILE_ENV
+            ):
+                # Main process of an opted-in benchmark: record the merged
+                # metrics like a single-process benchmark (--record json).
+                self._emit_result(dtype, metrics)
+                continue
+
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -1120,6 +1135,9 @@ def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
 
 class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
     SHAPE_CONFIG_KEYS = ("mm",)
+    # op_name is the shared kanban id "mm_w8a8"; FP8 keeps the mm GEMM cost.
+    SHAPE_COST_OP_NAME = "mm"
+    RECORD_PARALLEL_RESULTS = True
 
     def should_forward_parallel_dtype(self, dtype_name):
         # The CLI excludes FP8; each worker uses the same single FP8 dtype.
@@ -1595,7 +1613,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
     bench.run()
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
@@ -1612,7 +1630,7 @@ def test_mm_w8a8_fp8():
 
     bench = ParallelMmW8A8Fp8Benchmark(
         input_fn=mm_w8a8_fp8_input_fn,
-        op_name="mm_w8a8_fp8",
+        op_name="mm_w8a8",
         torch_op=torch_fp8_mm,
         dtypes=(
             [torch.float8_e4m3fn]
