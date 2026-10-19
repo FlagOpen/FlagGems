@@ -16,7 +16,9 @@ import ast
 import importlib.util
 import logging
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
+from io import StringIO
 from itertools import product
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -628,8 +630,15 @@ for module in (modules.accuracy, modules.benchmark):
 def test_unrelated():
     pass
 """)
-    result = pytester.runpytest_subprocess("-q", "-m", "unrelated")
-    result.assert_outcomes(passed=1, deselected=2242)
-    collected = pytester.runpytest_subprocess("--collect-only", "-q")
-    assert collected.ret == 0
-    assert "2243 tests collected" in collected.stdout.str()
+    # Pytester echoes child output even under -s; show it only on a failed check.
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        result = pytester.runpytest_subprocess("-q", "-m", "unrelated")
+    diagnostics = result.stdout.str() + result.stderr.str()
+    assert result.ret == pytest.ExitCode.OK, diagnostics
+    assert result.parseoutcomes() == {"passed": 1, "deselected": 2242}, diagnostics
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        collected = pytester.runpytest_subprocess("--collect-only", "-qq")
+    assert collected.ret == pytest.ExitCode.OK, (
+        collected.stdout.str() + collected.stderr.str()
+    )
+    assert "test_unselected_tests_do_not_probe.py: 2243" in collected.stdout.str()

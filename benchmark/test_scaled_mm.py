@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
+from io import StringIO
 from types import SimpleNamespace
 
 import pytest
@@ -213,8 +215,16 @@ def test_final_reset():
     assert modules.config.skip_native is False
     assert modules.config.native_baseline_skip_reason is None
 """)
-    result = pytester.runpytest_subprocess("-q")
-    result.assert_outcomes(passed=5, skipped=2, failed=2)
+    # Expected child failures must not look like failures of this regression.
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        result = pytester.runpytest_subprocess("-q", "--tb=short")
+    diagnostics = result.stdout.str() + result.stderr.str()
+    assert result.ret == pytest.ExitCode.TESTS_FAILED, diagnostics
+    assert result.parseoutcomes() == {
+        "passed": 5,
+        "skipped": 2,
+        "failed": 2,
+    }, diagnostics
     assert "unknown probe failure" in result.stdout.str()
 
 
