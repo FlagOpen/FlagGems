@@ -182,11 +182,8 @@ def test_coalesce(case, dtype):
 def test_coalesce_coalesced_input(case, dtype):
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
-    # Prepare sorted, duplicate-free input on CPU; the tested NPU call only
-    # needs the already-coalesced identity path, which supports more dtypes.
-    if flag_gems.vendor_name == "ascend":
-        inp = inp.cpu()
-    inp = inp.coalesce().to(flag_gems.device)
+    # Prepare sorted, duplicate-free input on CPU, then test the target device.
+    inp = inp.cpu().coalesce().to(flag_gems.device)
     assert inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
 
