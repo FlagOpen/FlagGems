@@ -16,10 +16,12 @@ import logging
 
 from .bitwise_or import bitwise_or_scalar_
 
-# Log to the canonical "flag_gems.ops.ior_scalar" logger so the tests' caplog
-# contract (gems_log_logger) sees the record; the vendor module path makes
-# gems_log_prefix resolve to "GEMS_KUNLUNXIN".
-logger = logging.getLogger("flag_gems.ops.ior_scalar")
+# The backend package is imported under its short name, so __name__ here is
+# "_kunlunxin.ops.ior_scalar".  Derive the canonical "flag_gems.ops.<op>" name
+# from it instead of hard-coding the op name: the caplog assertions in
+# tests/test_ior_scalar.py (via gems_log_logger) and use_gems(record=True) both
+# only see records emitted from the flag_gems logger namespace.
+logger = logging.getLogger("flag_gems.ops." + __name__.rsplit(".", 1)[-1])
 
 
 def ior_scalar(self, other):
