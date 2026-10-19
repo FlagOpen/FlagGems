@@ -39,7 +39,7 @@ def test_normal_pvalue(shape, dtype):
     scale = torch.full(
         size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
     )
-    res_out = flag_gems.normal_functional(loc, scale)
+    res_out = flag_gems.normal_tensor_tensor(loc, scale)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(),
         lambda x: scipy.stats.norm.cdf(x, loc=3.0, scale=10.0),

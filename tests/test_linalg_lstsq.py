@@ -109,7 +109,9 @@ def test_linalg_lstsq_gems_path_active():
     # registration path can never hide again.
     A = torch.eye(4, dtype=torch.float32, device=flag_gems.device)
     b = torch.randn(4, dtype=torch.float32, device=flag_gems.device)
-    ref = b.clone()
+    # to_reference keeps the reference on CPU under --ref=cpu, which is what
+    # gems_assert_close requires.
+    ref = utils.to_reference(b.clone())
     res = flag_gems.linalg_lstsq(A, b)
     assert res[0].shape == b.shape
     utils.gems_assert_close(res[0], ref, torch.float32)

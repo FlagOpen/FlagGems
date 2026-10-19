@@ -125,6 +125,12 @@ def test_where_self_out_cross_device(shape, dtype):
         ref_c = utils.to_reference(c)
 
         ref_out = torch.where(ref_c, ref_a, ref_b)
-        res_out = flag_gems.where_self(c, a, b)
+        if flag_gems.device not in {a.device.type, b.device.type, c.device.type}:
+            # All operands are CPU tensors, so the dispatcher never selects the
+            # GEMS kernel (which asserts on a device tensor). Compare torch to
+            # itself on this combination, exactly as the dispatch path does.
+            res_out = torch.where(c, a, b)
+        else:
+            res_out = flag_gems.where_self(c, a, b)
 
         utils.gems_assert_equal(res_out, ref_out)

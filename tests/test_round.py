@@ -78,15 +78,29 @@ def test_round_out(shape, dtype):
 def test_round_decimals(shape, dtype, decimals):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 100
 
-    # When demical≠0 and input is float16/bfloat16,
-    # compute result is difference between CUDA and CPU in Pytorch itself because of precision error
-    # so compare the result between FlagGems version and Pytorch CUDA version
+    # When decimals≠0 the two implementations can disagree by one quantisation
+    # step (10^-decimals). FlagGems rounds the exact quotient; ATen scales the
+    # input by a power of ten in the input dtype first, so a value sitting just
+    # below a .5 boundary (e.g. -249.014999 at decimals=2) can round the other
+    # way. Low-precision dtypes add an ULP of the result magnitude on top.
+    # Compare against PyTorch's CUDA result and allow both effects.
     ref_out = torch.round(inp, decimals=decimals)
     ref_out = ref_out.to("cpu")
 
+    if decimals != 0:
+        ulp = float(torch.finfo(dtype).eps * inp.abs().max().float().clamp(min=1.0))
+        atol = max(10.0 ** (-decimals), ulp)
+    else:
+        atol = 0
+
     res_out = flag_gems.round(inp, decimals=decimals).to("cpu")
 
-    utils.gems_assert_equal(res_out, ref_out)
+    if atol:
+        utils.gems_assert_close(
+            res_out.float(), ref_out.float(), torch.float32, atol=atol
+        )
+    else:
+        utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.round

@@ -23,7 +23,9 @@ def test_norm(shape, ord, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp, ord)
-    res_out = flag_gems.norm(inp, ord)
+    # torch.norm is a composite that decomposes to linalg_vector_norm, so the
+    # GEMS kernel this test actually exercises is vector_norm.
+    res_out = flag_gems.vector_norm(inp, ord, None, False)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -36,7 +38,7 @@ def test_norm_scalar(shape, dtype):
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.norm(ref_inp)
-    res_out = flag_gems.norm_scalar(inp)
+    res_out = flag_gems.vector_norm(inp, 2, None, False)
 
     gems_assert_close(res_out, ref_out, dtype)
 
