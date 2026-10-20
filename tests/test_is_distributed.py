@@ -20,6 +20,142 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _sparse_values(dtype):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype == torch.complex64:
+        values = _copy_to(torch.ones(2, dtype=dtype, device="cpu"), flag_gems.device)
+    else:
+        values = torch.ones(2, dtype=dtype, device=flag_gems.device)
+    return _check_input(values, dtype, (2,))
+
+
+def _check_reference(reference, inp):
+    assert reference.dtype == inp.dtype and reference.shape == inp.shape
+    assert reference.layout == inp.layout
+    # The original meta-state reference remains meta in both reference modes.
+    device = "cpu" if utils.TO_CPU and inp.device.type != "meta" else inp.device
+    assert reference.device == _device(device)
+
+
+def _check_state(inp, kind, dtype):
+    shapes = {
+        "transpose": (10, 12),
+        "slice": (4, 5),
+        "expand": (4, 6),
+        "step": (4, 3),
+        "conj": (12, 10),
+        "neg": (12, 10),
+        "zero_dim": (),
+        "empty": (0, 7),
+        "meta": (12, 10),
+        "sparse_coo": (12, 10),
+        "sparse_csr": (2, 10),
+    }
+    assert inp.dtype == dtype and inp.shape == torch.Size(shapes[kind])
+    assert inp.device == _device("meta" if kind == "meta" else flag_gems.device)
+    if kind.startswith("sparse_"):
+        assert inp.layout == getattr(torch, kind)
+        return
+    strides = {
+        "transpose": (1, 10),
+        "slice": (10, 2),
+        "expand": (0, 0),
+        "step": (30, 4),
+        "zero_dim": (),
+        "empty": (7, 1),
+    }
+    assert inp.layout == torch.strided
+    assert inp.stride() == strides.get(kind, (10, 1))
+    assert inp.storage_offset() == (10 if kind == "slice" else 0)
+    assert inp.is_conj() == (kind == "conj" and dtype.is_complex)
+    assert inp.is_neg() == (kind == "neg")
+
+
 # aten::is_distributed(Tensor self) -> bool reports TensorImpl state and never
 # reads data, so its workloads are tensor states and dtypes, not values.
 
@@ -91,8 +227,9 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_is_distributed(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
+    _check_reference(ref_inp, inp)
 
     ref_out = torch.ops.aten.is_distributed(ref_inp)
     res_out = flag_gems.is_distributed(inp)
@@ -129,14 +266,14 @@ def _state_input(kind, dtype):
     if kind == "sparse_coo":
         return torch.sparse_coo_tensor(
             torch.tensor([[0, 1], [1, 0]], device=device),
-            torch.ones(2, dtype=dtype, device=device),
+            _sparse_values(dtype),
             (12, 10),
         )
     if kind == "sparse_csr":
         return torch.sparse_csr_tensor(
             torch.tensor([0, 1, 2], dtype=torch.int32, device=device),
             torch.tensor([1, 0], dtype=torch.int32, device=device),
-            torch.ones(2, dtype=dtype, device=device),
+            _sparse_values(dtype),
             (2, 10),
         )
     base = tu.make_input(dtype, (12, 10), ["-1", "1"])
@@ -165,9 +302,11 @@ def _state_input(kind, dtype):
 @pytest.mark.parametrize("dtype", _STATE_DTYPES)
 def test_is_distributed_tensor_state(kind, dtype):
     inp = _state_input(kind, dtype)
+    _check_state(inp, kind, dtype)
     # A meta tensor cannot be moved to the reference device and no data is read,
     # so its reference is built independently with the same state.
     ref_inp = inp.detach().clone() if kind == "meta" else tu.to_reference(inp)
+    _check_reference(ref_inp, inp)
     shape = tuple(inp.shape)
     flags = (inp.is_conj(), inp.is_neg())
 
@@ -184,8 +323,9 @@ def test_is_distributed_tensor_state(kind, dtype):
 @pytest.mark.is_distributed
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_is_distributed_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
+    _check_reference(ref_inp, inp)
 
     ref_out = torch.ops.aten.is_distributed(ref_inp)
     res_out = flag_gems.is_distributed(inp)
@@ -202,7 +342,9 @@ def test_is_distributed_leaves_autograd_state(dtype):
     # reading the flag neither builds a graph through the leaf nor deposits a
     # gradient on it.
     inp = tu.make_input(dtype, (8, 8), ["-1", "1"]).requires_grad_(True)
+    _check_input(inp, dtype, (8, 8))
     ref_inp = tu.to_reference(inp)
+    _check_reference(ref_inp, inp)
 
     ref_out = torch.ops.aten.is_distributed(ref_inp)
     res_out = flag_gems.is_distributed(inp)
