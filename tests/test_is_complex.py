@@ -96,11 +96,14 @@ def _make_input(dtype, shape, value_range):
 
 
 def _make_special_input(dtype, scenario):
-    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
+    cpu_encoding = (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64)
+    if not cpu_encoding:
         return tu.make_special_input(dtype, scenario)
+    # NPU device-side float64 casts also narrow to float32, although a
+    # CPU-encoded float64 tensor retains its dtype when transferred.
     payloads = {
         "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
         "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
