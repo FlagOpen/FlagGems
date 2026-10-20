@@ -2005,6 +2005,7 @@ _FULL_CONFIG = (
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
     ("view_as_complex", view_as_complex),
+    ("view_as_complex_copy", view_as_complex_copy),
     ("view_as_real_copy", view_as_real_copy),
     ("view_copy", view_copy),
     ("vsplit.array", vsplit),
