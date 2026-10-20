@@ -21,8 +21,7 @@ from flag_gems.ops.copy import copy_ as _triton_copy_
 from flag_gems.ops.logit_ import logit_kernel
 from flag_gems.runtime import torch_device_fn
 
-logger = logging.getLogger("flag_gems.ops." + __name__.rsplit(".", 1)[-1])
-
+logger = logging.getLogger(__name__) 
 
 def logit_(*args, **kwargs):
     logger.debug("GEMS_KUNLUNXIN LOGIT_")
