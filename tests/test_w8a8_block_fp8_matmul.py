@@ -24,7 +24,7 @@ FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
 
 pytestmark = pytest.mark.skipif(
     not FP8_DTYPES,
-    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+    reason="the device does not support FP8 (no FP8 hardware)",
 )
 
 if QUICK_MODE:
