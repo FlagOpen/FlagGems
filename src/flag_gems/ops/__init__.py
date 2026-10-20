@@ -316,6 +316,9 @@ from flag_gems.ops._nested_tensor_softmax_with_shape import (
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from flag_gems.ops._new_zeros_with_same_feature_meta import (
+    _new_zeros_with_same_feature_meta,
+)
 from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
@@ -598,6 +601,7 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_depthwise3d import conv_depthwise3d
 from flag_gems.ops.conv_tbc import conv_tbc, conv_tbc_out
 from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
@@ -613,6 +617,7 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable_out,
 )
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
@@ -784,6 +789,7 @@ from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.glu_backward_jvp import glu_backward_jvp
 from flag_gems.ops.glu_jvp import glu_jvp
 from flag_gems.ops.gradient import gradient
 from flag_gems.ops.greater import (
@@ -1238,6 +1244,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resize_as import resize_as, resize_as_
+from flag_gems.ops.resize_as_sparse_ import resize_as_sparse_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -1429,6 +1436,7 @@ from flag_gems.ops.special_zeta import (
     special_zeta_tensor_scalar,
     special_zeta_tensor_scalar_out,
 )
+from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes import split_with_sizes
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -1547,6 +1555,7 @@ from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_bac
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.values import _values as values
 from flag_gems.ops.values_copy import values_copy, values_copy_out
 from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
@@ -1554,6 +1563,7 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
+from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
@@ -1846,6 +1856,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
+    "_new_zeros_with_same_feature_meta",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -2126,6 +2137,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_depthwise3d",
     "conv_tbc",
     "conv_tbc_backward",
     "conv_tbc_out",
@@ -2139,6 +2151,7 @@ __all__ = [
     "convolution_overrideable_out",
     "copy",
     "copy_",
+    "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
     "copysign_out",
@@ -2328,6 +2341,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_backward_jvp",
     "glu_jvp",
     "gradient",
     "greater",
@@ -2819,6 +2833,7 @@ __all__ = [
     "resize_",
     "resize_as",
     "resize_as_",
+    "resize_as_sparse_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -3015,6 +3030,7 @@ __all__ = [
     "special_zeta_scalar_tensor_out",
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
+    "split_copy",
     "split_with_sizes",
     "split_with_sizes_copy",
     "spsolve",
@@ -3141,6 +3157,7 @@ __all__ = [
     "upsample_trilinear3d",
     "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
+    "values",
     "values_copy",
     "values_copy_out",
     "vander",
@@ -3151,6 +3168,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_as_complex",
+    "view_as_real_copy",
     "view_copy",
     "vsplit",
     "vstack",
