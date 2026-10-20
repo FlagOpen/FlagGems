@@ -2272,12 +2272,7 @@ class Conv2d(torch.autograd.Function):
             (batch, out_channels, out_h, out_w),
             device=input.device,
             dtype=input.dtype,
-            memory_format=(
-                torch.channels_last
-                if convert_input_to_cl
-                or input.is_contiguous(memory_format=torch.channels_last)
-                else torch.contiguous_format
-            ),
+            memory_format=torch.channels_last,
         )
 
         grid = lambda meta: (
