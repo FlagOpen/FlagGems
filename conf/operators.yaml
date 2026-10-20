@@ -18398,6 +18398,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_coo_tensor_with_dims_and_tensors
+  description: 'Assembles a sparse COO tensor from an explicit (indices, values)
+    payload with the requested sparse/dense dimension split and logical size,
+    recording the coalesced flag without reordering or deduplicating entries.
+
+    '
+  for:
+  - _sparse_coo_tensor_with_dims_and_tensors
+  - _sparse_coo_tensor_with_dims_and_tensors.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
