@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
 import time
 
@@ -37,6 +38,9 @@ CONTIGUOUS_SUFFIX_CASES = [
     ((2, 8, 2048, 16), 2),
     ((2, 8, 2048, 32), 2),
     ((1024, 64), 0),
+    ((2, 8, 2048, 72), 2),
+    ((2, 3, 257, 80), 2),
+    ((2, 257, 129), 1),
 ]
 
 
@@ -597,3 +601,109 @@ def test_index_add_singleton_noncanonical_stride(inplace):
         assert result is inp and inp.stride() == (1, 1)
     else:
         torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "metax", reason="MetaX suffix kernel coverage"
+)
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("suffix", [31, 32, 33, 72, 79, 80, 129])
+def test_index_add_metax_suffix_tail(inplace, dtype, index_dtype, suffix):
+    # Nonzero initial output catches autotune trials that are not restored.
+    inp = torch.full((2, 3, 37, suffix), 2, dtype=dtype, device=flag_gems.device)
+    src = torch.ones((2, 3, 67, suffix), dtype=dtype, device=flag_gems.device)
+    index = torch.arange(67, dtype=index_dtype, device=flag_gems.device) % 11
+    expected = torch.index_add(inp.cpu(), -2, index.cpu(), src.cpu(), alpha=2)
+    result = _call_index_add(inp, -2, index, src, inplace, alpha=2)
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "metax", reason="MetaX FP16 accumulation accuracy"
+)
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("suffix", [3, 33])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_index_add_metax_fp16_small_increments(inplace, suffix, sign):
+    # Each 1/16 update is smaller than half an FP16 ULP at 256. Accumulate
+    # before the final output conversion, rather than losing every update.
+    inp = torch.full(
+        (2, 3, suffix), sign * 256, dtype=torch.float16, device=flag_gems.device
+    )
+    src = torch.full(
+        (2, 1024, suffix),
+        sign / 16,
+        dtype=torch.float16,
+        device=flag_gems.device,
+    )
+    index = torch.zeros(1024, dtype=torch.int64, device=flag_gems.device)
+    original = inp.cpu().clone()
+    reference = torch.index_add(original.double(), 1, index.cpu(), src.cpu().double())
+    expected = original.double()
+    expected[:, 0, :] = sign * 320
+    torch.testing.assert_close(reference, expected, rtol=0, atol=0)
+
+    result = _call_index_add(inp, 1, index, src, inplace)
+
+    assert result.dtype == torch.float16
+    torch.testing.assert_close(result.cpu().double(), expected, rtol=0, atol=0)
+    if inplace:
+        assert result is inp
+    else:
+        torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "metax", reason="MetaX contended accumulation"
+)
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_add_metax_random_contention(inplace, dtype):
+    torch.manual_seed(17)
+    inp = torch.randn((2, 37, 129), dtype=dtype, device=flag_gems.device) * 0.125
+    src = torch.randn((2, 513, 129), dtype=dtype, device=flag_gems.device) * 0.25
+    index = torch.arange(513, device=flag_gems.device) % 7
+    expected = torch.index_add(inp.cpu().double(), 1, index.cpu(), src.cpu().double())
+    result = _call_index_add(inp, 1, index, src, inplace)
+    tolerance = 1e-5 if dtype == torch.float32 else 1e-2
+    torch.testing.assert_close(
+        result.cpu().double(), expected, rtol=tolerance, atol=tolerance
+    )
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX dispatch coverage")
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("layout", ["last_dim", "noncontiguous"])
+def test_index_add_metax_fallback_validates_once(monkeypatch, inplace, layout):
+    common = importlib.import_module("flag_gems.ops.index_add")
+    vendor = importlib.import_module(flag_gems.index_add.__module__)
+    validate = common._validate_index_add_args
+    calls = []
+
+    def counted(*args):
+        calls.append(1)
+        return validate(*args)
+
+    monkeypatch.setattr(common, "_validate_index_add_args", counted)
+    monkeypatch.setattr(vendor, "_validate_index_add_args", counted)
+    if layout == "last_dim":
+        inp = torch.zeros((2, 4), device=flag_gems.device)
+        src = torch.ones((2, 2), device=flag_gems.device)
+    else:
+        inp = torch.zeros((4, 2, 3), device=flag_gems.device).transpose(0, 1)
+        src = torch.ones((2, 2, 3), device=flag_gems.device)
+    index = torch.tensor([0, 2], device=flag_gems.device)
+    expected = torch.index_add(inp.cpu(), 1, index.cpu(), src.cpu())
+    result = _call_index_add(inp, 1, index, src, inplace)
+    torch.testing.assert_close(result.cpu(), expected)
+    assert len(calls) == 1
