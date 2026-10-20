@@ -173,14 +173,39 @@ def _flat_launchers():
     return _FLAT
 
 
+def _flat_replay_ok(kernel):
+    """True when the compiled kernel still matches the hand-expanded ABI below.
+
+    The replay spells out the descriptor lowering itself ("base pointer, then
+    `.shape` i32 and `.strides` i64"), which the launcher is free to change --
+    an SDNN kernel, for one, expands a descriptor to `4 * rank + 2` arguments
+    instead of `2 * rank + 1`. Checking the bound launcher's own signature means
+    a lowering change costs the replay (we keep using `fn[grid]`) instead of
+    launching with a silently wrong argument list.
+    """
+    launcher = getattr(kernel, "run", None)
+    sig = getattr(launcher, "_signature", None)
+    if not sig:
+        return False
+    if getattr(launcher, "_is_sdnn", False):
+        return False
+    runtime_args = [str(ty) for ty in sig.values() if str(ty) != "constexpr"]
+    descs = [ty for ty in runtime_args if ty.startswith("tensordesc")]
+    # (a_desc, c_desc, N): two descriptors (rank 2 and rank 1) and one scalar,
+    # i.e. the 9 operands the replay passes.
+    return len(runtime_args) == 3 and len(descs) == 2
+
+
 def _tle_op_row_reduce(a, c, R, C, op, final_sqrt, out_tl_dtype):
     """Reduce a contiguous 2-D ``[R, C]`` tensor into 1-D ``c`` (length ``R``)."""
     xblock, yblock, row_blocks = _tle_row_geom(R, C, a.element_size())
     # A 16-wide fp16/bf16 tile hits a tle_vload vector-packing bug (compile
     # error for fp16, silently wrong values for bf16).  8-wide and 32-wide are
-    # both fine, so bump the one bad width up to a full 32-element vector; the
-    # descriptor copy clamps itself to C and the identity-fill covers the
-    # overhang, so the reduce is still exact.
+    # both fine, so bump the one bad width up to a full 32-element vector.
+    # What keeps a C == 16 row exact after the bump is the identity fill, not
+    # the copy clamp: the bump makes `NEED_FILL = (C % yblock != 0)` true, so
+    # the 16 columns of overhang are filled with the op's identity before the
+    # copy and cannot contribute to the reduce.
     if yblock == 16 and a.element_size() == 2:
         yblock = 32
     consts = (
@@ -225,7 +250,10 @@ def _tle_op_row_reduce(a, c, R, C, op, final_sqrt, out_tl_dtype):
                 C,
                 *consts,
             )
-        launchers.bind(_tle_op_row_kernel, key, kernel, grid)
+        # Bind only if the compiled kernel still takes the ABI the replay below
+        # spells out; otherwise every call stays on the `fn[grid]` path.
+        if _flat_replay_ok(kernel):
+            launchers.bind(_tle_op_row_kernel, key, kernel, grid)
         return
     # Descriptor ABI: base pointer, then `.shape` (i32) and `.strides` (i64);
     # the trailing `C` is the kernel's runtime `N` scalar.
@@ -245,6 +273,12 @@ _ABSMAX_INF_F16_OBJ = os.path.join(
 _HAS_TLE_RAW = False
 if _HAS_TLE:
     try:
+        # Payload ABI (both dtypes): `x` is a contiguous [R, C] matrix, `out` a
+        # length-R vector, `bid` the row-block id (grid == R), and `is_min` is 0
+        # for max(|x|) / 1 for min(|x|) -- i.e. the row-wise absolute max or min
+        # the inf/-inf matrix norms need, reduced over C. Transposed use passes
+        # (base, N, M) with a column-major view, hence the (R, C) naming here
+        # rather than (M, N).
 
         @_tle.raw.dialect("xpu3", object=_ABSMAX_INF_F32_OBJ, arch=3)
         def absmax_inf_f32(x, out, R, C, bid, is_min): ...
