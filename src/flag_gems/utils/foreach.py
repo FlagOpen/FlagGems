@@ -25,6 +25,7 @@ Design notes
 import array
 import logging
 import math
+import numbers
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -1014,10 +1015,17 @@ def _common_scalar(vals: Sequence[Any]) -> Optional[Any]:
     # it keeps the by-value argument a plain number even if a caller handed in
     # zero-dimensional tensors.
     first = float(vals[0])
-    sign = math.copysign(1.0, first)
+    if first == 0.0:
+        sign = math.copysign(1.0, first)
+        for v in vals:
+            v = float(v)
+            if v != first or math.copysign(1.0, v) != sign:
+                return None
+        return first
+    # Outside the zeros the value itself carries the sign, so the explicit
+    # sign-bit test is only needed for ±0.0.
     for v in vals:
-        v = float(v)
-        if v != first or math.copysign(1.0, v) != sign:
+        if float(v) != first:
             return None
     return first
 
@@ -1053,23 +1061,50 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     return out
 
 
-def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[Any]:
+def _resolve_scalars(
+    tensors: Sequence[torch.Tensor], scalars: Any
+) -> Tuple[List[Any], Optional[float], Optional[type]]:
     """Normalise the ``.Scalar`` / ``.ScalarList`` / ``.Tensor`` forms into a list.
 
     The ``.Tensor`` overloads of ``addcmul``/``addcdiv`` take the values as a
     one-dimensional tensor holding one entry per tensor in the list (ATen
     requires it on the CPU), so it is unpacked here rather than being mistaken
     for a single value.
+
+    Returns ``(values, common, vclass)``: one entry per tensor, plus the value
+    every entry shares as a ``float`` -- or ``None`` when a scan is needed to
+    find out, or when the value is not a real number and cannot be converted --
+    plus the Python type of every entry when the broadcast form makes it one
+    object repeated (``None`` when it has to be looked at per element).  A plain
+    broadcast scalar is already its own common value, so the equality scan that
+    ``_common_scalar`` performs can be skipped for it.
+
+    ``float`` conversion is limited to ``numbers.Real`` so that an illegal
+    complex scalar keeps the error the base implementation produced: the
+    launcher's ``_common_scalar`` raises ``TypeError`` for it, and for an
+    all-empty tensor list -- where the launch is skipped -- the call returns
+    the promoted empty outputs instead of failing early here.
     """
     if isinstance(scalars, torch.Tensor):
         if scalars.numel() == 1:
-            return [scalars.item()] * len(tensors)
+            value = scalars.item()
+            # Keep the Python type of the original value in ``values``: an
+            # ``int`` scalar promotes an integral tensor differently from a
+            # ``float``.  The by-value argument is always the float the device
+            # buffer would have held.
+            if isinstance(value, numbers.Real):
+                return [value] * len(tensors), float(value), type(value)
+            return [value] * len(tensors), None, None
         _check_same_length(tensors, scalars, "scalar list")
-        return scalars.detach().cpu().tolist()
+        values = scalars.detach().cpu().tolist()
+        return values, _common_scalar(values), None
     if isinstance(scalars, (list, tuple)):
         _check_same_length(tensors, scalars, "scalar list")
-        return list(scalars)
-    return [scalars] * len(tensors)
+        values = list(scalars)
+        return values, _common_scalar(values), None
+    if isinstance(scalars, numbers.Real):
+        return [scalars] * len(tensors), float(scalars), type(scalars)
+    return [scalars] * len(tensors), None, None
 
 
 def _finish_inplace(
@@ -1129,7 +1164,8 @@ def foreach_binary_list(
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, List, List]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
     prev_key = None
-
+    prev_promotion = None
+    prev_out_dtype = None
     for i, (a, b) in enumerate(zip(self, other)):
         if allowed_dtypes is not None and a.dtype not in allowed_dtypes:
             check_dtype_supported(
@@ -1142,9 +1178,23 @@ def foreach_binary_list(
         elif out_dtypes is not None:
             out_dtype = out_dtypes[i]
         else:
-            out_dtype = _promote_dtypes(a, b)
-            if out_dtype_fn is not None:
-                out_dtype = out_dtype_fn(out_dtype)
+            # Two operands of the *same* dtype fold to that dtype whatever their
+            # ranks are -- the weak-scalar rule only reorders categories -- so
+            # the common same-dtype list skips both the probe and the four
+            # ``dim()`` calls that key it.
+            a_dtype = a.dtype
+            if a_dtype is b.dtype:
+                promotion = a_dtype
+            else:
+                promotion = (a_dtype, a.dim() == 0, b.dtype, b.dim() == 0)
+            if promotion != prev_promotion:
+                out_dtype = a_dtype if a_dtype is b.dtype else _promote_dtypes(a, b)
+                if out_dtype_fn is not None:
+                    out_dtype = out_dtype_fn(out_dtype)
+                prev_promotion = promotion
+                prev_out_dtype = out_dtype
+            else:
+                out_dtype = prev_out_dtype
         contiguous_a = a.is_contiguous()
         src_a = a if contiguous_a else _dense(a)
         src_b = b if b.is_contiguous() else _dense(b)
@@ -1166,7 +1216,13 @@ def foreach_binary_list(
                 writebacks.append((a, dst))
             results.append(a)
         else:
-            dst = torch.empty_like(src_a, dtype=out_dtype)
+            # The one-argument form skips the keyword/dtype dispatch that the
+            # explicit form pays on every one of the sixteen allocations.
+            dst = (
+                torch.empty_like(src_a)
+                if out_dtype is src_a.dtype
+                else torch.empty_like(src_a, dtype=out_dtype)
+            )
             results.append(dst)
         key = (a.device, src_a.dtype, src_b.dtype)
         if key != prev_key:
@@ -1245,7 +1301,7 @@ def foreach_binary_scalar(
     of one number per tensor.  ``alpha`` scales the scalar inside the kernel.
     """
     self = check_tensor_list(self)
-    values = _resolve_scalars(self, scalars)
+    values, common, vclass = _resolve_scalars(self, scalars)
     _STATS.reset()
 
     results: List[torch.Tensor] = []
@@ -1254,7 +1310,6 @@ def foreach_binary_scalar(
     prev_key = None
     prev_promotion = None
     prev_out_dtype = None
-
     for t, v in zip(self, values):
         if allowed_dtypes is not None and t.dtype not in allowed_dtypes:
             check_dtype_supported(
@@ -1262,11 +1317,16 @@ def foreach_binary_scalar(
             )
         # ``_promote_with_scalar`` memoises on exactly this triple, so a run of
         # tensors sharing it can reuse the previous answer instead of paying
-        # for another lookup.
+        # for another lookup.  The broadcast form makes the value's class the
+        # same object for every position, so only the dtype is looked at.
         promotion = (
-            t.dtype,
-            type(v),
-            isinstance(v, torch.Tensor) and v.dim() == 0,
+            (t.dtype, vclass)
+            if vclass is not None
+            else (
+                t.dtype,
+                type(v),
+                isinstance(v, torch.Tensor) and v.dim() == 0,
+            )
         )
         if promotion != prev_promotion:
             out_dtype = _promote_with_scalar(t.dtype, v)
@@ -1296,7 +1356,13 @@ def foreach_binary_scalar(
                 writebacks.append((t, dst))
             results.append(t)
         else:
-            dst = torch.empty_like(src, dtype=out_dtype)
+            # Same one-argument shortcut as the list path: the explicit dtype
+            # form pays for keyword parsing on each of the sixteen allocations.
+            dst = (
+                torch.empty_like(src)
+                if out_dtype is src.dtype
+                else torch.empty_like(src, dtype=out_dtype)
+            )
             results.append(dst)
         key = (t.device, src.dtype, out_dtype)
         if key != prev_key:
@@ -1309,7 +1375,9 @@ def foreach_binary_scalar(
         bucket[2].append(v)
 
     for (device, in_dt, out_dt), (srcs, dsts, vals) in buckets.items():
-        _launch_scalar_group(srcs, dsts, vals, fn, in_dt, out_dt, device, alpha)
+        _launch_scalar_group(
+            srcs, dsts, vals, fn, in_dt, out_dt, device, alpha, common
+        )
 
     _finish_inplace(results, writebacks)
     return results
@@ -1324,6 +1392,7 @@ def _launch_scalar_group(
     out_dt: torch.dtype,
     device: Any,
     alpha: float = 1,
+    common: Optional[float] = None,
 ) -> None:
     numels = [t.numel() for t in srcs]
     max_numel = max(numels)
@@ -1346,8 +1415,10 @@ def _launch_scalar_group(
     # ``.Scalar`` broadcasts one value into every slot, so when the values are
     # all equal there is nothing for an array to index: the value travels as a
     # kernel argument instead.  That drops a host->device copy and a device
-    # allocation (~9us) from every such call.
-    common = _common_scalar(vals)
+    # allocation (~9us) from every such call.  ``common`` is already known for
+    # the broadcast forms; only a real list needs the equality scan.
+    if common is None:
+        common = _common_scalar(vals)
     by_value = common is not None
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
@@ -1395,23 +1466,56 @@ def foreach_ternary(
     tensor2 = check_tensor_list(tensor2)
     _check_same_length(self, tensor1, "tensor list")
     _check_same_length(self, tensor2, "tensor list")
-    values = _resolve_scalars(self, scalars)
+    values, common, vclass = _resolve_scalars(self, scalars)
     _STATS.reset()
 
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, ...]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
     prev_key = None
-
+    prev_promotion = None
+    prev_out_dtype = None
     for a, b, c, v in zip(self, tensor1, tensor2, values):
         if allowed_dtypes is not None and a.dtype not in allowed_dtypes:
             check_dtype_supported(a.dtype, allowed_dtypes)
         # ``result_type`` pairs two tensors or a tensor and a number, so the
         # three-way promotion is folded through a zero-element probe of the
-        # intermediate dtype rather than by chaining dtypes directly.
-        out_dtype = _promote_dtypes(a, b, c)
-        if not out_dtype.is_floating_point and not out_dtype.is_complex:
-            out_dtype = _promote_with_scalar(a.dtype, v)
+        # intermediate dtype rather than by chaining dtypes directly.  The
+        # integer fallback below also looks at the value's type, so that joins
+        # the memo key; the tuple is the same one ``_promote_dtypes`` and
+        # ``_promote_with_scalar`` already key on.
+        #
+        # Three operands of the *same* dtype fold to that dtype whatever their
+        # ranks are, so the common case needs neither the probe nor the six
+        # ``dim()`` calls that key it.
+        if vclass is not None:
+            vkey = vclass
+        else:
+            vkey = type(v)
+            if vkey is torch.Tensor:
+                vkey = (torch.Tensor, v.dim() == 0)
+        a_dtype = a.dtype
+        same = a_dtype is b.dtype and a_dtype is c.dtype
+        if same:
+            promotion = (a_dtype, vkey)
+        else:
+            promotion = (
+                a_dtype,
+                a.dim() == 0,
+                b.dtype,
+                b.dim() == 0,
+                c.dtype,
+                c.dim() == 0,
+                vkey,
+            )
+        if promotion != prev_promotion:
+            out_dtype = a_dtype if same else _promote_dtypes(a, b, c)
+            if not out_dtype.is_floating_point and not out_dtype.is_complex:
+                out_dtype = _promote_with_scalar(a_dtype, v)
+            prev_promotion = promotion
+            prev_out_dtype = out_dtype
+        else:
+            out_dtype = prev_out_dtype
         contiguous_a = a.is_contiguous()
         src_a = a if contiguous_a else _dense(a)
         src_b = b if b.is_contiguous() else _dense(b)
@@ -1434,7 +1538,13 @@ def foreach_ternary(
                 writebacks.append((a, dst))
             results.append(a)
         else:
-            dst = torch.empty_like(src_a, dtype=out_dtype)
+            # The one-argument form skips the keyword/dtype dispatch that the
+            # explicit form pays on every one of the sixteen allocations.
+            dst = (
+                torch.empty_like(src_a)
+                if out_dtype is src_a.dtype
+                else torch.empty_like(src_a, dtype=out_dtype)
+            )
             results.append(dst)
         key = (a.device, src_a.dtype, out_dtype)
         if key != prev_key:
@@ -1449,7 +1559,9 @@ def foreach_ternary(
         bucket[4].append(v)
 
     for (device, in_dt, out_dt), (a_l, b_l, c_l, d_l, v_l) in buckets.items():
-        _launch_ternary_group(a_l, b_l, c_l, d_l, v_l, fn, in_dt, out_dt, device)
+        _launch_ternary_group(
+            a_l, b_l, c_l, d_l, v_l, fn, in_dt, out_dt, device, common
+        )
 
     _finish_inplace(results, writebacks)
     return results
@@ -1465,6 +1577,7 @@ def _launch_ternary_group(
     in_dt: torch.dtype,
     out_dt: torch.dtype,
     device: Any,
+    common: Optional[float] = None,
 ) -> None:
     numels = [t.numel() for t in a_l]
     max_numel = max(numels)
@@ -1484,7 +1597,8 @@ def _launch_ternary_group(
     # Same treatment as the binary scalar path: the ``.Scalar`` form supplies one
     # value for the whole list, so it travels as a kernel argument instead of a
     # device buffer.  The ``.ScalarList`` form still needs the array.
-    common = _common_scalar(v_l)
+    if common is None:
+        common = _common_scalar(v_l)
     by_value = common is not None
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
