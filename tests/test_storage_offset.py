@@ -20,6 +20,57 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _make_input(dtype, shape, value_range):
+    if dtype not in _FP8_DTYPES or flag_gems.vendor_name not in ("ascend", "kunlunxin"):
+        return tu.make_input(dtype, shape, value_range)
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if low == high:
+        value = torch.full(shape, low, dtype=torch.float32, device="cpu")
+    else:
+        value = torch.testing.make_tensor(
+            shape, dtype=torch.float32, device="cpu", low=low, high=high
+        )
+    return value.to(dtype).to(flag_gems.device)
+
+
+def _reference(inp, *, cpu=None):
+    # Copy storage as bytes before rebuilding the view. A Tensor.cpu() copy
+    # compacts nonzero offsets; typed FP8 strided copies are also unavailable
+    # on some backends. The native metadata query still runs on an independent
+    # tensor with the same shape, strides, offset and lazy flags.
+    if inp.device.type == "meta":
+        return inp.detach().clone()
+    if inp.layout != torch.strided:
+        return tu.to_reference(inp)
+    if cpu is None:
+        cpu = utils.TO_CPU
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.cpu().clone() if cpu else raw.clone()
+    ref = torch.empty(0, dtype=inp.dtype, device=raw.device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        ref = ref.conj()
+    if inp.is_neg():
+        ref = ref._neg_view()
+    return ref.requires_grad_(inp.requires_grad)
+
+
+def _assert_unchanged(actual, snapshot):
+    assert actual.device == snapshot.device
+    assert actual.dtype == snapshot.dtype and actual.shape == snapshot.shape
+    observed, expected = _reference(actual, cpu=True), _reference(snapshot, cpu=True)
+    if actual.dtype in _FP8_DTYPES:
+        observed, expected = observed.float(), expected.float()
+    torch.testing.assert_close(observed, expected, rtol=0, atol=0, equal_nan=True)
+
+
 # storage_offset reads view metadata and returns a Python int. The shared value
 # ranges verify that payloads do not affect the answer; layout/view chains vary
 # the actual offset. There is no binary broadcast or differentiable result.
@@ -118,9 +169,9 @@ _VIEW_DTYPE_CASES = [
 @pytest.mark.parametrize("shape, layout, dtype", _VIEW_DTYPE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_storage_offset_views(shape, layout, value_range, dtype):
-    base = tu.make_input(dtype, shape, value_range)
+    base = _make_input(dtype, shape, value_range)
     inp = _offset_view(base, layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -144,7 +195,7 @@ _SCALAR_EMPTY_ROWS = _layout_rows(
 def test_storage_offset_scalar_and_empty(shape, layout, dtype):
     base = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     inp = _offset_view(base, layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -185,9 +236,14 @@ def _chain_view(base, step):
 @pytest.mark.parametrize("step", _CHAIN_STEPS)
 @pytest.mark.parametrize("dtype", _CHAIN_DTYPES)
 def test_storage_offset_view_chain(step, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip(
+            "Kunlunxin cannot create float64 storage without narrowing to float32"
+        )
     base = torch.empty((16, 128, 64), dtype=dtype, device=flag_gems.device)
+    assert base.dtype == dtype
     inp = _chain_view(base, step)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -208,9 +264,9 @@ _LAZY_VIEW_CASES = [("conj", torch.complex64), ("neg", torch.float32)]
 def test_storage_offset_lazy_bit_views(kind, dtype):
     # A view that already carries a lazy conjugate/negative bit reports the same
     # offset as the plain slice it was taken from.
-    base = tu.make_input(dtype, (16, 128, 64), ["-1", "1"])[5:]
+    base = _make_input(dtype, (16, 128, 64), ["-1", "1"])[5:]
     inp = base.conj() if kind == "conj" else base._neg_view()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -228,8 +284,8 @@ def test_storage_offset_aliasing_views_are_ordered():
     left = base[3:]
     right = base[5:]
 
-    left_ref = torch.ops.aten.storage_offset(tu.to_reference(left))
-    right_ref = torch.ops.aten.storage_offset(tu.to_reference(right))
+    left_ref = torch.ops.aten.storage_offset(_reference(left))
+    right_ref = torch.ops.aten.storage_offset(_reference(right))
     left_res = flag_gems.storage_offset(left)
     right_res = flag_gems.storage_offset(right)
 
@@ -242,11 +298,11 @@ def test_storage_offset_aliasing_views_are_ordered():
 @pytest.mark.storage_offset
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.complex64])
 def test_storage_offset_leaves_input_state_unchanged(dtype):
-    inp = tu.make_input(dtype, (20, 320, 15), ["-1", "1"])
+    inp = _make_input(dtype, (20, 320, 15), ["-1", "1"])
     view = inp[4:9].transpose(1, 2)
     before = view.clone()
     stride_before = view.stride()
-    ref_view = tu.to_reference(view)
+    ref_view = _reference(view)
 
     ref_out = torch.ops.aten.storage_offset(ref_view)
     res_out = flag_gems.storage_offset(view)
@@ -257,14 +313,14 @@ def test_storage_offset_leaves_input_state_unchanged(dtype):
     # the strides and the values all survive the call.
     assert view.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
     assert view.stride() == stride_before
-    tu.assert_result_equal(view, before)
+    _assert_unchanged(view, before)
 
 
 @pytest.mark.storage_offset
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_storage_offset_result_type_and_stability(dtype):
-    inp = tu.make_input(dtype, (16, 128, 64), ["-1", "1"])[7:]
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, (16, 128, 64), ["-1", "1"])[7:]
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -284,12 +340,12 @@ def test_storage_offset_result_type_and_stability(dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_storage_offset_dispatch_layouts(layout, dtype):
     if layout == "coo":
-        inp = tu.make_input(dtype, (8, 8), ["-1", "1"]).to_sparse()
+        inp = _make_input(dtype, (8, 8), ["-1", "1"]).to_sparse()
     elif layout == "csr":
-        inp = tu.make_input(dtype, (8, 8), ["-1", "1"]).to_sparse_csr()
+        inp = _make_input(dtype, (8, 8), ["-1", "1"]).to_sparse_csr()
     else:
         inp = torch.empty((8, 8), dtype=dtype, device="meta")
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.storage_offset(ref_inp)
     res_out = flag_gems.storage_offset(inp)
@@ -303,6 +359,17 @@ def _special_input(shape, dtype, scenario):
     numel = 1
     for dim in shape:
         numel *= dim
+    if dtype in _FP8_DTYPES and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        values = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(
+            dtype
+        )
+        repeats = (numel + values.numel() - 1) // values.numel()
+        return values.repeat(repeats)[:numel].reshape(shape).to(flag_gems.device)
     values = tu.make_special_input(dtype, scenario)
     repeats = (numel + values.numel() - 1) // values.numel()
     return values.repeat(repeats)[:numel].reshape(shape)
@@ -327,7 +394,7 @@ _SPECIAL_ROWS = [
 def test_storage_offset_special_values(shape, layout, dtype, scenario):
     inp = _special_input(shape, dtype, scenario)
     view = inp if layout == "base" else inp[1:]
-    ref_view = tu.to_reference(view)
+    ref_view = _reference(view)
 
     ref_out = torch.ops.aten.storage_offset(ref_view)
     res_out = flag_gems.storage_offset(view)
