@@ -423,7 +423,7 @@ def test_fbgemm_linear_fp16_weight_fp32_activation_negative_activation_dtype(dty
 def test_fbgemm_linear_fp16_weight_fp32_activation_negative_bias_dtype(dtype):
     # The trailing add rejects complex-to-float casts and float8 promotion.
     inp = _make_input(ACTIVATION_DTYPE, (4, 16), ["-1", "1"])
-    bias = torch.ones(N, dtype=dtype, device=_HOST)
+    bias = _make_input(dtype, (N,), ["1", "1"])
     packed = _packed_weight(16, N, ["-1", "1"])
     with pytest.raises(RuntimeError):
         flag_gems.fbgemm_linear_fp16_weight_fp32_activation(inp, packed, bias)
