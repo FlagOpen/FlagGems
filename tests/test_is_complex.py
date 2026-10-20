@@ -62,12 +62,75 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+def _require_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        pytest.skip("Kunlunxin storage narrows float64/complex128 to float32/complex64")
+
+
+def _assert_input_metadata(inp, dtype, device):
+    assert inp.dtype == dtype
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.device.type == expected.type
+    if expected.index is not None:
+        assert inp.device.index == expected.index
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # The query supports FP8 storage; encode values on CPU before transfer.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if low == high:
+        value = torch.full(shape, low, dtype=torch.float32, device="cpu")
+    else:
+        value = torch.testing.make_tensor(
+            shape, dtype=torch.float32, device="cpu", low=low, high=high
+        )
+    return value.to(dtype).to(flag_gems.device)
+
+
+def _make_special_input(dtype, scenario):
+    cpu_encoding = (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64)
+    if not cpu_encoding:
+        return tu.make_special_input(dtype, scenario)
+    # NPU device-side float64 casts also narrow to float32, although a
+    # CPU-encoded float64 tensor retains its dtype when transferred.
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+
+
 @pytest.mark.is_complex
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_is_complex(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    _require_dtype(dtype)
+    inp = _make_input(dtype, shape, value_range)
+    _assert_input_metadata(inp, dtype, flag_gems.device)
+    assert inp.shape == torch.Size(shape)
     ref_inp = tu.to_reference(inp)
+    _assert_input_metadata(ref_inp, dtype, "cpu" if utils.TO_CPU else inp.device)
+    assert ref_inp.shape == inp.shape
 
     ref_out = torch.ops.aten.is_complex(ref_inp)
     res_out = flag_gems.is_complex(inp)
@@ -139,6 +202,15 @@ def test_is_complex_layout(kind, dtype):
     ref_device = "cpu" if utils.TO_CPU else flag_gems.device
     ref_inp = _make_layout_tensor(kind, dtype, ref_device)
     inp = _make_layout_tensor(kind, dtype, flag_gems.device)
+    target_device = (
+        "meta" if kind == "meta" else "cpu" if kind == "quantized" else flag_gems.device
+    )
+    reference_device = (
+        "meta" if kind == "meta" else "cpu" if kind == "quantized" else ref_device
+    )
+    _assert_input_metadata(inp, dtype, target_device)
+    _assert_input_metadata(ref_inp, dtype, reference_device)
+    assert inp.shape == ref_inp.shape
 
     ref_out = torch.ops.aten.is_complex(ref_inp)
     res_out = flag_gems.is_complex(inp)
@@ -157,8 +229,13 @@ _SPECIAL_VALUE_CASES = tu.selected_cases(
 @pytest.mark.is_complex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test_is_complex_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    _require_dtype(dtype)
+    inp = _make_special_input(dtype, scenario)
+    _assert_input_metadata(inp, dtype, flag_gems.device)
+    assert inp.shape == (5,)
     ref_inp = tu.to_reference(inp)
+    _assert_input_metadata(ref_inp, dtype, "cpu" if utils.TO_CPU else inp.device)
+    assert ref_inp.shape == inp.shape
 
     ref_out = torch.ops.aten.is_complex(ref_inp)
     res_out = flag_gems.is_complex(inp)
