@@ -112,7 +112,7 @@ def cudnn_attn_forward_native(
     philox_offset = results[3]
 
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
-    lse = lse_4d.squeeze(-1).float()
+    lse = lse_4d.float()
     return out, lse, philox_seed, philox_offset
 
 
