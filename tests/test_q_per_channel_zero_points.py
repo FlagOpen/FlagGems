@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flag_gems
 import pytest
 import torch
 
-import flag_gems
-
-from . import accuracy_utils as utils
 from . import test_utils as tu
+
+# These APIs expose CPU quantizer metadata; preserve that ABI on every backend.
+_HOST = "cpu"
 
 # aten::q_per_channel_zero_points returns the zero_points tensor a per-channel
 # quantizer already holds: per_channel_affine stores int64 metadata and
@@ -113,12 +114,6 @@ SPECIAL_CASES = tu.selected_cases(
 )
 
 
-def _reference_device():
-    # The configured reference may run on CPU, so reference-side quantizers and
-    # out buffers are built there.
-    return "cpu" if utils.TO_CPU else flag_gems.device
-
-
 def _num_channels(shape, axis):
     return shape[axis] if shape else 1
 
@@ -127,7 +122,7 @@ def _quantized(shape, axis, quantized_dtype, zero_points, device=None):
     # aten::_empty_per_channel_affine_quantized stores the supplied parameters
     # verbatim, so it can hold int64 extremes and float parameters that
     # torch.quantize_per_channel would range-check away.
-    device = flag_gems.device if device is None else device
+    device = _HOST if device is None else device
     scales = torch.ones(_num_channels(shape, axis), dtype=torch.float64, device=device)
     return torch.ops.aten._empty_per_channel_affine_quantized(
         tuple(shape),
@@ -143,7 +138,7 @@ def _quantized_pair(shape, axis, quantized_dtype, zero_points):
     """Candidate quantizer plus an independent reference-side one."""
     ref_zero_points = tu.to_reference(zero_points)
     ref_quantized = _quantized(
-        shape, axis, quantized_dtype, ref_zero_points, device=_reference_device()
+        shape, axis, quantized_dtype, ref_zero_points, device=_HOST
     )
     return _quantized(shape, axis, quantized_dtype, zero_points), ref_quantized
 
@@ -158,13 +153,14 @@ def test_q_per_channel_zero_points_value_range(
 ):
     zero_points = tu.make_input(
         metadata_dtype, (_num_channels(shape, axis),), value_range
-    )
+    ).cpu()
     quantized, ref_quantized = _quantized_pair(
         shape, axis, quantized_dtype, zero_points
     )
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     assert res_out.dtype == out_dtype
     tu.assert_result_equal(res_out, ref_out)
@@ -178,11 +174,12 @@ def test_q_per_channel_zero_points_metadata_dtype(
 ):
     zero_points = tu.make_input(
         metadata_dtype, (_num_channels(shape, axis),), ["-1", "1"]
-    )
+    ).cpu()
     quantized, ref_quantized = _quantized_pair(shape, axis, torch.quint8, zero_points)
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     assert res_out.dtype == out_dtype
     tu.assert_result_equal(res_out, ref_out)
@@ -192,13 +189,16 @@ def test_q_per_channel_zero_points_metadata_dtype(
 @pytest.mark.parametrize("shape,axis", SUB_BYTE_AXIS)
 @pytest.mark.parametrize("quantized_dtype", SUB_BYTE_QUANT_DTYPES)
 def test_q_per_channel_zero_points_sub_byte_dtype(shape, axis, quantized_dtype):
-    zero_points = tu.make_input(torch.int64, (_num_channels(shape, axis),), ["-1", "1"])
+    zero_points = tu.make_input(
+        torch.int64, (_num_channels(shape, axis),), ["-1", "1"]
+    ).cpu()
     quantized, ref_quantized = _quantized_pair(
         shape, axis, quantized_dtype, zero_points
     )
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -210,11 +210,12 @@ def test_q_per_channel_zero_points_float_qparams_special_values(
 ):
     # make_special_input yields five values, so the (5, 4) operand carries five
     # channels on axis 0.
-    zero_points = tu.make_special_input(metadata_dtype, scenario)
+    zero_points = tu.make_special_input(metadata_dtype, scenario).cpu()
     quantized, ref_quantized = _quantized_pair((5, 4), 0, torch.quint8, zero_points)
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     tu.assert_result_equal(res_out, ref_out)
 
@@ -224,12 +225,13 @@ def test_q_per_channel_zero_points_float_qparams_special_values(
 def test_q_per_channel_zero_points_empty_channel(shape, axis):
     # A zero-length channel axis still carries an (empty) parameter tensor.
     zero_points = torch.empty(
-        _num_channels(shape, axis), dtype=torch.int64, device=flag_gems.device
+        _num_channels(shape, axis), dtype=torch.int64, device=_HOST
     )
     quantized, ref_quantized = _quantized_pair(shape, axis, torch.quint8, zero_points)
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     assert res_out.shape == ref_out.shape == (0,)
     tu.assert_result_equal(res_out, ref_out)
@@ -241,11 +243,12 @@ def test_q_per_channel_zero_points_scalar_operand(metadata_dtype, out_dtype):
     # A rank-0 per-channel quantizer holds one channel on axis 0, so the getter
     # reports a length-1 tensor rather than a scalar.
     value = 0.25 if metadata_dtype.is_floating_point else 7
-    zero_points = torch.tensor([value], dtype=metadata_dtype, device=flag_gems.device)
+    zero_points = torch.tensor([value], dtype=metadata_dtype, device=_HOST)
     quantized, ref_quantized = _quantized_pair((), 0, torch.quint8, zero_points)
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     assert res_out.shape == (1,)
     assert res_out.dtype == out_dtype
@@ -256,12 +259,12 @@ def test_q_per_channel_zero_points_scalar_operand(metadata_dtype, out_dtype):
 @pytest.mark.parametrize("metadata_dtype,out_dtype", SCALAR_METADATA)
 def test_q_per_channel_zero_points_out_scalar_operand(metadata_dtype, out_dtype):
     value = 0.25 if metadata_dtype.is_floating_point else 7
-    zero_points = torch.tensor([value], dtype=metadata_dtype, device=flag_gems.device)
+    zero_points = torch.tensor([value], dtype=metadata_dtype, device=_HOST)
     quantized, ref_quantized = _quantized_pair((), 0, torch.quint8, zero_points)
 
-    ref_buf = torch.full((1,), 0, dtype=out_dtype, device=_reference_device())
+    ref_buf = torch.full((1,), 0, dtype=out_dtype, device=_HOST)
     torch.ops.aten.q_per_channel_zero_points.out(ref_quantized, out=ref_buf)
-    buf = torch.full((1,), 0, dtype=out_dtype, device=flag_gems.device)
+    buf = torch.full((1,), 0, dtype=out_dtype, device=_HOST)
     res_ret = flag_gems.q_per_channel_zero_points(quantized, out=buf)
 
     assert res_ret is buf
@@ -273,14 +276,14 @@ def test_q_per_channel_zero_points_out_scalar_operand(metadata_dtype, out_dtype)
 @pytest.mark.parametrize("quantized_dtype", QUANT_DTYPES)
 def test_q_per_channel_zero_points_out(shape, axis, quantized_dtype):
     channels = _num_channels(shape, axis)
-    zero_points = tu.make_input(torch.int64, (channels,), ["-1", "1"])
+    zero_points = tu.make_input(torch.int64, (channels,), ["-1", "1"]).cpu()
     quantized, ref_quantized = _quantized_pair(
         shape, axis, quantized_dtype, zero_points
     )
 
-    ref_buf = torch.full((channels,), -1, dtype=torch.int64, device=_reference_device())
+    ref_buf = torch.full((channels,), -1, dtype=torch.int64, device=_HOST)
     torch.ops.aten.q_per_channel_zero_points.out(ref_quantized, out=ref_buf)
-    buf = torch.full((channels,), -1, dtype=torch.int64, device=flag_gems.device)
+    buf = torch.full((channels,), -1, dtype=torch.int64, device=_HOST)
     res_ret = flag_gems.q_per_channel_zero_points(quantized, out=buf)
 
     assert res_ret is buf
@@ -291,16 +294,12 @@ def test_q_per_channel_zero_points_out(shape, axis, quantized_dtype):
 @pytest.mark.parametrize("shape,axis", OUT_FLOAT_SHAPE_AXIS)
 def test_q_per_channel_zero_points_out_float_qparams(shape, axis):
     channels = _num_channels(shape, axis)
-    zero_points = torch.full(
-        (channels,), 0.5, dtype=torch.float32, device=flag_gems.device
-    )
+    zero_points = torch.full((channels,), 0.5, dtype=torch.float32, device=_HOST)
     quantized, ref_quantized = _quantized_pair(shape, axis, torch.quint8, zero_points)
 
-    ref_buf = torch.full(
-        (channels,), -2.0, dtype=torch.float32, device=_reference_device()
-    )
+    ref_buf = torch.full((channels,), -2.0, dtype=torch.float32, device=_HOST)
     torch.ops.aten.q_per_channel_zero_points.out(ref_quantized, out=ref_buf)
-    buf = torch.full((channels,), -2.0, dtype=torch.float32, device=flag_gems.device)
+    buf = torch.full((channels,), -2.0, dtype=torch.float32, device=_HOST)
     res_ret = flag_gems.q_per_channel_zero_points(quantized, out=buf)
 
     assert res_ret is buf
@@ -313,14 +312,12 @@ def test_q_per_channel_zero_points_out_resizes_buffer(buffer_len):
     # Native resizes a mismatched out buffer in place and returns that same
     # object; 3 channels with 0/1/5 elements covers both resize directions.
     channels = 3
-    zero_points = torch.tensor([0, 1, 7], dtype=torch.int64, device=flag_gems.device)
+    zero_points = torch.tensor([0, 1, 7], dtype=torch.int64, device=_HOST)
     quantized, ref_quantized = _quantized_pair((3, 4), 0, torch.quint8, zero_points)
 
-    ref_buf = torch.full(
-        (buffer_len,), -1, dtype=torch.int64, device=_reference_device()
-    )
+    ref_buf = torch.full((buffer_len,), -1, dtype=torch.int64, device=_HOST)
     torch.ops.aten.q_per_channel_zero_points.out(ref_quantized, out=ref_buf)
-    buf = torch.full((buffer_len,), -1, dtype=torch.int64, device=flag_gems.device)
+    buf = torch.full((buffer_len,), -1, dtype=torch.int64, device=_HOST)
     res_ret = flag_gems.q_per_channel_zero_points(quantized, out=buf)
 
     assert res_ret is buf
@@ -331,20 +328,16 @@ def test_q_per_channel_zero_points_out_resizes_buffer(buffer_len):
 @pytest.mark.q_per_channel_zero_points
 def test_q_per_channel_zero_points_out_strided_buffer():
     channels = 256
-    zero_points = tu.make_input(torch.int64, (channels,), ["-1", "1"])
+    zero_points = tu.make_input(torch.int64, (channels,), ["-1", "1"]).cpu()
     quantized, ref_quantized = _quantized_pair(
         (channels,), 0, torch.quint8, zero_points
     )
 
     # The whole backing storage is compared, so the untouched sentinel holes
     # prove that only the view elements were written.
-    ref_base = torch.full(
-        (2 * channels,), -1, dtype=torch.int64, device=_reference_device()
-    )
+    ref_base = torch.full((2 * channels,), -1, dtype=torch.int64, device=_HOST)
     torch.ops.aten.q_per_channel_zero_points.out(ref_quantized, out=ref_base[::2])
-    buf_base = torch.full(
-        (2 * channels,), -1, dtype=torch.int64, device=flag_gems.device
-    )
+    buf_base = torch.full((2 * channels,), -1, dtype=torch.int64, device=_HOST)
     buf = buf_base[::2]
     res_ret = flag_gems.q_per_channel_zero_points(quantized, out=buf)
 
@@ -355,13 +348,12 @@ def test_q_per_channel_zero_points_out_strided_buffer():
 
 @pytest.mark.q_per_channel_zero_points
 def test_q_per_channel_zero_points_returns_stored_parameter_object():
-    zero_points = torch.tensor(
-        [3, 1, 4, 1, 5], dtype=torch.int64, device=flag_gems.device
-    )
+    zero_points = torch.tensor([3, 1, 4, 1, 5], dtype=torch.int64, device=_HOST)
     quantized, ref_quantized = _quantized_pair((5, 4), 0, torch.quint8, zero_points)
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
 
     # Identity, not merely equal pointers: the result is the object handed to the
     # quantizer, and every call returns that same object.
@@ -374,11 +366,9 @@ def test_q_per_channel_zero_points_returns_stored_parameter_object():
 def test_q_per_channel_zero_points_result_aliases_metadata_storage():
     # torch.quantize_per_channel initializes the quantized storage, so the
     # snapshot below reads defined values; the raw factory leaves it undefined.
-    data = tu.make_input(torch.float32, (3, 4), ["-1", "1"])
-    scales = torch.tensor(
-        [0.5, 0.25, 0.125], dtype=torch.float64, device=flag_gems.device
-    )
-    zero_points = torch.tensor([1, 2, 3], dtype=torch.int64, device=flag_gems.device)
+    data = tu.make_input(torch.float32, (3, 4), ["-1", "1"]).cpu()
+    scales = torch.tensor([0.5, 0.25, 0.125], dtype=torch.float64, device=_HOST)
+    zero_points = torch.tensor([1, 2, 3], dtype=torch.int64, device=_HOST)
 
     quantized = torch.quantize_per_channel(data, scales, zero_points, 0, torch.quint8)
     ref_quantized = torch.quantize_per_channel(
@@ -392,13 +382,16 @@ def test_q_per_channel_zero_points_result_aliases_metadata_storage():
 
     ref_out = torch.ops.aten.q_per_channel_zero_points(ref_quantized)
     res_out = flag_gems.q_per_channel_zero_points(quantized)
+    assert res_out.device.type == _HOST
     tu.assert_result_equal(res_out, ref_out)
 
     res_out.fill_(9)
 
     # The write reaches the quantizer's own parameter (a returned copy would not
     # survive the second read) and leaves the data storage untouched.
-    assert flag_gems.q_per_channel_zero_points(quantized).tolist() == [9, 9, 9]
+    updated = flag_gems.q_per_channel_zero_points(quantized)
+    assert updated is res_out
+    assert updated.tolist() == [9, 9, 9]
     tu.assert_result_equal(quantized.int_repr(), data_before)
 
 
@@ -406,9 +399,9 @@ def test_q_per_channel_zero_points_result_aliases_metadata_storage():
 @pytest.mark.parametrize("out_dtype", [torch.int32, torch.float32, torch.float64])
 def test_q_per_channel_zero_points_negative_out_dtype_affine(out_dtype):
     # The integer scheme stores long parameters and accepts only a long buffer.
-    zero_points = torch.tensor([1, 2, 3], dtype=torch.int64, device=flag_gems.device)
+    zero_points = torch.tensor([1, 2, 3], dtype=torch.int64, device=_HOST)
     quantized = _quantized((3, 4), 0, torch.quint8, zero_points)
-    buf = torch.zeros(3, dtype=out_dtype, device=flag_gems.device)
+    buf = torch.zeros(3, dtype=out_dtype, device=_HOST)
 
     with pytest.raises(RuntimeError):
         flag_gems.q_per_channel_zero_points(quantized, out=buf)
@@ -417,11 +410,9 @@ def test_q_per_channel_zero_points_negative_out_dtype_affine(out_dtype):
 @pytest.mark.q_per_channel_zero_points
 @pytest.mark.parametrize("out_dtype", [torch.int64, torch.float64])
 def test_q_per_channel_zero_points_negative_out_dtype_float_qparams(out_dtype):
-    zero_points = torch.tensor(
-        [0.25, 0.5, 0.75], dtype=torch.float32, device=flag_gems.device
-    )
+    zero_points = torch.tensor([0.25, 0.5, 0.75], dtype=torch.float32, device=_HOST)
     quantized = _quantized((3, 4), 0, torch.quint8, zero_points)
-    buf = torch.zeros(3, dtype=out_dtype, device=flag_gems.device)
+    buf = torch.zeros(3, dtype=out_dtype, device=_HOST)
 
     with pytest.raises(RuntimeError):
         flag_gems.q_per_channel_zero_points(quantized, out=buf)
@@ -430,7 +421,7 @@ def test_q_per_channel_zero_points_negative_out_dtype_float_qparams(out_dtype):
 @pytest.mark.q_per_channel_zero_points
 def test_q_per_channel_zero_points_negative_per_tensor_qscheme():
     quantized = torch.quantize_per_tensor(
-        tu.make_input(torch.float32, (4,), ["-1", "1"]), 0.1, 3, torch.quint8
+        tu.make_input(torch.float32, (4,), ["-1", "1"]).cpu(), 0.1, 3, torch.quint8
     )
 
     with pytest.raises(RuntimeError):
@@ -440,7 +431,7 @@ def test_q_per_channel_zero_points_negative_per_tensor_qscheme():
 @pytest.mark.q_per_channel_zero_points
 def test_q_per_channel_zero_points_negative_non_quantized_input():
     # Native raises NotImplementedError for a dense tensor.
-    dense = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    dense = tu.make_input(torch.float32, (4,), ["-1", "1"]).cpu()
 
     with pytest.raises((RuntimeError, NotImplementedError)):
         flag_gems.q_per_channel_zero_points(dense)
