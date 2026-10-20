@@ -14,9 +14,10 @@
 
 import importlib
 import logging
+import math
 import operator
 import os
-from numbers import Number
+from numbers import Number, Real
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
@@ -306,9 +307,24 @@ def _normalize_index_add_alpha(inp, alpha):
         alpha = alpha.item()
     if not isinstance(alpha, Number):
         raise TypeError("alpha must be a number")
-    return torch.ops.aten.scalar_tensor.default.redispatch(
-        _SCALAR_KEYSET, alpha, dtype=inp.dtype, device=torch.device("cpu")
+    # BF16 already accumulates in FP32. Do not round its multiplier to BF16
+    # before the existing FP32 multiply (e.g. -256 + 2560 * 0.1 == 0).
+    conversion_dtype = torch.float32 if inp.dtype == torch.bfloat16 else inp.dtype
+    converted = torch.ops.aten.scalar_tensor.default.redispatch(
+        _SCALAR_KEYSET, alpha, dtype=conversion_dtype, device=torch.device("cpu")
     ).item()
+    # Tensor construction can silently round a finite Half overflow to its
+    # largest value or infinity; Native index_add uses checked conversion.
+    # Explicit infinity/NaN remain legal floating scales.
+    real_alpha = alpha.real
+    if (
+        inp.is_floating_point()
+        and isinstance(real_alpha, Real)
+        and math.isfinite(real_alpha)
+        and abs(real_alpha) > torch.finfo(inp.dtype).max
+    ):
+        raise RuntimeError(f"value cannot be converted to {inp.dtype} without overflow")
+    return converted
 
 
 def _assert_index_in_bounds(index, upper_bound):
@@ -348,7 +364,9 @@ def _launch_index_add(out, dim, index, src, alpha):
             index,
             src,
             dim,
-            work_out.stride(dim),
+            # Singleton dimensions can retain arbitrary strides even after
+            # contiguous(); addressing needs the logical trailing width.
+            math.prod(work_out.shape[dim + 1 :]),
             work_out.size(dim),
             src.size(dim),
             work_out.size(dim) - src.size(dim),

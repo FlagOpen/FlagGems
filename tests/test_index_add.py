@@ -520,3 +520,77 @@ def test_index_add_large_source_address():
     assert flag_gems.index_add_(inp, 1, index, src) is inp
     expected = counts[None, :, None].expand_as(inp.cpu())
     torch.testing.assert_close(inp.cpu(), expected, rtol=0, atol=0)
+
+
+@_contract_test
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("suffix", [1, 3, 33])
+def test_index_add_bf16_preserves_fp32_alpha(inplace, suffix):
+    # Preserve the existing FP32 scratch multiply. Rounding 0.1 to BF16
+    # before multiplying gives 0.25 instead of the exact cancellation 0.
+    inp = torch.full(
+        (1, 1, suffix), -256, dtype=torch.bfloat16, device=flag_gems.device
+    )
+    src = torch.full_like(inp, 2560)
+    index = torch.zeros(1, dtype=torch.int64, device=flag_gems.device)
+    original = inp.cpu().clone()
+    result = _call_index_add(inp, 1, index, src, inplace, alpha=0.1)
+    torch.testing.assert_close(result.cpu(), torch.zeros_like(original), rtol=0, atol=0)
+    if not inplace:
+        torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
+
+
+@_contract_test
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("empty", [False, True])
+@pytest.mark.parametrize("alpha", [65505, 100000])
+def test_index_add_fp16_rejects_finite_alpha_overflow(inplace, empty, alpha):
+    inp = torch.ones((1, 3, 3), dtype=torch.float16, device=flag_gems.device)
+    src = torch.ones((1, 0 if empty else 1, 3), dtype=inp.dtype, device=inp.device)
+    index = torch.zeros(src.size(1), dtype=torch.int64, device=inp.device)
+    original = inp.cpu().clone()
+    with pytest.raises(RuntimeError, match="overflow"):
+        torch.index_add(original, 1, index.cpu(), src.cpu(), alpha=alpha)
+    with pytest.raises(RuntimeError, match="overflow"):
+        _call_index_add(inp, 1, index, src, inplace, alpha=alpha)
+    torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
+
+
+@_contract_test
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("alpha", [float("inf"), float("nan")])
+def test_index_add_fp16_accepts_explicit_nonfinite_alpha_empty(inplace, alpha):
+    inp = torch.ones(3, dtype=torch.float16, device=flag_gems.device)
+    src = torch.empty(0, dtype=inp.dtype, device=inp.device)
+    index = torch.empty(0, dtype=torch.int64, device=inp.device)
+    expected = torch.index_add(inp.cpu(), 0, index.cpu(), src.cpu(), alpha=alpha)
+    result = _call_index_add(inp, 0, index, src, inplace, alpha=alpha)
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@_contract_test
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+def test_index_add_singleton_noncanonical_stride(inplace):
+    inp = torch.arange(3, device=flag_gems.device).float().reshape(3, 1).t()
+    assert inp.is_contiguous() and inp.stride() == (1, 1)
+    src = torch.arange(6, device=inp.device).float().reshape(2, 3)
+    index = torch.zeros(2, dtype=torch.int64, device=inp.device)
+    original = inp.cpu().clone()
+    expected = torch.tensor([[3.0, 6.0, 9.0]])
+    torch.testing.assert_close(
+        torch.index_add(original, 0, index.cpu(), src.cpu()), expected
+    )
+    result = _call_index_add(inp, 0, index, src, inplace)
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+    if inplace:
+        assert result is inp and inp.stride() == (1, 1)
+    else:
+        torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
