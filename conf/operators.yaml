@@ -16454,8 +16454,9 @@ ops:
 - id: reshape_as
   description: |
     Returns `self` with the same shape as `other`, equivalent to
-    `self.reshape(other.size())`. Contiguous inputs return a zero-copy view;
-    non-contiguous inputs are materialized with a Triton copy kernel.
+    `self.reshape(other.size())`. Any input whose target shape is
+    stride-expressible returns a zero-copy view; only layouts a view cannot
+    express are materialized with a Triton copy kernel.
   for:
   - reshape_as
   labels:

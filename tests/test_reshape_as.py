@@ -41,6 +41,51 @@ else:
         ((16, 7, 57, 32, 29), (16, 399, 928)),
     ]
 
+# Layouts whose target shape is still stride-expressible, so native reshape
+# returns a view: the result must share storage and match native stride/offset.
+if cfg.QUICK_MODE:
+    RESHAPE_AS_VIEW_CASES = [
+        ((4, 12), "column_step", (2, 12)),
+    ]
+else:
+    RESHAPE_AS_VIEW_CASES = [
+        ((4, 12), "column_step", (2, 12)),
+        ((4, 6), "asis", (2, 12)),
+        ((1, 1), "expanded", (3, 5)),
+        ((0, 3), "empty_t", (0,)),
+    ]
+
+# Layouts no view can express for their target, so the operator materializes
+# a copy owning fresh storage isolated from the input and its base.
+if cfg.QUICK_MODE:
+    RESHAPE_AS_COPY_CASES = [
+        ((4, 6), "transposed", (24,)),
+    ]
+else:
+    RESHAPE_AS_COPY_CASES = [
+        ((4, 6), "transposed", (24,)),
+        ((10, 8), "offset_window", (2, 8)),
+        ((12, 24), "both_steps", (2, 12)),
+    ]
+
+
+def _apply_layout(base, transform, expand_shape=None):
+    if transform == "asis":
+        return base
+    if transform == "transposed":
+        return base.transpose(-1, -2)
+    if transform == "column_step":
+        return base[:, ::2]
+    if transform == "both_steps":
+        return base[::3, ::4]
+    if transform == "offset_window":
+        return base[2:6, 1:5]
+    if transform == "expanded":
+        return base.expand(tuple(expand_shape))
+    if transform == "empty_t":
+        return base.t()
+    raise ValueError("unsupported layout " + repr(transform))
+
 
 @pytest.mark.reshape_as
 @pytest.mark.parametrize("source_shape, target_shape", RESHAPE_AS_SHAPE_PAIRS)
@@ -70,13 +115,63 @@ def test_reshape_as_non_contiguous(source_shape, target_shape, dtype):
     other = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_other = utils.to_reference(other)
-    if not ref_inp.is_contiguous() and ref_inp.numel() != 1:
-        pass  # keep the non-contiguous layout for both implementations
 
     ref_out = ref_inp.reshape_as(ref_other)
     res_out = flag_gems.reshape_as(inp, other)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.reshape_as
+@pytest.mark.parametrize("shape,layout,target", RESHAPE_AS_VIEW_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_reshape_as_view_strided(shape, layout, target, dtype):
+    # Strided layouts that native reshape still expresses as a view: the result
+    # must share storage and match native stride/offset, not materialize.
+    if layout == "expanded":
+        base = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+        inp = base.expand((3, 5))
+    elif layout == "empty_t":
+        base = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+        inp = base.t()
+    else:
+        base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp = _apply_layout(base, layout)
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = ref_inp.reshape_as(
+        torch.empty(target, dtype=dtype, device=flag_gems.device)
+    )
+    res_out = flag_gems.reshape_as(
+        inp, torch.empty(target, dtype=dtype, device=flag_gems.device)
+    )
+
+    assert res_out.stride() == ref_out.stride()
+    assert res_out.storage_offset() == ref_out.storage_offset()
+    assert res_out.data_ptr() == inp.data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.reshape_as
+@pytest.mark.parametrize("shape,layout,target", RESHAPE_AS_COPY_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_reshape_as_materialized_copy(shape, layout, target, dtype):
+    # Layouts native reshape cannot express as a view: values must match and
+    # the result must own isolated storage on both sides.
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = _apply_layout(base, layout)
+    ref_inp = utils.to_reference(inp)
+    other = torch.empty(target, dtype=dtype, device=flag_gems.device)
+
+    ref_out = ref_inp.reshape_as(other)
+    res_out = flag_gems.reshape_as(inp, other)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.data_ptr() != inp.data_ptr()
+    # A materialized result owns its storage: later input writes stay isolated.
+    snapshot = utils.to_reference(res_out)
+    inp.fill_(7.0)
+    utils.gems_assert_equal(res_out, snapshot)
 
 
 @pytest.mark.reshape_as
@@ -93,3 +188,49 @@ def test_reshape_as_special(dtype):
         res_out = flag_gems.reshape_as(inp, other)
 
         utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.reshape_as
+@pytest.mark.parametrize(
+    "shape,layout", [((4, 6), "transposed"), ((12, 24), "both_steps")]
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_reshape_as_backward(shape, layout, dtype):
+    # The materializing branch must keep the gradient flowing to 'self' as a
+    # pure relayout of the upstream gradient; 'other' contributes shape only.
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device).requires_grad_(True)
+    inp = _apply_layout(base, layout)
+    ref_base = utils.to_reference(base.detach()).requires_grad_(True)
+    ref_inp = _apply_layout(ref_base, layout)
+    other = torch.empty((inp.numel(),), dtype=dtype, device=flag_gems.device)
+    upstream = torch.randn(other.shape, dtype=dtype, device=flag_gems.device)
+
+    ref_out = ref_inp.reshape_as(other)
+    res_out = flag_gems.reshape_as(inp, other)
+    utils.gems_assert_equal(res_out, ref_out)
+
+    res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
+    ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=upstream)[0]
+    utils.gems_assert_equal(res_grad, ref_grad)
+
+
+@pytest.mark.reshape_as
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_reshape_as_other_has_no_gradient(dtype):
+    # 'other' supplies shape only, so it stays out of the autograd graph.
+    inp = torch.randn((4, 6), dtype=dtype, device=flag_gems.device)
+    other = torch.randn((24,), dtype=dtype, device=flag_gems.device)
+
+    ref_out = torch.ops.aten.reshape_as(
+        utils.to_reference(inp.detach()), utils.to_reference(other.detach())
+    )
+    inp.requires_grad_(True)
+    other.requires_grad_(True)
+
+    res_out = flag_gems.reshape_as(inp, other)
+    utils.gems_assert_equal(res_out, ref_out)
+
+    res_other_grad = torch.autograd.grad(
+        res_out, other, grad_outputs=torch.ones_like(res_out), allow_unused=True
+    )[0]
+    assert res_other_grad is None

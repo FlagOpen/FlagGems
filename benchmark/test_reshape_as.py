@@ -23,11 +23,17 @@ from . import base, consts
 
 
 def _reshape_as_input_fn(shape, dtype, device):
-    # Flatten target: same numel, different shape
+    # Non-contiguous source: a transposed layout (2D+) or a stride-2 slice
+    # (1D) whose flat target cannot be a view, so the benchmark measures the
+    # materializing copy kernel instead of only dispatch overhead on the
+    # contiguous view path.
     numel = 1
     for s in shape:
         numel *= s
-    inp = torch.randn(shape, dtype=dtype, device=device)
+    if len(shape) >= 2:
+        inp = torch.randn(shape, dtype=dtype, device=device).transpose(0, -1)
+    else:
+        inp = torch.randn((2 * numel,), dtype=dtype, device=device)[::2]
     other = torch.randn((numel,), dtype=dtype, device=device)
     yield inp, other
 
