@@ -2074,8 +2074,14 @@ def nmdim_finish_kernel(
     slots = row * PSTRIDE + tl.arange(0, NTP)
     best = tl.min(tl.load(pfirst + slots), axis=0)
     ridx = tl.minimum(best, N - 1)
-    tl.store(out_values + row, tl.load(inp + row.to(tl.int64) * ROW_PITCH + ridx))
-    tl.store(out_indices + row, ridx.to(tl.int64))
+    dst = tl.arange(0, 8)
+    keep = dst < 1
+    tl.store(
+        out_values + row + dst,
+        tl.load(inp + row.to(tl.int64) * ROW_PITCH + ridx),
+        mask=keep,
+    )
+    tl.store(out_indices + row + dst, ridx.to(tl.int64), mask=keep)
 
 
 def _nmdim_key_bits(dtype):
