@@ -334,7 +334,17 @@ def _syrk_blocks(M, K, a_dtype):
     K % 128 == 0: no M-wrap and no K-pad, which are the racy cases).  bf16
     (its trans miscompiles at 128/256-tile width) and the ragged large-M
     fp32 shapes keep the general (correct) mm path.  Returns None when not
-    eligible."""
+    eligible.
+
+    1-row/1-column tiles (M < 2 or K < 2) also keep the general path: on the
+    xre 5.37.1 / flagtree (xpu3.6) stack the ``_syrk_guard_kernel`` mask
+    comparison ``(rm < M) & (rk < K)`` with a 1-row/1-col bound lowers to an
+    illegal ``arith.cmpi`` in ``TritonXPULegalize`` ("operands must have the
+    same type", uni_sram OutOfResources at mm.py:393) — the xpu5/KTC tree is
+    unaffected.  M = 1 is covered by the mm_self_transpose test shapes
+    (1, 32)."""
+    if M < 2 or K < 2:
+        return None
     if M <= _SYRK_BIG_M:
         return _SYRK_BLOCK_M, _SYRK_BLOCK_K, 4
     if a_dtype == torch.bfloat16:
