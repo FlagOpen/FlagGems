@@ -316,6 +316,9 @@ from flag_gems.ops._nested_tensor_softmax_with_shape import (
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from flag_gems.ops._new_zeros_with_same_feature_meta import (
+    _new_zeros_with_same_feature_meta,
+)
 from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
@@ -612,6 +615,7 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable_out,
 )
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
@@ -783,6 +787,7 @@ from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.glu_backward_jvp import glu_backward_jvp
 from flag_gems.ops.glu_jvp import glu_jvp
 from flag_gems.ops.gradient import gradient
 from flag_gems.ops.greater import (
@@ -1237,6 +1242,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resize_as import resize_as, resize_as_
+from flag_gems.ops.resize_as_sparse_ import resize_as_sparse_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -1848,6 +1854,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
+    "_new_zeros_with_same_feature_meta",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -2140,6 +2147,7 @@ __all__ = [
     "convolution_overrideable_out",
     "copy",
     "copy_",
+    "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
     "copysign_out",
@@ -2329,6 +2337,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_backward_jvp",
     "glu_jvp",
     "gradient",
     "greater",
@@ -2820,6 +2829,7 @@ __all__ = [
     "resize_",
     "resize_as",
     "resize_as_",
+    "resize_as_sparse_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
