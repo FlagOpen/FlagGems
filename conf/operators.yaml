@@ -53,6 +53,33 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts the unique coordinates ascending and sums the
+    duplicated values. Returns a fresh coalesced tensor.
+
+    '
+  for:
+  - _coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _coalesce_out
+  description: A variant of `_coalesce()` that writes the coalesced result into
+    the `out` sparse tensor.
+  for:
+  - _coalesce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _conj
   description: 'The private conjugate primitive backing ``torch.conj`` and
     ``torch._conj``. Raises on non-complex inputs.
@@ -558,6 +585,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: adaptive_avg_pool3d
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, producing an output of the requested
+    size.
+
+    '
+  for:
+  - _adaptive_avg_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
 
@@ -572,6 +614,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: adaptive_avg_pool3d_out
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, writing the result into a
+    pre-allocated output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_max_pool1d
   description: 'Applies a one-dimensional adaptive max pooling over an input signal,
 
@@ -2822,6 +2879,30 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices_copy
+  description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
+    array as an int64 tensor shaped batch dims plus `ncols + 1`.
+  for:
+  - ccol_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: ccol_indices_copy_out
+  description: A variant of `ccol_indices_copy()` that assigns the output to the `out`
+    tensor.
+  for:
+  - ccol_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cdist
   description: 'Computes the p-norm distance between each pair of the two collections
     of row vectors.
@@ -5821,6 +5902,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_ifftshift
+  description: Shifts the zero-frequency component to the beginning of the
+    tensor, the inverse of torch.fft.fftshift().
+  for:
+  - fft_ifftshift
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_irfftn
   description: Computes the N-dimensional inverse of torch.fft.rfftn.
   for:
@@ -13358,31 +13451,25 @@ ops:
   - BLAS
   stages:
   - beta: '5.4'
-- id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
-    their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+- id: mm_w8a8
+  description: 'W8A8 matrix multiplication with FP32 scales. Precisions: FP8 E4M3
+    (dynamically quantizes BF16 activations and weights, FP8 Tensor Cores) and INT8
+    (prequantized INT8 matrices with scalar or per-row/column scales and optional
+    bias; input quantization is external).
+
+    '
   for:
-  - None
+  - mm_w8a8_int8
   labels:
   - NoCPU
+  - non-aten
   - Quantization
   kind:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: mm_w8a8_int8
-  description: Multiplies prequantized INT8 matrices with scalar or per-row/column
-    FP32 scales and optional bias; input quantization is external.
-  for:
-  - mm_w8a8_int8
-  labels:
-  - non-aten
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.5'
-- id: mm_w8a8_int8_out
-  description: A variant of mm_w8a8_int8 with caller-owned output.
+- id: mm_w8a8_out
+  description: A variant of mm_w8a8 with caller-owned output.
   for:
   - mm_w8a8_int8_out
   labels:
@@ -14107,6 +14194,32 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: neg_view_copy
+  description: 'Returns a fresh contiguous tensor holding the element-wise negation
+    of `self`, the materialized (copied) counterpart of the `_neg_view` view.
+
+    '
+  for:
+  - _neg_view_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: neg_view_copy_out
+  description: A variant of `_neg_view_copy()` that writes the result into the
+    `out` tensor.
+  for:
+  - _neg_view_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: negative
   description: negative operator
   for:
@@ -16418,26 +16531,10 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
-- id: rms_norm_w8a16_fp8
+- id: rms_norm_w8a16
   description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
 
-    group-wise FP8 E4M3 weights and per-group scales.
-
-    '
-  for:
-  - None
-  labels:
-  - NoCPU
-  - Normalization
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: rms_norm_w8a16_int8
-  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
-
-    group-wise INT8 weights and per-group scales.
+    group-wise 8-bit weights and per-group scales. Precisions: FP8 E4M3 and INT8.
 
     '
   for:
@@ -19480,6 +19577,22 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: split_copy
+  description: |
+    Splits a tensor into chunks along a given dimension, each of the given
+    split_size, and returns a list of contiguous copies. This is the
+    out-of-place counterpart of `torch.split()`: the last chunk is smaller
+    when the dimension size is not divisible by split_size, and every output
+    chunk is freshly created instead of aliasing the input.
+  for:
+  - split_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: split_with_sizes
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -20492,7 +20605,7 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
-- id: topk_w8a16_fp8
+- id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 
@@ -21592,6 +21705,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
+    '
+  for:
+  - _values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: values_copy
   description: 'Returns a fresh non-aliasing copy of the stored values of a
     compressed sparse tensor (CSR/CSC/BSR/BSC).
@@ -21714,6 +21839,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: view_as_real_copy
+  description: |
+    Copies a complex tensor into a freshly allocated real tensor whose last
+    dimension has size 2. This is the out-of-place counterpart of
+    `torch.view_as_real()`: complex64 becomes float32, complex128 becomes
+    float64 and complex32 becomes float16, the batch dimensions may be
+    non-contiguous, and the result never aliases the input.
+  for:
+  - view_as_real_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_copy
   description: 'Returns a copy of the tensor with the specified shape.
 
