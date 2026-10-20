@@ -434,9 +434,13 @@ def topk_w8a16_fp8(
     with torch_device_fn.device(x_fp8.device):
         _prepare()
         e5 = x_fp8.dtype == torch.float8_e5m2
-        x = x_fp8.contiguous()
+        # Ascend AICPU StridedSlice does not support float8 inputs, so a
+        # non-contiguous fp8 view fails to materialize (error 507018). Gather
+        # the packed bytes through the uint8 view, which is a supported
+        # StridedSlice dtype, then reinterpret the contiguous bytes as fp8.
+        q = x_fp8.view(torch.uint8).contiguous()
+        x = q.view(x_fp8.dtype)
         scales = x_scale.contiguous()
-        q = x.view(torch.uint8)
         cores = min(CORE_NUM, m)
         if (
             group_size >= n
