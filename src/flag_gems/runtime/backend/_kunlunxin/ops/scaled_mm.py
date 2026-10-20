@@ -16,6 +16,7 @@ import os
 import threading
 
 import torch
+
 logger = logging.getLogger(__name__)
 
 _ENABLED = os.environ.get("FG_SCALED_MM_FASTPATH", "1") != "0"
