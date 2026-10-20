@@ -1567,6 +1567,38 @@ def foreach_ternary(
     return results
 
 
+_TERNARY_UPLOAD_TYPES = {
+    torch.float32: ("f", torch.float32),
+    torch.float64: ("d", torch.float64),
+}
+
+
+def _ternary_upload(values: List[Any], dtype: torch.dtype, device: Any) -> torch.Tensor:
+    """Upload one scalar per tensor to ``device`` as a ``len(values)`` buffer.
+
+    ``torch.tensor(values).to(device)`` pays the Python ``Tensor.to`` /
+    ``copy_`` registrations on top of the transfer.  Building the host side
+    with ``array`` + ``frombuffer`` keeps it out of the dispatcher, and
+    redispatching ``aten::copy_`` at ``CompositeExplicitAutograd`` skips the
+    Python registration.  The host buffer stays pageable and freshly built,
+    so the staging copy is ordered before the caller can reuse it.
+    """
+    spec = _TERNARY_UPLOAD_TYPES.get(dtype)
+    if spec is None or _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
+        # fp16/bf16 have no ``array`` typecode; the generic path is the only
+        # way to build a host tensor of that dtype.
+        return torch.tensor([float(v) for v in values], dtype=dtype).to(
+            device, non_blocking=True
+        )
+    code, host_dtype = spec
+    host = torch.frombuffer(
+        array.array(code, [float(v) for v in values]), dtype=host_dtype
+    )
+    out = torch.empty(len(values), dtype=host_dtype, device=device)
+    _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
+    return out
+
+
 def _launch_ternary_group(
     a_l: List[torch.Tensor],
     b_l: List[torch.Tensor],
@@ -1604,9 +1636,7 @@ def _launch_ternary_group(
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common
     else:
-        scalar_buf = torch.tensor([float(v) for v in v_l], dtype=s_dtype).to(
-            device, non_blocking=True
-        )
+        scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
     foreach_ternary_kernel[grid](
