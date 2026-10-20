@@ -608,9 +608,14 @@ def _validate_swigluoai_uninterleave_params(
             raise ValueError(
                 f"swigluoai_uninterleave requires a finite scalar {name}, got {value!r}"
             ) from exc
-        if not math.isfinite(converted):
+        # Runtime scalar arguments are passed to Triton as FP32. A finite
+        # Python float can still overflow to infinity at that boundary.
+        if (
+            not math.isfinite(converted)
+            or abs(converted) > torch.finfo(torch.float32).max
+        ):
             raise ValueError(
-                f"swigluoai_uninterleave requires a finite scalar {name}, got {value!r}"
+                f"swigluoai_uninterleave requires a finite FP32 scalar {name}, got {value!r}"
             )
         validated[name] = converted
     if validated["gemm1_clamp_limit"] < 0:
@@ -637,8 +642,10 @@ def _swigluoai_uninterleave_kernel(
     BLOCK_I: tl.constexpr,
 ):
     """Split gate/up layout; compute in FP32 and round on output store."""
-    row = tl.program_id(0)
-    cols = tl.program_id(1) * BLOCK_I + tl.arange(0, BLOCK_I)
+    # Promote before multiplying: valid tensor strides can exceed int32
+    # offsets even when the logical activation has only a few elements.
+    row = tl.program_id(0).to(tl.int64)
+    cols = tl.program_id(1).to(tl.int64) * BLOCK_I + tl.arange(0, BLOCK_I)
     mask = cols < n_inter
     gate = tl.load(
         input_ptr + row * stride_im + cols * stride_in, mask=mask, other=0.0
@@ -648,8 +655,12 @@ def _swigluoai_uninterleave_kernel(
         mask=mask,
         other=0.0,
     ).to(tl.float32)
-    gate = tl.minimum(gate, clamp_limit)
-    up = tl.minimum(tl.maximum(up, -clamp_limit), clamp_limit)
+    gate = tl.minimum(gate, clamp_limit, propagate_nan=tl.PropagateNan.ALL)
+    up = tl.minimum(
+        tl.maximum(up, -clamp_limit, propagate_nan=tl.PropagateNan.ALL),
+        clamp_limit,
+        propagate_nan=tl.PropagateNan.ALL,
+    )
     activated = gate * tl.sigmoid(alpha * gate) * (up + beta)
     tl.store(
         output_ptr + row * stride_om + cols * stride_on,
