@@ -73,6 +73,10 @@ def _require_dtype(dtype):
 def _assert_input_metadata(inp, dtype, device):
     assert inp.dtype == dtype
     expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
     assert inp.device.type == expected.type
     if expected.index is not None:
         assert inp.device.index == expected.index
