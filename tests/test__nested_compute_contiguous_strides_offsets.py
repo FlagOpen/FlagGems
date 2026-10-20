@@ -16,24 +16,18 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
-# ``_nested_compute_contiguous_strides_offsets`` starts with an underscore and
-# ``pytest.mark`` refuses attribute access for such names; register the marker
-# explicitly so ``@pytest.mark._nested_compute_contiguous_strides_offsets`` and
-# ``-m _nested_compute_contiguous_strides_offsets`` both work.
-setattr(
-    pytest.mark,
-    "_nested_compute_contiguous_strides_offsets",
-    MarkDecorator(
-        Mark("_nested_compute_contiguous_strides_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+# The operator id starts with an underscore, so the #6359 marker convention
+# strips it: ``@pytest.mark._nested_compute_contiguous_strides_offsets`` is
+# refused by ``pytest.mark``'s attribute access, and the derived marker that
+# ``tools/test-op.sh`` selects with (and ``check_operator_markers.py``
+# requires) is the stripped name
+# ``nested_compute_contiguous_strides_offsets``. That name does not collide
+# with a distinct operator id, so no ``underscore_`` variant is needed.
 
 # The op is a pure host-side arithmetic routine over an int64 sizes matrix, so
 # coverage is driven by the branches measured against native ATen:
@@ -77,7 +71,7 @@ def _cpu_ref(inp):
     return inp.detach().cpu()
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_basic():
     inp = torch.tensor([[2, 3], [4, 5]], dtype=torch.int64, device=flag_gems.device)
     ref_inp = _cpu_ref(inp)  # reference is always taken on CPU
@@ -96,7 +90,7 @@ def test__nested_compute_contiguous_strides_offsets_basic():
     assert res_offsets.tolist() == [0, 6]
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize(
     "sizes",
     [
@@ -135,7 +129,7 @@ def test__nested_compute_contiguous_strides_offsets_int64_sizes(sizes):
     assert res_offsets.shape == ref_offsets.shape
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize(
     "shape",
     [(), (1, 0), (3, 0), (0, 0)],
@@ -181,7 +175,7 @@ def test__nested_compute_contiguous_strides_offsets_empty_and_scalar_paths(shape
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_zero_components():
     # Native crashes (SIGSEGV) on a (0, D>0) sizes tensor; the implementation
     # returns the well-defined empty result instead. This is a disclosed
@@ -196,7 +190,7 @@ def test__nested_compute_contiguous_strides_offsets_zero_components():
     assert res_offsets.numel() == 0
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_int32_truncation():
     # The offsets addend is the row product truncated to int32 and
     # sign-extended (native accumulates with an int accumulator), while the
@@ -231,7 +225,7 @@ def test__nested_compute_contiguous_strides_offsets_int32_truncation():
         assert res_offsets.tolist() == want_offsets
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_non_contiguous_raw_read():
     # Native reads the raw data pointer as a contiguous (ntensors, dim) array,
     # so a non-contiguous input follows its storage order rather than its
@@ -264,7 +258,7 @@ def test__nested_compute_contiguous_strides_offsets_non_contiguous_raw_read():
     utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize(
     "shape,dtype",
     [
@@ -292,7 +286,7 @@ def test__nested_compute_contiguous_strides_offsets_dtype_error(shape, dtype):
     assert "expected scalar type Long but found" in str(res_exc.value)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 @pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.float32])
 def test__nested_compute_contiguous_strides_offsets_dim_error(dtype):
     # A 1-D input fails on `sizes.size(1)` before the dtype check, so the
@@ -307,7 +301,7 @@ def test__nested_compute_contiguous_strides_offsets_dim_error(dtype):
     assert "Dimension out of range" in str(res_exc.value)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_constructs_nested_tensor():
     # End-to-end: the outputs must be exactly what torch.nested.nested_tensor
     # feeds to _nested_view_from_buffer, so the resulting nested tensor must
@@ -333,7 +327,7 @@ def test__nested_compute_contiguous_strides_offsets_constructs_nested_tensor():
     assert [tuple(t.shape) for t in nt.unbind()] == [(2, 3), (4, 3), (1, 3)]
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
+@pytest.mark.nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_dispatch_and_repeatability():
     # Repeated calls must stay stable (no recursion, no state).
     #
