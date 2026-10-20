@@ -24,17 +24,101 @@ from . import test_utils as tu
 pytestmark = pytest.mark.detach_copy
 
 
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # Encode FP8 on CPU; device-side FP32-to-FP8 casts are unavailable.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if low == high:
+        result = torch.full(shape, low, dtype=dtype, device="cpu")
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return result.to(flag_gems.device)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], device="cpu", dtype=torch.float32)
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+
+
+def _make_out_buffer(shape, dtype, device):
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and (
+        torch.device(device).type == "cpu"
+        or flag_gems.vendor_name in ("ascend", "kunlunxin")
+    ):
+        # Older CPU builds have FP8 casts but no full/fill kernel.
+        return (
+            torch.full(shape, 7, dtype=torch.float32, device="cpu").to(dtype).to(device)
+        )
+    creation_device = device
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex:
+        # Device full kernels do not cover complex payloads.
+        creation_device = "cpu"
+    return torch.full(shape, 7, dtype=dtype, device=creation_device).to(device)
+
+
+def _comparison_to_cpu(tensor):
+    fp8 = tensor.dtype in tu._FP8_DTYPES
+    if tensor.layout == torch.strided and (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and tensor.device.type != "cpu"
+        or (fp8 and tensor.is_neg())
+    ):
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if fp8:
+            values = values.float()
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+    values = tensor.cpu()
+    return values.float() if fp8 else values
+
+
 def _assert_result_equal(result, reference):
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
-        # CPU observes complex values; validate the original tensor metadata first.
-        device = torch.device(flag_gems.device)
-        if device.index is None:
-            device = torch.device(device.type, torch.npu.current_device())
-        assert result.device == device
-        assert result.dtype == reference.dtype
-        assert result.layout == reference.layout
-        assert result.shape == reference.shape
-        result, reference = result.cpu(), reference.cpu()
+    # Validate the original device and metadata before CPU value observation.
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
+    assert result.shape == reference.shape
+    if utils.TO_CPU:
+        assert reference.device == torch.device("cpu")
+    else:
+        assert result.device == reference.device
+    if result.dtype in tu._FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()
+    ):
+        result, reference = _comparison_to_cpu(result), _comparison_to_cpu(reference)
     tu.assert_result_equal(result, reference)
 
 
@@ -88,7 +172,7 @@ _DETACH_COPY_INPUT_DTYPE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     # to_reference creates an independent snapshot for the input mutation check.
     ref_inp = tu.to_reference(inp)
 
@@ -125,7 +209,7 @@ _DTYPE_RANGE_CASES = [
     _DTYPE_RANGE_CASES,
 )
 def test_detach_copy_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
@@ -169,12 +253,12 @@ def test_detach_copy_special_values(dtype):
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy_out(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     # Garbage-prefilled out buffers: the .out overload must overwrite them.
-    ref_out = torch.full(shape, 7, dtype=ref_inp.dtype, device=ref_inp.device)
-    res_out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
+    ref_out = _make_out_buffer(shape, ref_inp.dtype, ref_inp.device)
+    res_out = _make_out_buffer(shape, dtype, flag_gems.device)
 
     ref_ret = torch.ops.aten.detach_copy.out(ref_inp, out=ref_out)
     res_ret = flag_gems.detach_copy(inp, out=res_out)
@@ -191,11 +275,11 @@ def test_detach_copy_out(shape, dtype):
     _DTYPE_RANGE_CASES,
 )
 def test_detach_copy_out_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.full(shape, 7, dtype=ref_inp.dtype, device=ref_inp.device)
-    res_out = torch.full(shape, 7, dtype=dtype, device=flag_gems.device)
+    ref_out = _make_out_buffer(shape, ref_inp.dtype, ref_inp.device)
+    res_out = _make_out_buffer(shape, dtype, flag_gems.device)
 
     ref_ret = torch.ops.aten.detach_copy.out(ref_inp, out=ref_out)
     res_ret = flag_gems.detach_copy(inp, out=res_out)
@@ -208,7 +292,12 @@ def test_detach_copy_out_value_ranges(shape, value_range, dtype):
 @pytest.mark.parametrize("shape", _DETACH_COPY_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", _DETACH_COPY_INPUT_DTYPE_CASES)
 def test_detach_copy_non_contiguous(shape, dtype):
-    base = tu.make_input(dtype, shape, ["-1", "1"])
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Kunlunxin detach_copy cannot copy noncontiguous FP8 tensors")
+    base = _make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = base.transpose(-1, -2)
     ref_inp = ref_base.transpose(-1, -2)
@@ -224,7 +313,7 @@ def test_detach_copy_non_contiguous(shape, dtype):
 @pytest.mark.parametrize("shape", _DETACH_COPY_EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _DETACH_COPY_DTYPES)
 def test_detach_copy_empty(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
@@ -237,7 +326,7 @@ def test_detach_copy_empty(shape, dtype):
 @pytest.mark.parametrize("shape", _DETACH_COPY_STORAGE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_detach_copy_independent_storage(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.detach_copy(ref_inp)
@@ -256,8 +345,8 @@ def test_detach_copy_independent_storage(shape, dtype):
     "dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES, quick=utils.FLOAT_DTYPES)
 )
 def test_detach_copy_no_backward(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
-    grad = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_()
+    grad = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     ref_grad = tu.to_reference(grad)
 
@@ -283,7 +372,7 @@ def test_detach_copy_rejects_non_tensor():
 
 @pytest.mark.detach_copy_out
 def test_detach_copy_out_rejects_wrong_dtype():
-    inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
+    inp = _make_input(torch.float32, (8,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     ref_out_bad = torch.empty(8, dtype=torch.int32, device=flag_gems.device)
     res_out_bad = torch.empty(8, dtype=torch.int32, device=flag_gems.device)
@@ -313,7 +402,7 @@ def test_detach_copy_out_rejects_wrong_dtype():
     ],
 )
 def test_detach_copy_special_scenarios(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     reference = tu.to_reference(inp)
     expected = torch.ops.aten.detach_copy(reference)
     actual = flag_gems.detach_copy(inp)
