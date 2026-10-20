@@ -304,6 +304,108 @@ def test_flash_attention_backward(
     utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
 
 
+@pytest.mark.scaled_dot_product_flash_attention_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
+@pytest.mark.parametrize(
+    "batch, num_head, seq_len",
+    [
+        (1, 1, 64),
+        (2, 4, 128),
+    ],
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_flash_attention_backward(
+    batch,
+    num_head,
+    seq_len,
+    head_size,
+    is_causal,
+    dtype,
+):
+    scale = float(1.0 / math.sqrt(head_size))
+    Q_bshd, K_bshd, V_bshd = make_qkv(
+        batch,
+        num_head,
+        seq_len,
+        seq_len,
+        head_size,
+        dtype,
+        flag_gems.device,
+    )
+    Q = Q_bshd.permute(0, 2, 1, 3).contiguous()
+    K = K_bshd.permute(0, 2, 1, 3).contiguous()
+    V = V_bshd.permute(0, 2, 1, 3).contiguous()
+    dOut = torch.randn_like(Q)
+
+    (
+        out,
+        lse,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        rng_state,
+        _,
+        _,
+    ) = torch.ops.aten._scaled_dot_product_flash_attention.default(
+        Q,
+        K,
+        V,
+        0.0,
+        is_causal,
+        False,
+        scale=scale,
+    )
+    philox_seed = rng_state[0]
+    philox_offset = rng_state[1]
+
+    ref_dQ, ref_dK, ref_dV = (
+        torch.ops.aten._scaled_dot_product_flash_attention_backward(
+            utils.to_reference(dOut),
+            utils.to_reference(Q),
+            utils.to_reference(K),
+            utils.to_reference(V),
+            utils.to_reference(out),
+            utils.to_reference(lse),
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            0.0,
+            is_causal,
+            philox_seed,
+            philox_offset,
+            scale=scale,
+        )
+    )
+
+    dQ, dK, dV = flag_gems.scaled_dot_product_flash_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        0.0,
+        is_causal,
+        philox_seed,
+        philox_offset,
+        scale=scale,
+    )
+
+    utils.gems_assert_close(dQ, ref_dQ, dtype, equal_nan=True)
+    utils.gems_assert_close(dK, ref_dK, dtype, equal_nan=True)
+    utils.gems_assert_close(dV, ref_dV, dtype, equal_nan=True)
+
+
 @pytest.mark.scaled_dot_product_cudnn_attention_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"

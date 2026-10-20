@@ -1391,16 +1391,23 @@ def scaled_dot_product_flash_attention_backward(
     scale=None,
 ):
     logger.debug("GEMS SCALED_DOT_PRODUCT_FLASH_ATTENTION_BACKWARD")
+    grad_out_bshd = grad_out.permute(0, 2, 1, 3).contiguous()
+    query_bshd = query.permute(0, 2, 1, 3).contiguous()
+    key_bshd = key.permute(0, 2, 1, 3).contiguous()
+    value_bshd = value.permute(0, 2, 1, 3).contiguous()
+    out_bshd = out.permute(0, 2, 1, 3).contiguous()
+    lse = logsumexp.float()
+
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
-    dQ, dK, dV, _ = flash_attn_backward(
-        grad_out,
-        query,
-        key,
-        value,
-        out,
-        logsumexp,
+    dQ_bshd, dK_bshd, dV_bshd, _ = flash_attn_backward(
+        grad_out_bshd,
+        query_bshd,
+        key_bshd,
+        value_bshd,
+        out_bshd,
+        lse,
         cu_seq_q=cum_seq_q if use_varlen else None,
         cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
@@ -1411,6 +1418,9 @@ def scaled_dot_product_flash_attention_backward(
         is_causal=is_causal,
         softmax_scale=scale,
     )
+    dQ = dQ_bshd.permute(0, 2, 1, 3).contiguous()
+    dK = dK_bshd.permute(0, 2, 1, 3).contiguous()
+    dV = dV_bshd.permute(0, 2, 1, 3).contiguous()
     return dQ, dK, dV
 
 
