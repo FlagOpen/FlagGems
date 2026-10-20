@@ -26,7 +26,7 @@ def test_norm(shape, ord, dtype):
     # native kernel behind that overload (torch.norm is a composite that
     # decomposes to linalg.vector_norm instead).
     ref_out = torch.ops.aten.norm.Scalar(ref_inp, ord)
-    res_out = flag_gems.norm_scalar(inp, ord)
+    res_out = flag_gems.norm(inp, ord)
 
     gems_assert_close(res_out, ref_out, dtype)
 
