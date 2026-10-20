@@ -1117,6 +1117,125 @@ def _finish_inplace(
     del results
 
 
+def _binary_homogeneous(
+    self: List[torch.Tensor],
+    other: List[torch.Tensor],
+    fn: Callable,
+    inplace: bool,
+    alpha: float,
+    allowed_dtypes: Optional[frozenset],
+    dtype_error: Optional[str],
+    dtype_error_type: type,
+    out_dtype_fn: Optional[Callable[[torch.dtype], torch.dtype]],
+    out_dtypes: Optional[Sequence[torch.dtype]],
+    scalar_operand: bool,
+) -> Optional[List[torch.Tensor]]:
+    """Execute a uniform binary list in one bucket, or return ``None``.
+
+    ``None`` means the caller's lists need the general per-tensor bucket loop;
+    it is the answer for every kind of heterogeneity that loop exists to
+    handle (device, dtype, rank class, per-position output dtype).  The scan
+    that decides this is also the only per-tensor work left on the hot path:
+    the list arguments, dtype checks and result allocation are comprehensions.
+
+    ``scalar_operand`` lists are one repeated single-element tensor by
+    contract, so they are neither scanned nor staged: a one-element tensor is
+    always contiguous and flat-addressable.
+    """
+    a0 = self[0]
+    dev = a0.device
+    dt_a = a0.dtype
+    # When ``out_dtypes`` pins the result the promotion is fixed, so the rank
+    # class of an operand can no longer change it and is not checked.
+    need_promotion = out_dtypes is None
+    zero_dim = a0.dim() == 0
+    for t in self:
+        if t.dtype is not dt_a or t.device != dev:
+            return None
+        if need_promotion and (t.dim() == 0) != zero_dim:
+            return None
+
+    b0 = other[0]
+    dt_b = b0.dtype
+    if scalar_operand:
+        if b0.device != dev:
+            return None
+    else:
+        b_zero_dim = b0.dim() == 0
+        for t in other:
+            if t.dtype is not dt_b or t.device != dev:
+                return None
+            if need_promotion and (t.dim() == 0) != b_zero_dim:
+                return None
+
+    if allowed_dtypes is not None and dt_a not in allowed_dtypes:
+        check_dtype_supported(dt_a, allowed_dtypes, dtype_error, dtype_error_type)
+    if out_dtypes is not None:
+        out_dtype = out_dtypes[0]
+        for dt in out_dtypes:
+            if dt is not out_dtype:
+                return None
+    elif dt_a is dt_b:
+        out_dtype = dt_a
+    else:
+        out_dtype = _promote_dtypes(a0, b0)
+    if out_dtype_fn is not None:
+        out_dtype = out_dtype_fn(out_dtype)
+
+    conts = [t.is_contiguous() for t in self]
+    if all(conts):
+        srcs_a = self
+    else:
+        srcs_a = [t if c else _dense(t) for t, c in zip(self, conts)]
+    if scalar_operand:
+        srcs_b = other
+    else:
+        bconts = [t.is_contiguous() for t in other]
+        srcs_b = (
+            other
+            if all(bconts)
+            else [t if c else _dense(t) for t, c in zip(other, bconts)]
+        )
+
+    if inplace:
+        # No allocation: the destination is the source, and a source that had
+        # to be staged is written back once the kernel has filled it.
+        if out_dtype != dt_a:
+            raise RuntimeError(
+                f"result type {str(out_dtype).replace('torch.', '').capitalize()}"
+                " can't be cast to the desired output type "
+                f"{str(dt_a).replace('torch.', '').capitalize()}"
+            )
+        if srcs_a is not self:
+            for t, c in zip(self, conts):
+                if not c and has_internal_overlap(t):
+                    raise RuntimeError(
+                        "unsupported operation: more than one element of the "
+                        "written-to tensor refers to a single memory location. "
+                        "Please clone() the tensor before performing the operation."
+                    )
+            writebacks = [(t, s) for t, s in zip(self, srcs_a) if s is not t]
+        else:
+            writebacks = []
+        results = list(self)
+        dsts = srcs_a
+    else:
+        # The one-argument form skips the keyword dispatch the explicit dtype
+        # form pays on every one of the sixteen allocations.
+        if out_dtype is dt_a:
+            results = [torch.empty_like(t) for t in srcs_a]
+        else:
+            results = [torch.empty_like(t, dtype=out_dtype) for t in srcs_a]
+        dsts = results
+        writebacks = []
+
+    _launch_binary_group(
+        srcs_a, srcs_b, dsts, fn, dt_a, dt_b, dev, alpha, scalar_operand
+    )
+    _finish_inplace(results, writebacks)
+    return results
+
+
 def foreach_binary_list(
     self: Sequence[torch.Tensor],
     other: Sequence[torch.Tensor],
@@ -1159,6 +1278,27 @@ def foreach_binary_list(
     if out_dtypes is not None:
         _check_same_length(self, out_dtypes, "output dtype list")
     _STATS.reset()
+
+    # Uniform lists -- same device, dtype and (when nothing pins the output
+    # dtype) the same rank class -- need no bucketing at all: one launch, one
+    # metadata buffer.  This is the optimizer hot path, so it is decided and
+    # executed by a helper that never touches the per-tensor bookkeeping below.
+    if not copy_semantics:
+        homogeneous = _binary_homogeneous(
+            self,
+            other,
+            fn,
+            inplace,
+            alpha,
+            allowed_dtypes,
+            dtype_error,
+            dtype_error_type,
+            out_dtype_fn,
+            out_dtypes,
+            scalar_operand,
+        )
+        if homogeneous is not None:
+            return homogeneous
 
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, List, List]] = {}
@@ -1243,6 +1383,101 @@ def foreach_binary_list(
     return results
 
 
+# Every argument of ``foreach_binary_kernel`` other than the metadata pointer is
+# a ``tl.constexpr``, so ``(nt, fn, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK)``
+# identifies the compiled variant and a replay only has to hand those values to
+# the kernel's own launcher.  Triton's Python dispatch between that lookup and
+# the launch -- binder, cache-key hash, launch-metadata and hook checks --
+# measured ~10us per call on the small shapes this executor targets, and is the
+# difference between the binary rows and their ATen counterparts.
+#
+# The cache is keyed on the device because a compiled kernel belongs to one
+# device's module, and on the metadata pointer's 16-byte alignment because that
+# is the only thing Triton specialises on here.  ``alpha`` carries its Python
+# type in the key: ``1`` and ``1.0`` compare (and hash) equal but are different
+# specialisations of a ``constexpr``.
+#
+# Only the launcher is cached; the metadata tensor is rebuilt and uploaded on
+# every call, so no device-visible buffer is shared across calls.
+_BINARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+_BINARY_LAUNCH_STATS: Dict[str, int] = {"replay": 0, "dispatch": 0}
+
+
+def _launch_binary_kernel(
+    meta: torch.Tensor,
+    grid: Tuple[int, int],
+    nt: int,
+    fn: Callable,
+    a_dt: Any,
+    b_dt: Any,
+    out_dt: Any,
+    alpha: float,
+    b_scalar: bool,
+    block: int,
+) -> None:
+    key = (
+        meta.device,
+        nt,
+        fn,
+        a_dt,
+        b_dt,
+        out_dt,
+        alpha,
+        type(alpha),
+        b_scalar,
+        block,
+        not (meta.data_ptr() & 15),
+    )
+    entry = _BINARY_LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``;
+    # ``.calls`` is the list of registered callbacks, so an empty list is the
+    # real "no hooks" state.  Proton and other instrumentation add to it, and a
+    # replay would then skip their notifications.
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                fn,
+                nt,
+                a_dt,
+                b_dt,
+                out_dt,
+                alpha,
+                b_scalar,
+                block,
+            )
+            _BINARY_LAUNCH_STATS["replay"] += 1
+            return
+        except Exception:
+            # A launcher that cannot be replayed this way is not a correctness
+            # problem: forget the entry and let Triton dispatch as usual.
+            _BINARY_LAUNCH_CACHE.pop(key, None)
+    _BINARY_LAUNCH_STATS["dispatch"] += 1
+    compiled = foreach_binary_kernel[grid](
+        meta, fn, nt, a_dt, b_dt, out_dt, alpha, b_scalar, block
+    )
+    if compiled is not None:
+        _BINARY_LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
+
+
 def _launch_binary_group(
     a_list: List[torch.Tensor],
     b_list: List[torch.Tensor],
@@ -1260,18 +1495,26 @@ def _launch_binary_group(
         return
     block = _pick_block(numels)
     nt = len(a_list)
-    meta = _device_meta(
-        [t.data_ptr() for t in a_list]
-        + [t.data_ptr() for t in b_list]
-        + [t.data_ptr() for t in d_list]
-        + numels,
-        device,
+    # One flat Python list -> one tensor -> one H2D transfer, the same staging
+    # as ``_launch_group``.  An in-place call writes back into its inputs, so
+    # the destination run repeats the pointer run already read above instead of
+    # reading it a second time.
+    ptrs_a = [t.data_ptr() for t in a_list]
+    # The broadcast operand is one repeated single-element tensor, and the
+    # kernel only ever dereferences its first entry, so its run is one read.
+    ptrs_b = [b_list[0].data_ptr()] * nt if b_scalar else [t.data_ptr() for t in b_list]
+    values = (
+        ptrs_a + ptrs_b + ptrs_a + numels
+        if d_list is a_list
+        else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
     )
+    meta = _device_meta(values, device)
     grid = (nt, triton.cdiv(max_numel, block))
-    foreach_binary_kernel[grid](
+    _launch_binary_kernel(
         meta,
-        fn,
+        grid,
         nt,
+        fn,
         tl_dtype(a_dt),
         tl_dtype(b_dt),
         tl_dtype(d_list[0].dtype),
