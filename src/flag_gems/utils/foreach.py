@@ -811,7 +811,13 @@ def foreach_unary(
             # also what keeps aliasing observable-equivalent to ATen: no two
             # outputs of a call share a storage (checked on two 4x4,
             # mixed-shape, transposed, zero-dim and one-element lists).
-            dst = torch.empty_like(src, dtype=out_dtype)
+            if out_dtype == src.dtype:
+                # The one-argument form is measurably cheaper (it skips the
+                # keyword's dispatch work) and allocates the identical tensor
+                # when the output dtype is the input's -- the float case.
+                dst = torch.empty_like(src)
+            else:
+                dst = torch.empty_like(src, dtype=out_dtype)
             results.append(dst)
             dsts.append(dst)
         srcs.append(src)
@@ -896,7 +902,13 @@ def _foreach_unary_grouped(
             # empty_like reproduces PyTorch's foreach output stride policy: it
             # keeps a dense tensor's stride (so transposed inputs give
             # transposed outputs) and normalizes everything else to contiguous.
-            dst = torch.empty_like(src, dtype=out_dtype)
+            if out_dtype == src.dtype:
+                # The one-argument form is measurably cheaper (it skips the
+                # keyword's dispatch work) and allocates the identical tensor
+                # when the output dtype is the input's -- the float case.
+                dst = torch.empty_like(src)
+            else:
+                dst = torch.empty_like(src, dtype=out_dtype)
             results[i] = dst
 
         bucket = buckets.get(key)
