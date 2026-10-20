@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 
 _tanh = tl_extra_shim.tanh
 
+# Lane width of the batch==1/2 single-program kernels. They cover one row with
+# `tl.arange(0, BLOCK)`, so they are only dispatched for hidden_size <= BLOCK;
+# wider rows go to the grid-parallel kernel.
+_SMALL_BATCH_BLOCK = 256
+
 
 @libentry()
 @triton.jit
@@ -242,74 +247,6 @@ def _bias_grad_kernel(
     )
 
 
-@libentry()
-@triton.jit
-def _lstm_cell_bwd_fused(
-    grad_hy_ptr,
-    grad_cy_ptr,
-    cx_ptr,
-    cy_ptr,
-    workspace_ptr,
-    grad_gates_ptr,
-    grad_cx_ptr,
-    grad_biases_ptr,
-    B,
-    H: tl.constexpr,
-    BLOCK_B: tl.constexpr,
-    BLOCK_H: tl.constexpr,
-):
-    # Fused single-launch backward for small batch (3 <= B <= 16) with bias: the
-    # 4 gate grads are computed as (B, H) tiles and reduced over axis 0 (batch)
-    # in-kernel to produce the bias gradient, so the grid-parallel bwd kernel +
-    # the separate `_bias_grad_kernel` collapse into one launch. This relies on
-    # the Triton XPU backend's axis-0 reduce support (2D -> 1D over the batch
-    # dim, which is core-local under the default ClusterLayout). The bias reduce
-    # is done per-gate (4 independent axis-0 reduces) so the 4 gate bands stay
-    # separate without a 2D concat.
-    offs_b = tl.arange(0, BLOCK_B)
-    offs_h = tl.arange(0, BLOCK_H)
-    mask_b = offs_b < B
-    mask_h = offs_h < H
-    m = mask_b[:, None] & mask_h[None, :]  # (B, H)
-    row = offs_b[:, None] * (4 * H) + offs_h[None, :]  # gate-i band offset
-    bh = offs_b[:, None] * H + offs_h[None, :]  # (B, H) flat per-(b,h) index
-
-    i_gate = tl.load(workspace_ptr + row, mask=m, other=0.0).to(tl.float32)
-    f_gate = tl.load(workspace_ptr + row + H, mask=m, other=0.0).to(tl.float32)
-    g_gate = tl.load(workspace_ptr + row + 2 * H, mask=m, other=0.0).to(tl.float32)
-    o_gate = tl.load(workspace_ptr + row + 3 * H, mask=m, other=0.0).to(tl.float32)
-    cyv = tl.load(cy_ptr + bh, mask=m, other=0.0).to(tl.float32)
-    cxv = tl.load(cx_ptr + bh, mask=m, other=0.0).to(tl.float32)
-    ghy = tl.load(grad_hy_ptr + bh, mask=m, other=0.0).to(tl.float32)
-    gcy = tl.load(grad_cy_ptr + bh, mask=m, other=0.0).to(tl.float32)
-
-    tanh_cy = _tanh(cyv)
-    d_cy = ghy * o_gate * (1.0 - tanh_cy * tanh_cy) + gcy
-    grad_i = d_cy * g_gate * i_gate * (1.0 - i_gate)
-    grad_f = d_cy * cxv * f_gate * (1.0 - f_gate)
-    grad_g = d_cy * i_gate * (1.0 - g_gate * g_gate)
-    grad_o = ghy * tanh_cy * o_gate * (1.0 - o_gate)
-    grad_cx = d_cy * f_gate
-
-    ty = grad_gates_ptr.dtype.element_ty
-    tl.store(grad_gates_ptr + row, grad_i.to(ty), mask=m)
-    tl.store(grad_gates_ptr + row + H, grad_f.to(ty), mask=m)
-    tl.store(grad_gates_ptr + row + 2 * H, grad_g.to(ty), mask=m)
-    tl.store(grad_gates_ptr + row + 3 * H, grad_o.to(ty), mask=m)
-    tl.store(grad_cx_ptr + bh, grad_cx.to(grad_cx_ptr.dtype.element_ty), mask=m)
-
-    # bias: reduce each gate over the batch dim (axis 0) -> (H,), store to bands.
-    ty_b = grad_biases_ptr.dtype.element_ty
-    tl.store(grad_biases_ptr + offs_h, tl.sum(grad_i, axis=0).to(ty_b), mask=mask_h)
-    tl.store(grad_biases_ptr + H + offs_h, tl.sum(grad_f, axis=0).to(ty_b), mask=mask_h)
-    tl.store(
-        grad_biases_ptr + 2 * H + offs_h, tl.sum(grad_g, axis=0).to(ty_b), mask=mask_h
-    )
-    tl.store(
-        grad_biases_ptr + 3 * H + offs_h, tl.sum(grad_o, axis=0).to(ty_b), mask=mask_h
-    )
-
-
 def _thnn_fused_lstm_cell_backward_impl(
     grad_hy: torch.Tensor,
     grad_cy: torch.Tensor,
@@ -339,8 +276,10 @@ def _thnn_fused_lstm_cell_backward_impl(
     else:
         grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
     with torch_device_fn.device(cx.device):
-        if N > 0 and batch_size == 1:
+        if N > 0 and batch_size == 1 and hidden_size <= _SMALL_BATCH_BLOCK:
             # Single-row fast path: no div/mod, no reduction, no accumulators.
+            # Gated on H: the kernel is one program over `tl.arange(0, BLOCK)`,
+            # so a wider row would silently drop every lane past BLOCK.
             _lstm_cell_bwd_b1[(1,)](
                 grad_hy,
                 grad_cy,
@@ -351,12 +290,13 @@ def _thnn_fused_lstm_cell_backward_impl(
                 grad_cx,
                 grad_biases,
                 H=hidden_size,
-                BLOCK=256,
+                BLOCK=_SMALL_BATCH_BLOCK,
                 has_bias=has_bias,
                 num_warps=4,
             )
-        elif N > 0 and batch_size == 2:
+        elif N > 0 and batch_size == 2 and hidden_size <= _SMALL_BATCH_BLOCK:
             # Two-row fast path: manual unroll, bias is a single elementwise add.
+            # Same H gate as the single-row kernel above.
             _lstm_cell_bwd_b2[(1,)](
                 grad_hy,
                 grad_cy,
@@ -367,7 +307,7 @@ def _thnn_fused_lstm_cell_backward_impl(
                 grad_cx,
                 grad_biases,
                 H=hidden_size,
-                BLOCK=256,
+                BLOCK=_SMALL_BATCH_BLOCK,
                 has_bias=has_bias,
                 num_warps=4,
             )
