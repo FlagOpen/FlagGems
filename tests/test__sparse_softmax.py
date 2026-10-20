@@ -548,12 +548,18 @@ def test__sparse_softmax_rejects_dense_input():
 
 def test_sparse_softmax_dispatch():
     """Smoke-test the dispatcher path (base, .int and .out overloads)."""
-    inp = _make_sparse((16, 32), 2, 64, torch.float32)
+    inp = _make_sparse(
+        (16, 32), 2, ("coords", 64), torch.float32, value_range=["-1", "1"]
+    )
+    ref = torch.ops.aten._sparse_softmax(inp, 1)
+    o = torch.empty_like(ref)
     with flag_gems.use_gems():
         res = torch.ops.aten._sparse_softmax(inp, 1)
         res_int = torch.ops.aten._sparse_softmax.int(inp, 1, torch.float32)
-        res_out = torch.ops.aten._sparse_softmax.out(inp, 1, False, out=res_int)
-    ref = torch.ops.aten._sparse_softmax(inp, 1)
+        res_out = torch.ops.aten._sparse_softmax.out(inp, 1, False, out=o)
     assert res.shape == ref.shape
     assert torch.equal(res._indices(), ref._indices())
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.allclose(res._values(), ref._values(), atol=1e-6)
+    assert torch.equal(res_int._indices(), ref._indices())
+    assert res_out is o
+    assert torch.allclose(res_out._values(), ref._values(), atol=1e-6)
