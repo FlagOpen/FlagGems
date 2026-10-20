@@ -3271,18 +3271,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: clone
-  description: Pure layout/memory operation (clone).
-  for:
-  - clone
-  labels:
-  - KernelGen
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
     by their linear index, sorts unique coordinates ascending and sums duplicated
