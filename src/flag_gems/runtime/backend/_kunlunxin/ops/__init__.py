@@ -200,6 +200,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
+from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
 from .clamp import (
     clamp,
     clamp_,
@@ -263,6 +264,7 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dropout_ import dropout_  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .empty import empty  # noqa: F401
@@ -703,6 +705,7 @@ from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
+from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
@@ -943,6 +946,7 @@ __all__ = [
     "cholesky_solve_out",
     "chunk",
     "chunk_cat",
+    "chunk_gated_delta_rule_fwd",
     "clamp",
     "clamp_",
     "clamp_max",

@@ -20,6 +20,12 @@ from flag_gems.ops.__rshift__ import __rshift__
 from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
 from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from flag_gems.ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d as adaptive_avg_pool3d,
+)
+from flag_gems.ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d_out as adaptive_avg_pool3d_out,
+)
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
@@ -41,6 +47,7 @@ from flag_gems.ops._batch_norm_with_update_functional import (
 )
 from flag_gems.ops._cholesky_solve_helper import _cholesky_solve_helper
 from flag_gems.ops._chunk_cat import chunk_cat as _chunk_cat
+from flag_gems.ops._coalesce import _coalesce, _coalesce_out
 from flag_gems.ops._coalesced_ import _coalesced_
 from flag_gems.ops._compute_linear_combination import (
     _compute_linear_combination,
@@ -295,6 +302,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
+from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -554,6 +562,7 @@ from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
+from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
@@ -706,6 +715,7 @@ from flag_gems.ops.feature_alpha_dropout import feature_alpha_dropout
 from flag_gems.ops.feature_alpha_dropout_ import feature_alpha_dropout_
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_ifftshift import fft_ifftshift
 from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fft_rfft import fft_rfft
 from flag_gems.ops.fill import (
@@ -773,6 +783,7 @@ from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.glu_backward_jvp import glu_backward_jvp
 from flag_gems.ops.glu_jvp import glu_jvp
 from flag_gems.ops.gradient import gradient
 from flag_gems.ops.greater import (
@@ -1418,6 +1429,7 @@ from flag_gems.ops.special_zeta import (
     special_zeta_tensor_scalar,
     special_zeta_tensor_scalar_out,
 )
+from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes import split_with_sizes
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -1536,6 +1548,7 @@ from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_bac
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.values import _values as values
 from flag_gems.ops.values_copy import values_copy, values_copy_out
 from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
@@ -1543,6 +1556,7 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
+from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
@@ -1599,6 +1613,8 @@ __all__ = [
     "_cdist_forward",
     "_cholesky_solve_helper",
     "_chunk_cat",
+    "_coalesce",
+    "_coalesce_out",
     "_coalesced_",
     "_compute_linear_combination",
     "_compute_linear_combination_out",
@@ -1822,6 +1838,8 @@ __all__ = [
     "_native_batch_norm_legit_no_training",
     "_native_batch_norm_legit_out",
     "_native_multi_head_attention",
+    "_neg_view_copy",
+    "_neg_view_copy_out",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
@@ -1916,7 +1934,9 @@ __all__ = [
     "acosh_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d",
     "adaptive_avg_pool3d_backward_grad_input",
+    "adaptive_avg_pool3d_out",
     "adaptive_max_pool1d",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
@@ -2066,6 +2086,8 @@ __all__ = [
     "cat_out",
     "cauchy",
     "cauchy_",
+    "ccol_indices_copy",
+    "ccol_indices_copy_out",
     "cdist",
     "ceil",
     "ceil_",
@@ -2236,6 +2258,7 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_ifftshift",
     "fft_irfftn",
     "fft_rfft",
     "fill_diagonal_",
@@ -2307,6 +2330,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_backward_jvp",
     "glu_jvp",
     "gradient",
     "greater",
@@ -2994,6 +3018,7 @@ __all__ = [
     "special_zeta_scalar_tensor_out",
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
+    "split_copy",
     "split_with_sizes",
     "split_with_sizes_copy",
     "spsolve",
@@ -3120,6 +3145,7 @@ __all__ = [
     "upsample_trilinear3d",
     "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
+    "values",
     "values_copy",
     "values_copy_out",
     "vander",
@@ -3130,6 +3156,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_as_complex",
+    "view_as_real_copy",
     "view_copy",
     "vsplit",
     "vstack",
