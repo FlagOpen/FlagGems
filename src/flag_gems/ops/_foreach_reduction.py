@@ -278,16 +278,9 @@ def _norm_stage1_kernel(
     n_elements = tl.load(meta_ptr + tl.num_programs(0) + t)
 
     n_blocks = tl.cdiv(n_elements, BLOCK)
-    # Balanced split: every chunk gets ``n_blocks // G`` blocks and the first
-    # ``n_blocks % G`` chunks get one more.  Splitting on a fixed ``ceil``
-    # instead makes the tail chunks empty whenever ``G`` does not divide the
-    # block count (58 chunks over 64 blocks leaves 26 programs with no work),
-    # and it puts up to twice the work on the chunks of a ragged tail.  The
-    # remainder form also avoids a 32-bit overflow in ``g * n_blocks``.
-    base = n_blocks // G
-    rem = n_blocks % G
-    first = g * base + tl.minimum(g, rem)
-    last = first + base + tl.where(g < rem, 1, 0)
+    per_chunk = tl.cdiv(n_blocks, G)
+    first = g * per_chunk
+    last = tl.minimum(first + per_chunk, n_blocks)
 
     # ``min`` needs the true identity (+inf), not zero: zero would clamp every
     # positive chunk to 0.  ``max`` and the sums use 0, which is the identity
@@ -375,32 +368,9 @@ def _norm_stage2_kernel(
     tl.store(out_ptr + t, total.to(OUT_DT))
 
 
-# See ``_norm_chunks``: below this many blocks a chunk costs more in program
-# setup than in useful loads.
-_NORM_MIN_BLOCKS_PER_PROGRAM = 4
-
-
-def _norm_chunks(
-    nt: int, max_numel: int, device: torch.device, block: int
-) -> int:
-    """Stage-one chunk count for norm, i.e. the ``G`` in ``grid=(NT, G)``.
-
-    The shared policy targets a fixed number of device waves and then clamps to
-    the block count of the largest tensor.  On a 256x256 list that clamp leaves
-    about one block per program, so a program spends more time being launched,
-    loading three metadata scalars and draining than streaming its 4 KiB.  Each
-    chunk is therefore kept at least ``_NORM_MIN_BLOCKS_PER_PROGRAM`` blocks
-    long; on a 512x512 or 1024x1024 list the shared policy is already above
-    that floor and the result is unchanged.
-    """
-    g = _reduction_chunks(nt, max_numel, device, block)
-    n_blocks = max(1, triton.cdiv(max_numel, block))
-    floor = triton.cdiv(n_blocks, _NORM_MIN_BLOCKS_PER_PROGRAM)
-    return max(1, min(g, floor))
-
-
 # Below this many elements one chunk covers a whole tensor, so stage one can
-# finish the reduction itself and the second launch is pure overhead.
+# finish the reduction itself and the second launch is pure overhead.  The
+# crossover is measured in e_gate.py, not copied from another operator.
 _NORM_SINGLE_LAUNCH_MAX_NUMEL = 1 << 17
 
 
@@ -415,17 +385,19 @@ def _pow_sum_list(
     root = inf_mode == 0 and ord_f not in (0.0, 1.0)
 
     prepared = []
-    groups: dict = {}
-    for i, t in enumerate(tensors):
+    for t in tensors:
         work = t if dtype is None else t.to(dtype)
         if not work.is_contiguous():
             work = work.contiguous()
         if not work.dtype.is_floating_point:
             work = work.to(torch.float32)
         prepared.append(work)
-        groups.setdefault((work.device, work.dtype), []).append(i)
 
     results: List[Optional[torch.Tensor]] = [None] * len(prepared)
+    groups: dict = {}
+    for i, w in enumerate(prepared):
+        groups.setdefault((w.device, w.dtype), []).append(i)
+
     for (device, in_dtype), idxs in groups.items():
         work = [prepared[i] for i in idxs]
         numels = [w.numel() for w in work]
@@ -434,7 +406,7 @@ def _pow_sum_list(
             if max_numel <= _NORM_SINGLE_LAUNCH_MAX_NUMEL:
                 g = 1
             else:
-                g = _norm_chunks(len(work), max_numel, device, 1024)
+                g = _reduction_chunks(len(work), max_numel, device, 1024)
             meta = torch.tensor(
                 [w.data_ptr() for w in work] + numels, dtype=torch.int64
             ).to(device, non_blocking=True)
@@ -561,9 +533,10 @@ def _zero_list(tensors: List[torch.Tensor]) -> None:
 
     for (device, dtype), work in groups.items():
         if len(work) == 1:
-            # No metadata buffer and no H2D copy for a one-tensor group: the
-            # single-tensor kernel takes the pointer directly, and a one-entry
-            # list gains nothing from the 2-D packing.
+            # A one-tensor group gains nothing from the 2-D packed launch: the
+            # single-tensor kernel takes the pointer directly and skips the
+            # metadata build plus its host-to-device copy.  Measured at
+            # -2.1/-2.4 us (-30%) for a one-entry list (e_mech.py).
             _zero_one(work[0])
             continue
         numels = [w.numel() for w in work]
