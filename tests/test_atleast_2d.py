@@ -269,20 +269,25 @@ def test_accuracy_atleast_2d_dtype_neutrality():
 @pytest.mark.parametrize("shape", [(0,), (0, 4), (0, 0, 2)])
 def test_accuracy_atleast_2d_zero_sized(shape, dtype=None):
     """Zero-sized inputs: empty views must keep native shape/stride/alias
-    behavior (reviewer-requested parity). View aliasing is asserted on the
-    device side; native answers are layout-independent so logic comparison
-    suffices for the reference side."""
+    behavior (reviewer-requested parity). Both the native reference and this
+    implementation take the same path (unsqueeze for <2-D input, the input
+    itself otherwise), so strides can be compared directly; no reshape
+    normalization is needed. For shape (0,) native gives stride (0, 1), which
+    is what the unsqueeze path produces. View aliasing is asserted on the
+    device side; ref_out is a CPU reference tensor whose stride semantics
+    match the device side."""
     inp = torch.zeros(shape, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.atleast_2d(ref_inp)
     res_out = flag_gems.atleast_2d(inp)
     assert res_out.shape == ref_out.shape
-    assert tuple(res_out.stride()) == tuple(
-        ref_inp.reshape(res_out.shape).stride()
-    ) or shape == (0,)
+    assert tuple(res_out.stride()) == tuple(ref_out.stride())
     if inp.ndim < 2:
-        # unsqueeze paths must remain zero-copy views
+        # unsqueeze paths must remain zero-copy views. data_ptr() alone does
+        # not prove aliasing for an empty tensor, so also assert view status.
+        assert res_out._is_view() == ref_out._is_view()
+        assert res_out._base is inp
         assert res_out.data_ptr() == inp.data_ptr()
     else:
         assert res_out is inp
