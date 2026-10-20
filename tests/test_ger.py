@@ -157,17 +157,10 @@ def _assert_close(result, reference, atol=1e-4):
     """Compare in the result dtype, exactly for bool and integral results."""
     dtype = result.dtype
     assert dtype == reference.dtype
-    result = utils.to_cpu(result, reference)
     if dtype.is_floating_point or dtype.is_complex:
-        torch.testing.assert_close(
-            result,
-            reference,
-            rtol=flag_gems.testing.RESOLUTION[dtype],
-            atol=atol,
-            equal_nan=True,
-        )
+        utils.gems_assert_close(result, reference, dtype, equal_nan=True, atol=atol)
     else:
-        torch.testing.assert_close(result, reference, rtol=0, atol=0)
+        utils.gems_assert_equal(result, reference)
 
 
 @pytest.mark.ger
