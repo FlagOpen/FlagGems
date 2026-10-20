@@ -106,7 +106,16 @@ if _TLE_OK:
             pid = tl.program_id(0)
             tle.raw.call(nz_dense, (Out, n, pid, D1))
 
-    except Exception:  # pragma: no cover - triton without object= support
+    except Exception as exc:  # pragma: no cover - triton without object= support
+        # Falling back here silently would hide a missing/stale `nz_pack.o` or a
+        # signature change as "merely slow", so say which payload went missing.
+        logger.warning(
+            "nonzero_numpy: tle.raw payload %s unavailable (%s: %s); "
+            "using the pointer compaction path",
+            _NZ_OBJ,
+            type(exc).__name__,
+            exc,
+        )
         _TLE_OK = False
 
 
