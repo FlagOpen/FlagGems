@@ -3271,18 +3271,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: clone
-  description: Pure layout/memory operation (clone).
-  for:
-  - clone
-  labels:
-  - KernelGen
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
     by their linear index, sorts unique coordinates ascending and sums duplicated
@@ -3690,6 +3678,18 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_depthwise3d
+  description: Applies a 3D depthwise convolution over an input signal composed of
+    several input planes.
+  for:
+  - conv_depthwise3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: conv_tbc
   description: Applies a 1D convolution over an input with time-batch-channel (T,
     B, C) layout.
@@ -3934,6 +3934,18 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_sparse_to_sparse_
+  description: |
+    Copy COO indices, values, and coalesced metadata into a sparse destination in place.
+  for:
+    - copy_sparse_to_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
@@ -5298,7 +5310,7 @@ ops:
     [B, bag_size] index matrix, returning a [B, D] tensor.
     '
   for:
-  - None
+  - GenerateEmbeddingSpMDM
   labels:
   - fused
   - Reduction
@@ -5306,6 +5318,8 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.5'
+  source:
+  - fbgemm
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -8565,18 +8579,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
-- id: fused_moe
-  description: The generic interface for fused MoE.
-  for:
-  - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
@@ -8943,6 +8945,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_backward_jvp
+  description: This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu_backward`.
+  for:
+  - glu_backward_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: glu_jvp
   description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
   for:
@@ -13451,31 +13464,25 @@ ops:
   - BLAS
   stages:
   - beta: '5.4'
-- id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
-    their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+- id: mm_w8a8
+  description: 'W8A8 matrix multiplication with FP32 scales. Precisions: FP8 E4M3
+    (dynamically quantizes BF16 activations and weights, FP8 Tensor Cores) and INT8
+    (prequantized INT8 matrices with scalar or per-row/column scales and optional
+    bias; input quantization is external).
+
+    '
   for:
-  - None
+  - mm_w8a8_int8
   labels:
   - NoCPU
+  - non-aten
   - Quantization
   kind:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: mm_w8a8_int8
-  description: Multiplies prequantized INT8 matrices with scalar or per-row/column
-    FP32 scales and optional bias; input quantization is external.
-  for:
-  - mm_w8a8_int8
-  labels:
-  - non-aten
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.5'
-- id: mm_w8a8_int8_out
-  description: A variant of mm_w8a8_int8 with caller-owned output.
+- id: mm_w8a8_out
+  description: A variant of mm_w8a8 with caller-owned output.
   for:
   - mm_w8a8_int8_out
   labels:
@@ -14441,6 +14448,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: new_zeros_with_same_feature_meta
+  description: |
+    Create zeros preserving the feature tensor dtype, device, strides, and storage offset.
+  for:
+    - _new_zeros_with_same_feature_meta
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: nextafter
   description: Return the next floating-point value after input towards other, elementwise.
   for:
@@ -15850,16 +15869,6 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
-- id: random_
-  description: Random sampling operator (random_).
-  for:
-  - random_
-  labels:
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.1'
 - id: randperm
   description: Returns a random permutation of integers from `0` to `n - 1`.
   for:
@@ -16452,6 +16461,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: resize_as_sparse_
+  description: |
+    Resize a sparse COO tensor in place to match the shape and sparse/dense dimensions of a COO or strided template, preserving its index and value buffers.
+  for:
+    - resize_as_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: resize_output
   description: 'Resizes tensor output storage and copies overlapping elements.
 
@@ -16525,26 +16546,10 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
-- id: rms_norm_w8a16_fp8
+- id: rms_norm_w8a16
   description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
 
-    group-wise FP8 E4M3 weights and per-group scales.
-
-    '
-  for:
-  - None
-  labels:
-  - NoCPU
-  - Normalization
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: rms_norm_w8a16_int8
-  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
-
-    group-wise INT8 weights and per-group scales.
+    group-wise 8-bit weights and per-group scales. Precisions: FP8 E4M3 and INT8.
 
     '
   for:
@@ -19587,6 +19592,22 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: split_copy
+  description: |
+    Splits a tensor into chunks along a given dimension, each of the given
+    split_size, and returns a list of contiguous copies. This is the
+    out-of-place counterpart of `torch.split()`: the last chunk is smaller
+    when the dimension size is not divisible by split_size, and every output
+    chunk is freshly created instead of aliasing the input.
+  for:
+  - split_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: split_with_sizes
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -20599,7 +20620,7 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
-- id: topk_w8a16_fp8
+- id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 
@@ -21699,6 +21720,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
+    '
+  for:
+  - _values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: values_copy
   description: 'Returns a fresh non-aliasing copy of the stored values of a
     compressed sparse tensor (CSR/CSC/BSR/BSC).
@@ -21821,6 +21854,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: view_as_real_copy
+  description: |
+    Copies a complex tensor into a freshly allocated real tensor whose last
+    dimension has size 2. This is the out-of-place counterpart of
+    `torch.view_as_real()`: complex64 becomes float32, complex128 becomes
+    float64 and complex32 becomes float16, the batch dimensions may be
+    non-contiguous, and the result never aliases the input.
+  for:
+  - view_as_real_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_copy
   description: 'Returns a copy of the tensor with the specified shape.
 

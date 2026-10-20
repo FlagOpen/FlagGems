@@ -29,6 +29,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs_ import _foreach_abs_
+from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -213,6 +214,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
+from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
 from .clamp import (
     clamp,
     clamp_,
@@ -276,6 +278,7 @@ from .div import (
 )
 from .dot import dot
 from .dropout import dropout, dropout_backward
+from .dropout_ import dropout_  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .empty import empty  # noqa: F401
@@ -364,6 +367,7 @@ from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
+from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
 from .i0 import i0, i0_out  # noqa: F401
@@ -384,6 +388,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_scalar import ior_scalar
 from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -716,6 +721,7 @@ from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
+from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
@@ -794,6 +800,7 @@ __all__ = [
     "_foreach_abs_",
     "_foreach_acos",
     "_foreach_acos_",
+    "_foreach_addcmul_ScalarList",
     "_foreach_asin",
     "_foreach_asin_",
     "_foreach_copy",
@@ -967,6 +974,7 @@ __all__ = [
     "cholesky_solve_out",
     "chunk",
     "chunk_cat",
+    "chunk_gated_delta_rule_fwd",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -1125,6 +1133,7 @@ __all__ = [
     "hardsigmoid_",
     "hardsigmoid_out",
     "histc",
+    "hsplit",
     "hstack",
     "hypot",
     "hypot_",
@@ -1146,6 +1155,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_scalar",
     "ior_tensor",
     "isclose",
     "isfinite",
