@@ -8943,6 +8943,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_backward_jvp
+  description: This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu_backward`.
+  for:
+  - glu_backward_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: glu_jvp
   description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
   for:
@@ -16446,6 +16457,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: resize_as_sparse_
+  description: |
+    Resize a sparse COO tensor in place to match the shape and sparse/dense dimensions of a COO or strided template, preserving its index and value buffers.
+  for:
+    - resize_as_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: resize_output
   description: 'Resizes tensor output storage and copies overlapping elements.
 
@@ -19565,6 +19588,22 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: split_copy
+  description: |
+    Splits a tensor into chunks along a given dimension, each of the given
+    split_size, and returns a list of contiguous copies. This is the
+    out-of-place counterpart of `torch.split()`: the last chunk is smaller
+    when the dimension size is not divisible by split_size, and every output
+    chunk is freshly created instead of aliasing the input.
+  for:
+  - split_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: split_with_sizes
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -21677,6 +21716,18 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
+    '
+  for:
+  - _values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: values_copy
   description: 'Returns a fresh non-aliasing copy of the stored values of a
     compressed sparse tensor (CSR/CSC/BSR/BSC).
@@ -21799,6 +21850,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: view_as_real_copy
+  description: |
+    Copies a complex tensor into a freshly allocated real tensor whose last
+    dimension has size 2. This is the out-of-place counterpart of
+    `torch.view_as_real()`: complex64 becomes float32, complex128 becomes
+    float64 and complex32 becomes float16, the batch dimensions may be
+    non-contiguous, and the result never aliases the input.
+  for:
+  - view_as_real_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_copy
   description: 'Returns a copy of the tensor with the specified shape.
 
