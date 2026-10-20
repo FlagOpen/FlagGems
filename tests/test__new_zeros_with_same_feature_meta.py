@@ -96,7 +96,7 @@ def _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other):
         tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_shape, other_shape, self_num_batch_dims",
     _NEW_ZEROS_WITH_SAME_FEATURE_META_CASES,
@@ -152,7 +152,7 @@ def test__new_zeros_with_same_feature_meta_out(
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_shape, other_shape, self_num_batch_dims", _SHAPE_LEVEL_CASES
 )
@@ -266,7 +266,7 @@ def test__new_zeros_with_same_feature_meta_out_alias(alias_self, dtype):
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_grad,other_grad", [(True, False), (False, True), (True, True)]
 )
@@ -308,7 +308,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_shape, other_shape, self_num_batch_dims", _VALUE_RANGE_CASES
 )
@@ -331,7 +331,7 @@ def test__new_zeros_with_same_feature_meta_value_ranges(
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_dtype, other_dtype", _NEW_ZEROS_WITH_SAME_FEATURE_META_MIXED_DTYPES
 )
@@ -351,7 +351,7 @@ def test__new_zeros_with_same_feature_meta_other_dtype_wins(self_dtype, other_dt
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize("dtype", _NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES)
 def test__new_zeros_with_same_feature_meta_same_tensor(dtype):
     self_t = tu.make_input(dtype, (2, 3, 4), _MAIN_RANGE)
@@ -369,7 +369,7 @@ def test__new_zeros_with_same_feature_meta_same_tensor(dtype):
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
     "dtype,scenario",
@@ -391,7 +391,7 @@ def test__new_zeros_with_same_feature_meta_nan_inf_values(shape, dtype, scenario
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test__new_zeros_with_same_feature_meta_negative_batch_dims_raises(dtype):
     self_t = tu.make_input(dtype, (2, 3), _MAIN_RANGE)
@@ -423,7 +423,7 @@ def test__new_zeros_with_same_feature_meta_out_wrong_dtype_raises():
         )
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_arg,other_arg",
     [

@@ -256,7 +256,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__assert_tensor_metadata(shape, value_range, dtype):
@@ -272,7 +272,7 @@ def test__assert_tensor_metadata(shape, value_range, dtype):
     tu.assert_result_equal(inp, values_before)
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", _METADATA_SHAPES)
 @pytest.mark.parametrize("row", _CALL_ROWS)
 def test__assert_tensor_metadata_call_form(shape, row):
@@ -287,7 +287,7 @@ def test__assert_tensor_metadata_call_form(shape, row):
     tu.assert_result_equal(inp, values_before)
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("label", _STATE_ROWS)
 def test__assert_tensor_metadata_tensor_state(label):
     inp = _state_tensor(label)
@@ -301,7 +301,7 @@ def test__assert_tensor_metadata_tensor_state(label):
     tu.assert_result_equal(inp, values_before)
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", _METADATA_SHAPES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__assert_tensor_metadata_dtype_mismatch(shape, dtype):
@@ -312,7 +312,7 @@ def test__assert_tensor_metadata_dtype_mismatch(shape, dtype):
         flag_gems._assert_tensor_metadata(inp, **kwargs)
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", _METADATA_SHAPES)
 @pytest.mark.parametrize("expected,row", _MISMATCH_ROWS)
 def test__assert_tensor_metadata_mismatch(shape, expected, row):
@@ -327,7 +327,7 @@ def test__assert_tensor_metadata_mismatch(shape, expected, row):
     tu.assert_result_equal(inp, values_before)
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("arg,bad_value", _INVALID_ARGUMENT_ROWS)
 def test__assert_tensor_metadata_invalid_argument(arg, bad_value):
     inp = tu.make_input(torch.float32, _PLAIN_SHAPE, ["-1", "1"])
@@ -344,7 +344,7 @@ def test__assert_tensor_metadata_invalid_argument(arg, bad_value):
 # The op never reads elements, so a NaN/Inf payload is not a special value for it:
 # these default-only cases record that a NaN/Inf carrier still passes metadata
 # validation. Quick omits them, like every other positive special-value case.
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[]),

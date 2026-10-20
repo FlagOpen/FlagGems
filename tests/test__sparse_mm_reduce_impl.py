@@ -291,7 +291,7 @@ def _invalid_operands(label):
     return self_t, _dense(torch.float32, (k + 2, n)), "sum"
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("mnk", _MNK_ROWS)
@@ -310,7 +310,7 @@ def test__sparse_mm_reduce_impl_value_grid(mnk, value_range, dtype):
     tu.assert_result_equal(res_arg, ref_arg)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("mnk,reduce", _REDUCE_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test__sparse_mm_reduce_impl_reduce_modes(mnk, reduce, dtype):
@@ -326,7 +326,7 @@ def test__sparse_mm_reduce_impl_reduce_modes(mnk, reduce, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("m,k,n,label,reduce", _STRUCTURE_ROWS)
 def test__sparse_mm_reduce_impl_structure(m, k, n, label, reduce):
     self_t, other = _structure_operands(m, k, n, label)
@@ -343,7 +343,7 @@ def test__sparse_mm_reduce_impl_structure(m, k, n, label, reduce):
         assert not bool(res_out.any())
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("reduce", _REDUCES)
 def test__sparse_mm_reduce_impl_arg_out_inference(reduce):
     """Outside grad mode the second result is empty, in the crow_indices dtype."""
@@ -360,7 +360,7 @@ def test__sparse_mm_reduce_impl_arg_out_inference(reduce):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("reduce,index_dtype,grad_operand", _GRAD_ARG_ROWS)
 def test__sparse_mm_reduce_impl_arg_out_in_grad_mode(reduce, index_dtype, grad_operand):
     """amax/amin fill arg_out with the winning row index per output entry when a
@@ -376,7 +376,7 @@ def test__sparse_mm_reduce_impl_arg_out_in_grad_mode(reduce, index_dtype, grad_o
     tu.assert_result_equal(res_arg, ref_arg)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("reduce,mnk,label,dtype", _BACKWARD_ROWS)
 def test__sparse_mm_reduce_impl_backward(reduce, mnk, label, dtype):
     m, k, n = mnk
@@ -406,7 +406,7 @@ def test__sparse_mm_reduce_impl_backward(reduce, mnk, label, dtype):
     tu.assert_result_close(res_dother, ref_dother)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("dtype,scenario,placement,reduce", _SPECIAL_ROWS)
 def test__sparse_mm_reduce_impl_special_values(dtype, scenario, placement, reduce):
     self_t, other = _special_operands(dtype, scenario, placement)
@@ -420,7 +420,7 @@ def test__sparse_mm_reduce_impl_special_values(dtype, scenario, placement, reduc
     tu.assert_result_equal(res_arg, ref_arg)
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__sparse_mm_reduce_impl_rejects_unsupported_dtype(dtype):
     """int8 / uint8 / int32 / int64 / bool / float8 have no spmm_reduce_kernel."""
@@ -432,7 +432,7 @@ def test__sparse_mm_reduce_impl_rejects_unsupported_dtype(dtype):
         flag_gems._sparse_mm_reduce_impl(self_t, other, "sum")
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 @pytest.mark.parametrize("label", _NEGATIVE_LABELS)
 def test__sparse_mm_reduce_impl_rejects_invalid_arguments(label):
     """Native-invalid operand forms and reduce strings, kept in every mode."""

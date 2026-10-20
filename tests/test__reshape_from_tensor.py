@@ -183,7 +183,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__reshape_from_tensor_value_range(shape, value_range, dtype):
@@ -215,7 +215,7 @@ _TARGET_CASES = [
 _TARGET_ROWS = tu.selected_cases(_TARGET_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,shape,dims", _TARGET_ROWS)
 def test__reshape_from_tensor_target_shapes(case_name, shape, dims):
     inp = tu.make_input(torch.float32, shape, _VALUE_RANGE)
@@ -240,7 +240,7 @@ _LAYOUT_CASES = [
 _LAYOUT_ROWS = tu.selected_cases(_LAYOUT_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 @pytest.mark.parametrize("case_name,base_shape,transform,dims", _LAYOUT_ROWS)
 def test__reshape_from_tensor_layouts(case_name, base_shape, transform, dims, dtype):
@@ -274,7 +274,7 @@ _ALIAS_CASES = [
 _ALIAS_ROWS = tu.selected_cases(_ALIAS_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,base_shape,transform,dims", _ALIAS_ROWS)
 def test__reshape_from_tensor_alias_effects(case_name, base_shape, transform, dims):
     # float32 keeps the mutation sentinel representable so the write-through check is
@@ -298,7 +298,7 @@ _LAZY_CASES = [
 _LAZY_ROWS = tu.selected_cases(_LAZY_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,base_shape,dtype,transform", _LAZY_ROWS)
 def test__reshape_from_tensor_lazy_bit_operands(
     case_name, base_shape, dtype, transform
@@ -327,7 +327,7 @@ _KEYWORD_CASES = [
 _KEYWORD_ROWS = tu.selected_cases(_KEYWORD_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,shape,dims", _KEYWORD_ROWS)
 def test__reshape_from_tensor_keyword_shape(case_name, shape, dims):
     # Native also accepts the extents as the keyword argument `shape`.
@@ -368,7 +368,7 @@ _BACKWARD_CASES = [
 _BACKWARD_ROWS = tu.selected_cases(_BACKWARD_CASES, quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 @pytest.mark.parametrize("case_name,base_shape,transform,dims", _BACKWARD_ROWS)
 def test__reshape_from_tensor_backward(case_name, base_shape, transform, dims, dtype):
@@ -393,7 +393,7 @@ def test__reshape_from_tensor_backward(case_name, base_shape, transform, dims, d
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__reshape_from_tensor_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -412,7 +412,7 @@ def test__reshape_from_tensor_special_values(dtype, scenario):
 _NEGATIVE_DTYPE_CASES = [torch.int32, torch.int16, torch.float32, torch.bool]
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("bad_dtype", _NEGATIVE_DTYPE_CASES)
 def test__reshape_from_tensor_rejects_shape_dtype(bad_dtype):
     # Native reads the metadata as int64: any other dtype is rejected before the
@@ -434,7 +434,7 @@ _NEGATIVE_DIMS_CASES = [
 ]
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,bad_dims", _NEGATIVE_DIMS_CASES)
 def test__reshape_from_tensor_rejects_invalid_shape(case_name, bad_dims):
     # The rows are handed straight to torch.tensor, so the bare integer builds rank-0
@@ -455,7 +455,7 @@ _NEGATIVE_METADATA_CASES = [
 ]
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize(
     "args,kwargs",
     [row[1:] for row in _NEGATIVE_METADATA_CASES],

@@ -109,7 +109,7 @@ def _assert_grads_close(res_grads, ref_grads, in_reduce_dim, out_reduce_dim, dty
             )
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding", SLOW_CONV2D_CASES
 )
@@ -136,7 +136,7 @@ def test__slow_conv2d_forward(
     _assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding", SLOW_CONV2D_CASES
 )
@@ -163,7 +163,7 @@ def test__slow_conv2d_forward_value_ranges(
     _assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding", _BACKWARD_CASES
 )
@@ -226,7 +226,7 @@ def test__slow_conv2d_forward_backward(
     )
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(utils.ALL_FLOAT_DTYPES))
 )
@@ -261,7 +261,7 @@ def test__slow_conv2d_forward_nan_inf(dtype, scenario, special_arg):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "inp_shape, weight_shape, kernel_size, stride, padding", SLOW_CONV2D_CASES[:2]
 )
@@ -295,7 +295,7 @@ def test__slow_conv2d_forward_out(
     _assert_close(res_out, ref_out.to(dtype), dtype)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 def test__slow_conv2d_forward_rejects_kernel_size_mismatch():
     inp = tu.make_input(torch.float32, (1, 2, 5, 5), ["-1", "1"])
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
@@ -312,7 +312,7 @@ def test__slow_conv2d_forward_rejects_kernel_size_mismatch():
         flag_gems._slow_conv2d_forward(inp, weight, (2, 2), None, (1, 1), (0, 0))
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 def test__slow_conv2d_forward_rejects_kernel_larger_than_input():
     inp = tu.make_input(torch.float32, (1, 2, 2, 2), ["-1", "1"])
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
@@ -329,7 +329,7 @@ def test__slow_conv2d_forward_rejects_kernel_larger_than_input():
         flag_gems._slow_conv2d_forward(inp, weight, (3, 3), None, (1, 1), (0, 0))
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 def test__slow_conv2d_forward_rejects_channel_mismatch():
     inp = tu.make_input(torch.float32, (1, 2, 5, 5), ["-1", "1"])
     weight = tu.make_input(torch.float32, (1, 3, 3, 3), ["-1", "1"])
@@ -346,7 +346,7 @@ def test__slow_conv2d_forward_rejects_channel_mismatch():
         flag_gems._slow_conv2d_forward(inp, weight, (3, 3), None, (1, 1), (0, 0))
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 def test__slow_conv2d_forward_rejects_non_4d_input():
     inp = tu.make_input(torch.float32, (2, 5, 5), ["-1", "1"])
     weight = tu.make_input(torch.float32, (1, 2, 3, 3), ["-1", "1"])
@@ -363,7 +363,7 @@ def test__slow_conv2d_forward_rejects_non_4d_input():
         flag_gems._slow_conv2d_forward(inp, weight, (3, 3), None, (1, 1), (0, 0))
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test__slow_conv2d_forward_rejects_unsupported_dtype(dtype):
     inp = tu.make_input(dtype, (1, 2, 5, 5), ["0", "1"])
@@ -381,7 +381,7 @@ def test__slow_conv2d_forward_rejects_unsupported_dtype(dtype):
         flag_gems._slow_conv2d_forward(inp, weight, (3, 3), None, (1, 1), (1, 1))
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize("scalar_param", ["kernel_size", "stride", "padding"])
 def test__slow_conv2d_forward_rejects_scalar_params(scalar_param):
     inp = tu.make_input(torch.float32, (1, 2, 5, 5), ["-1", "1"])
@@ -402,7 +402,7 @@ def test__slow_conv2d_forward_rejects_scalar_params(scalar_param):
         flag_gems._slow_conv2d_forward(inp, weight, **bad_kwargs)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "bad_kwargs",
     [
@@ -425,7 +425,7 @@ def test__slow_conv2d_forward_rejects_wrong_length_params(bad_kwargs):
         flag_gems._slow_conv2d_forward(inp, weight, **bad_kwargs)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 @pytest.mark.parametrize(
     "bad_kwargs",
     [

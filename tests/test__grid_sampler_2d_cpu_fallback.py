@@ -190,7 +190,7 @@ def _layout_inputs(layout):
     return image, _coord_grid(3, 8, 12)[:, :, ::2]
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("shape", IMAGE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -212,7 +212,7 @@ def test__grid_sampler_2d_cpu_fallback_values(shape, value_range, dtype):
     tu.assert_result_equal(grid, ref_grid)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("interpolation_mode,padding_mode,align_corners", MODE_CASES)
 def test__grid_sampler_2d_cpu_fallback_modes(
     interpolation_mode, padding_mode, align_corners
@@ -232,7 +232,7 @@ def test__grid_sampler_2d_cpu_fallback_modes(
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("interpolation_mode", _INTERPOLATIONS)
 @pytest.mark.parametrize("in_h,in_w,out_h,out_w", OUT_SIZE_CASES)
 def test__grid_sampler_2d_cpu_fallback_output_size(
@@ -252,7 +252,7 @@ def test__grid_sampler_2d_cpu_fallback_output_size(
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("layout", LAYOUT_CASES)
 def test__grid_sampler_2d_cpu_fallback_strided_operands(layout):
     inp, grid = _layout_inputs(layout)
@@ -267,7 +267,7 @@ def test__grid_sampler_2d_cpu_fallback_strided_operands(layout):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("name,in_shape,grid_shape", EMPTY_CASES)
 def test__grid_sampler_2d_cpu_fallback_empty(name, in_shape, grid_shape):
     inp = _cpu_values(torch.float32, in_shape, ["-1", "1"])
@@ -280,7 +280,7 @@ def test__grid_sampler_2d_cpu_fallback_empty(name, in_shape, grid_shape):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("interpolation_mode,padding_mode,align_corners", OUT_CASES)
 def test__grid_sampler_2d_cpu_fallback_out(
     interpolation_mode, padding_mode, align_corners
@@ -302,7 +302,7 @@ def test__grid_sampler_2d_cpu_fallback_out(
     tu.assert_result_close(out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("dtype,scenario,interpolation_mode", SPECIAL_CASES)
 def test__grid_sampler_2d_cpu_fallback_special_values(
     dtype, scenario, interpolation_mode
@@ -321,7 +321,7 @@ def test__grid_sampler_2d_cpu_fallback_special_values(
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize(
     "interpolation_mode,padding_mode,align_corners", BACKWARD_CASES
 )
@@ -354,7 +354,7 @@ def test__grid_sampler_2d_cpu_fallback_backward(
     tu.assert_result_close(grad_grid, ref_grad_grid)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("case,in_shape,grid_shape,in_dtype,grid_dtype", BAD_CALLS)
 def test__grid_sampler_2d_cpu_fallback_invalid(
     case, in_shape, grid_shape, in_dtype, grid_dtype
@@ -368,7 +368,7 @@ def test__grid_sampler_2d_cpu_fallback_invalid(
         flag_gems._grid_sampler_2d_cpu_fallback(inp, grid, 0, 0, False)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 @pytest.mark.parametrize("mode", OUT_CASES)
 def test__grid_sampler_2d_cpu_fallback_strided_out_guard(mode):
     inp = _cpu_values(torch.float32, (2, 3, 9, 7), ["-1", "1"])

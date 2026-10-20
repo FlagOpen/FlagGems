@@ -174,7 +174,7 @@ def _assert_limit(result, reference):
     assert result == reference
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", VALID_DEVICE_INDICES)
 def test__cufft_get_plan_cache_max_size(device_index):
     reference = _NATIVE_GET(device_index)
@@ -182,7 +182,7 @@ def test__cufft_get_plan_cache_max_size(device_index):
     _assert_limit(result, reference)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", VALID_DEVICE_INDICES)
 @pytest.mark.parametrize("capacity", PLAN_CACHE_CAPACITIES)
 def test__cufft_get_plan_cache_max_size_with_configured_capacity(
@@ -195,7 +195,7 @@ def test__cufft_get_plan_cache_max_size_with_configured_capacity(
     assert _NATIVE_GET(device_index) == reference
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", VALID_DEVICE_INDICES)
 @pytest.mark.parametrize("capacity", POST_CLEAR_CAPACITIES)
 def test__cufft_get_plan_cache_max_size_after_clear(
@@ -208,7 +208,7 @@ def test__cufft_get_plan_cache_max_size_after_clear(
     _assert_limit(result, reference)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", VALID_DEVICE_INDICES)
 def test__cufft_get_plan_cache_max_size_accepts_keyword_index(device_index):
     reference = _NATIVE_GET(device_index=device_index)
@@ -216,7 +216,7 @@ def test__cufft_get_plan_cache_max_size_accepts_keyword_index(device_index):
     _assert_limit(result, reference)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", VALID_DEVICE_INDICES)
 def test__cufft_get_plan_cache_max_size_accepts_int_like_index(device_index):
     # A 0-dim integer tensor spells the same index argument, not an input tensor.
@@ -226,7 +226,7 @@ def test__cufft_get_plan_cache_max_size_accepts_int_like_index(device_index):
     _assert_limit(result, reference)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", ALIAS_DEVICE_INDICES)
 def test__cufft_get_plan_cache_max_size_matches_native_index_aliasing(device_index):
     reference = _NATIVE_GET(device_index)
@@ -234,21 +234,21 @@ def test__cufft_get_plan_cache_max_size_matches_native_index_aliasing(device_ind
     _assert_limit(result, reference)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", OUT_OF_RANGE_DEVICE_INDICES)
 def test__cufft_get_plan_cache_max_size_rejects_out_of_range_index(device_index):
     with pytest.raises(_OUT_OF_RANGE_ERRORS):
         flag_gems._cufft_get_plan_cache_max_size(device_index)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("device_index", NON_INTEGER_INDICES)
 def test__cufft_get_plan_cache_max_size_rejects_non_integer_index(device_index):
     with pytest.raises(_NON_INTEGER_ERRORS):
         flag_gems._cufft_get_plan_cache_max_size(device_index)
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 @pytest.mark.parametrize("args", [(), (0, 0), (0, 0, 0)])
 def test__cufft_get_plan_cache_max_size_rejects_wrong_arity(args):
     with pytest.raises(_ARITY_ERRORS):

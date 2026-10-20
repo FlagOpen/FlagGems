@@ -250,7 +250,7 @@ def _coo_unit(size, sparse_dim, nnz, dtype, phase):
     )
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("size", tu.selected_shapes())
@@ -283,7 +283,7 @@ def test__sparse_log_softmax_backward_data_value_range(size, value_range, dtype)
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("size,dim", _DIM_ROWS)
 def test__sparse_log_softmax_backward_data_dim(size, dim, dtype):
@@ -308,7 +308,7 @@ def test__sparse_log_softmax_backward_data_dim(size, dim, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize(
     "size,sparse_dim,dim,grad_coords,out_coords,coalesce", _STRUCTURE_ROWS
@@ -341,7 +341,7 @@ def test__sparse_log_softmax_backward_data_structure(
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype,scenario,slot", _SPECIAL_ROWS)
 def test__sparse_log_softmax_backward_data_special_values(dtype, scenario, slot):
     # One normalization group of five entries along dim 0, so nan/inf take part in the
@@ -387,7 +387,7 @@ def test__sparse_log_softmax_backward_data_special_values(dtype, scenario, slot)
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("coords,coalesce", _OUT_BUFFER_ROWS)
 def test__sparse_log_softmax_backward_data_out(coords, coalesce, dtype):
@@ -427,7 +427,7 @@ def test__sparse_log_softmax_backward_data_out(coords, coalesce, dtype):
     tu.assert_result_equal(self_, self_before)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__sparse_log_softmax_backward_data_rejects_dtype(dtype):
     grad_output = _coo_unit((6,), 1, 3, dtype, phase=0)
@@ -437,7 +437,7 @@ def test__sparse_log_softmax_backward_data_rejects_dtype(dtype):
         flag_gems._sparse_log_softmax_backward_data(grad_output, output, 0, self_)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("size,dim", _INVALID_DIMS)
 def test__sparse_log_softmax_backward_data_rejects_dim(size, dim):
     shape = tuple(size)
@@ -451,7 +451,7 @@ def test__sparse_log_softmax_backward_data_rejects_dim(size, dim):
         flag_gems._sparse_log_softmax_backward_data(grad_output, output, dim, self_)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_log_softmax_backward_data_rejects_dense_input(dtype):
     grad_output = tu.make_input(dtype, (6,), _DEFAULT_RANGE)
@@ -461,7 +461,7 @@ def test__sparse_log_softmax_backward_data_rejects_dense_input(dtype):
         flag_gems._sparse_log_softmax_backward_data(grad_output, output, 0, self_)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 @pytest.mark.parametrize("grad_dtype,output_dtype", _MIXED_DTYPE_ROWS)
 def test__sparse_log_softmax_backward_data_rejects_mixed_dtype(
     grad_dtype, output_dtype

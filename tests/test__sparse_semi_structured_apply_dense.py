@@ -222,7 +222,7 @@ def _offset_input(rows, cols, layout, dtype, value_range):
     return base[:, pad : pad + rows].t()
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,dtype,value_range,layout,mask_pattern", _MAIN_CASES)
 def test__sparse_semi_structured_apply_dense(
     shape, dtype, value_range, layout, mask_pattern
@@ -241,7 +241,7 @@ def test__sparse_semi_structured_apply_dense(
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("dtype,scenario,mask_pattern", _SPECIAL_CASES)
 def test__sparse_semi_structured_apply_dense_special_values(
     dtype, scenario, mask_pattern
@@ -272,7 +272,7 @@ def test__sparse_semi_structured_apply_dense_special_values(
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,layout,dtype", _MASK_LAYOUT_CASES)
 def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -290,7 +290,7 @@ def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,layout,operand,dtype", _VIEW_CASES)
 def test__sparse_semi_structured_apply_dense_offset_views(
     shape, layout, operand, dtype
@@ -372,7 +372,7 @@ def _invalid_mask(defect, device):
     return good[:, :-1]
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__sparse_semi_structured_apply_dense_unsupported_dtype(dtype):
     inp = torch.zeros(_SHAPE_BASIC, dtype=dtype, device=flag_gems.device)
@@ -382,7 +382,7 @@ def test__sparse_semi_structured_apply_dense_unsupported_dtype(dtype):
         flag_gems._sparse_semi_structured_apply_dense(inp, mask)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape", _INVALID_RANKS)
 def test__sparse_semi_structured_apply_dense_invalid_input_rank(shape):
     inp = torch.zeros(shape, dtype=torch.float16, device=flag_gems.device)
@@ -392,7 +392,7 @@ def test__sparse_semi_structured_apply_dense_invalid_input_rank(shape):
         flag_gems._sparse_semi_structured_apply_dense(inp, mask)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("layout_case", _INVALID_LAYOUTS)
 def test__sparse_semi_structured_apply_dense_invalid_input_layout(layout_case):
     # The table carries the single case "split_stride" for vendor scoping; the
@@ -406,7 +406,7 @@ def test__sparse_semi_structured_apply_dense_invalid_input_layout(layout_case):
         flag_gems._sparse_semi_structured_apply_dense(inp, mask)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("defect", _MASK_DEFECTS)
 def test__sparse_semi_structured_apply_dense_invalid_mask(defect):
     inp = torch.zeros(_SHAPE_BASIC, dtype=torch.float16, device=flag_gems.device)

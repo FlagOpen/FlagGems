@@ -169,7 +169,7 @@ class SparseLogSoftmaxBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_CASES)
 
 
-@pytest.mark.sparse_log_softmax_backward_data
+@pytest.mark.underscore_sparse_log_softmax_backward_data
 def test__sparse_log_softmax_backward_data_benchmark():
     bench = SparseLogSoftmaxBackwardBenchmark(
         op_name="_sparse_log_softmax_backward_data",

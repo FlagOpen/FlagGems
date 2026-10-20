@@ -169,7 +169,7 @@ class ValidateSparseBsrTensorArgsBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args():
     bench = ValidateSparseBsrTensorArgsBenchmark(
         op_name="_validate_sparse_bsr_tensor_args",

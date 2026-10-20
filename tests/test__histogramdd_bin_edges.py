@@ -93,7 +93,7 @@ def _assert_edges(res, ref):
         tu.assert_result_close(res_edge, ref_edge)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", GRID_SHAPES)
@@ -108,7 +108,7 @@ def test__histogramdd_bin_edges(shape, value_range, dtype):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("per_dim", [0, 1, 4, 9])
 def test__histogramdd_bin_edges_bin_counts(dtype, per_dim):
@@ -124,7 +124,7 @@ def test__histogramdd_bin_edges_bin_counts(dtype, per_dim):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__histogramdd_bin_edges_bins_per_dimension(dtype):
     # Per-dimension counts in the tuple form of the int[] argument.
@@ -138,7 +138,7 @@ def test__histogramdd_bin_edges_bins_per_dimension(dtype):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__histogramdd_bin_edges_range_default(dtype):
     # Schema default: omitting `range` derives the extent from the data.
@@ -163,7 +163,7 @@ _RANGE_ROWS = [
 ]
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("low,high", _RANGE_ROWS)
 def test__histogramdd_bin_edges_range_values(dtype, low, high):
@@ -179,7 +179,7 @@ def test__histogramdd_bin_edges_range_values(dtype, low, high):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("density", [False, True])
 @pytest.mark.parametrize("with_weight", [False, True])
 def test__histogramdd_bin_edges_weight_density(with_weight, density):
@@ -200,7 +200,7 @@ def test__histogramdd_bin_edges_weight_density(with_weight, density):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("container", [list, tuple])
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__histogramdd_bin_edges_out(container, dtype):
@@ -228,7 +228,7 @@ def test__histogramdd_bin_edges_out(container, dtype):
     assert torch.equal(inp, ref_inp)  # only the out buffers are written
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__histogramdd_bin_edges_strided_input(dtype):
     # Columns selected with stride 2 from a wider row plus a non-zero storage
@@ -247,7 +247,7 @@ def test__histogramdd_bin_edges_strided_input(dtype):
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES), quick=[])
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__histogramdd_bin_edges_special_values(dtype, scenario):
     # Non-finite samples need an explicit finite `range`: the data-derived
@@ -262,7 +262,7 @@ def test__histogramdd_bin_edges_special_values(dtype, scenario):
     _assert_edges(res_out, ref_out)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test__histogramdd_bin_edges_unsupported_dtype(dtype):
     inp = _cpu_input(torch.float32, (8, 3), ["-1", "1"]).to(dtype)
@@ -271,7 +271,7 @@ def test__histogramdd_bin_edges_unsupported_dtype(dtype):
         flag_gems._histogramdd_bin_edges(inp, [4, 4, 4])
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("shape", [(), (1,), (256,)])
 def test__histogramdd_bin_edges_invalid_rank(shape):
     # rank < 2 is rejected: 'input tensor should have at least 2 dimensions'.
@@ -281,7 +281,7 @@ def test__histogramdd_bin_edges_invalid_rank(shape):
         flag_gems._histogramdd_bin_edges(inp, [4] * len(shape))
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("bins", [[1, 1], [], [-3, -3, -3]])
 def test__histogramdd_bin_edges_invalid_bins(bins):
     # len(bins) must equal the innermost dimension (D = 3 here); negative
@@ -292,7 +292,7 @@ def test__histogramdd_bin_edges_invalid_bins(bins):
         flag_gems._histogramdd_bin_edges(inp, bins)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize(
     "op_range",
     [
@@ -310,7 +310,7 @@ def test__histogramdd_bin_edges_invalid_range(op_range):
         flag_gems._histogramdd_bin_edges(inp, [4, 4, 4], range=op_range)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("scenario", ["nan", "inf"])
 def test__histogramdd_bin_edges_non_finite_data_without_range(scenario):
     # Without an explicit range the derived data extent is not finite.
@@ -320,7 +320,7 @@ def test__histogramdd_bin_edges_non_finite_data_without_range(scenario):
         flag_gems._histogramdd_bin_edges(inp, [3])
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test_histogramdd_bin_edges_missing_derivative(dtype):
     inp = _cpu_input(dtype, (4, 2), ["-1", "1"]).requires_grad_()

@@ -91,7 +91,7 @@ class LinalgCheckErrorsBenchmark(OperatorBenchmark):
         self.shapes = [_normalize_shape(shape) for shape in self.shapes]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 def test__linalg_check_errors():
     bench = LinalgCheckErrorsBenchmark(
         op_name="_linalg_check_errors",

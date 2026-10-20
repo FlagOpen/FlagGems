@@ -119,7 +119,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__make_per_tensor_quantized_tensor_value_ranges(shape, dtype, value_range):
@@ -134,7 +134,7 @@ def test__make_per_tensor_quantized_tensor_value_ranges(shape, dtype, value_rang
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 @pytest.mark.parametrize("scale", _MAKE_PERTENSOR_SCALES)
@@ -152,7 +152,7 @@ def test__make_per_tensor_quantized_tensor_qparams(shape, dtype, scale, zero_poi
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("pattern", _BOUNDARY_PATTERNS)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_boundary_values(dtype, pattern):
@@ -166,7 +166,7 @@ def test__make_per_tensor_quantized_tensor_boundary_values(dtype, pattern):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("scale", _NON_FINITE_SCALES)
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_non_finite_scale(dtype, scale):
@@ -180,7 +180,7 @@ def test__make_per_tensor_quantized_tensor_non_finite_scale(dtype, scale):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
 def test__make_per_tensor_quantized_tensor_non_contiguous(dtype):
     base = _make_input((16, 8), dtype)
@@ -258,7 +258,7 @@ def test__make_per_tensor_quantized_tensor_out_qparams(dtype, scale, zero_point)
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.make_per_tensor_quantized_tensor
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__make_per_tensor_quantized_tensor_rejects_non_storage_dtype(dtype):
     inp = torch.tensor([1, 2, 3], dtype=dtype, device=flag_gems.device)

@@ -82,7 +82,7 @@ class SparseSoftmaxBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=default_shapes)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 def test__sparse_softmax():
     bench = SparseSoftmaxBenchmark(
         op_name="_sparse_softmax",

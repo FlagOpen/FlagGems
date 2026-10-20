@@ -31,7 +31,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-pytestmark = pytest.mark.sparse_bsc_tensor_unsafe
+pytestmark = pytest.mark.underscore_sparse_bsc_tensor_unsafe
 
 # The nine required dtypes, plus the extras the native factory also accepts.
 _DTYPES = (
@@ -444,7 +444,7 @@ def test__sparse_bsc_tensor_unsafe_negative_pin_accelerator_payload():
         )
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
+@pytest.mark.underscore_sparse_bsc_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype", [dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex]
 )

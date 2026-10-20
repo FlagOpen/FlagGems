@@ -132,7 +132,7 @@ def _layout_operand(kind, dtype, shape, value_range):
     return base  # "empty": a zero-element operand
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("kind,shape,value_range", IDENTITY_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__test_parallel_materialize_identity(kind, shape, value_range, dtype):
@@ -177,7 +177,7 @@ def _is_lazy(tensor, kind):
     return tensor.is_conj() if kind == "conj" else tensor.is_neg()
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("kind,dtype", LAZY_ROWS)
 @pytest.mark.parametrize("offset", [False, True])
 @pytest.mark.parametrize("num_parallel,skip_first", _LAZY_PARAMS)
@@ -204,7 +204,7 @@ def test__test_parallel_materialize_lazy(kind, dtype, offset, num_parallel, skip
     tu.assert_result_equal(source, ref_source)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("num_parallel", _NUM_PARALLEL_VALUES)
 @pytest.mark.parametrize("dtype", PARAM_DTYPES)
 def test__test_parallel_materialize_num_parallel(num_parallel, dtype):
@@ -218,7 +218,7 @@ def test__test_parallel_materialize_num_parallel(num_parallel, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("skip_first", _SKIP_FIRST_VALUES)
 @pytest.mark.parametrize("dtype", PARAM_DTYPES)
 def test__test_parallel_materialize_skip_first(skip_first, dtype):
@@ -242,7 +242,7 @@ _CALL_FORMS = (
 )
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize(
     "args,kwargs",
     _CALL_FORMS,
@@ -269,7 +269,7 @@ def test__test_parallel_materialize_call_forms(args, kwargs):
 _ALIAS_DTYPES = (torch.float32, torch.float16, torch.int32, torch.bool, torch.complex64)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("dtype", _ALIAS_DTYPES)
 def test__test_parallel_materialize_alias_storage(dtype):
     inp = tu.make_input(dtype, _ALIAS_SHAPE, _PARAM_RANGE)
@@ -309,7 +309,7 @@ SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("kind,dtype,scenario", SPECIAL_CASES)
 def test__test_parallel_materialize_special_values(kind, dtype, scenario):
     source = tu.make_special_input(dtype, scenario)
@@ -337,7 +337,7 @@ _BACKWARD_ROWS = [
 ]
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("kind,dtype", _BACKWARD_ROWS)
 def test__test_parallel_materialize_backward_not_implemented(kind, dtype):
     inp = tu.make_input(dtype, _BACKWARD_SHAPE, _PARAM_RANGE).requires_grad_(True)
@@ -368,14 +368,14 @@ def test__test_parallel_materialize_backward_not_implemented(kind, dtype):
 _NON_TENSOR_OPERANDS = (1, None, [1.0, 2.0])
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("operand", _NON_TENSOR_OPERANDS, ids=["int", "none", "list"])
 def test__test_parallel_materialize_rejects_non_tensor(operand):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_parallel_materialize(operand, _NUM_PARALLEL)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("num_parallel", [1.5, "3", None])
 def test__test_parallel_materialize_rejects_invalid_num_parallel(num_parallel):
     inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
@@ -384,7 +384,7 @@ def test__test_parallel_materialize_rejects_invalid_num_parallel(num_parallel):
         flag_gems._test_parallel_materialize(inp, num_parallel)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize_requires_num_parallel():
     inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
 
@@ -392,7 +392,7 @@ def test__test_parallel_materialize_requires_num_parallel():
         flag_gems._test_parallel_materialize(inp)
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize_rejects_invalid_skip_first():
     inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
 
@@ -402,7 +402,7 @@ def test__test_parallel_materialize_rejects_invalid_skip_first():
         flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL, "yes")
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize_rejects_sparse_operand():
     indices = torch.tensor([[0, 1], [1, 2]], device=flag_gems.device)
     values = torch.tensor([1.0, 2.0], device=flag_gems.device)

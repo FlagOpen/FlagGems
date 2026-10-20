@@ -85,7 +85,7 @@ class _CastFloatBenchmark(base.UnaryPointwiseBenchmark):
         return (inp, dict(plan.params))
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float():
     bench = _CastFloatBenchmark(
         op_name="_cast_Float",

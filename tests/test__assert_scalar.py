@@ -214,7 +214,7 @@ MESSAGE_TYPE_CASES = _MESSAGE_TYPE_ROWS
 ARITY_CASES = _ARITY_ROWS
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("value", TRUTHY_CASES)
 def test_assert_scalar_truthy_returns_none(value):
     ref = torch.ops.aten._assert_scalar(value, MSG)
@@ -223,7 +223,7 @@ def test_assert_scalar_truthy_returns_none(value):
     assert res is ref
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("value", FALSY_CASES)
 def test_assert_scalar_falsy_raises(value):
     with pytest.raises(RuntimeError) as excinfo:
@@ -231,7 +231,7 @@ def test_assert_scalar_falsy_raises(value):
     assert str(excinfo.value) == MSG
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("msg", MESSAGE_CASES)
 @pytest.mark.parametrize("value", [0, 1])
 def test_assert_scalar_message_contract(msg, value):
@@ -244,14 +244,14 @@ def test_assert_scalar_message_contract(msg, value):
         assert str(excinfo.value) == (msg or EMPTY_MSG_FALLBACK)
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("args,kwargs", CALL_FORM_CASES)
 def test_assert_scalar_call_forms(args, kwargs):
     ref = torch.ops.aten._assert_scalar(*args, **kwargs)
     assert flag_gems._assert_scalar(*args, **kwargs) is ref
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("shape,dtype", TENSOR_SELF_CASES)
 def test_assert_scalar_rejects_tensor_self(shape, dtype):
     tensor = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
@@ -259,21 +259,21 @@ def test_assert_scalar_rejects_tensor_self(shape, dtype):
         flag_gems._assert_scalar(tensor, MSG)
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("value", NUMBER_SELF_CASES)
 def test_assert_scalar_rejects_non_number_self(value):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._assert_scalar(value, MSG)
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("message", MESSAGE_TYPE_CASES)
 def test_assert_scalar_rejects_non_str_message(message):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._assert_scalar(1, message)
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 @pytest.mark.parametrize("args,kwargs", ARITY_CASES)
 def test_assert_scalar_rejects_wrong_arity(args, kwargs):
     with pytest.raises((RuntimeError, TypeError)):

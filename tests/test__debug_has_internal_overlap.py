@@ -68,7 +68,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_debug_has_internal_overlap(dtype, value_range, shape):
@@ -132,7 +132,7 @@ _LAYOUT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("row", _LAYOUT_CASES)
 def test_debug_has_internal_overlap_layout(row):
     _, base_shape, view_fn = row
@@ -172,7 +172,7 @@ def _make_sparse(shape):
     return torch.sparse_coo_tensor(indices, values, tuple(shape))
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize(
     "shape", tu.selected_cases(_SPARSE_SHAPES, quick=_SPARSE_SHAPES)
 )
@@ -194,7 +194,7 @@ _SPECIAL_VALUE_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test_debug_has_internal_overlap_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -217,14 +217,14 @@ _INVALID_ARG_ROWS = [
 _INVALID_ARG_CASES = tu.selected_cases(_INVALID_ARG_ROWS, quick=_INVALID_ARG_ROWS)
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("bad_arg", _INVALID_ARG_CASES)
 def test_debug_has_internal_overlap_invalid_argument(bad_arg):
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._debug_has_internal_overlap(bad_arg)
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("argc", [0, 2])
 def test_debug_has_internal_overlap_arity(argc):
     inp = tu.make_input(torch.float32, (4, 4), _UNIT_RANGE)

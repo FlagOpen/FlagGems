@@ -111,7 +111,7 @@ GRID_ROWS = [
 )
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("dtype,shape,value_range", GRID_ROWS)
 def test__to_cpu(dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
@@ -142,7 +142,7 @@ _MIXED_ROWS = [
 ]
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("form", ["list", "tuple", "empty"])
 def test__to_cpu_tensor_list_forms(form):
     # Tensor[] accepts a list, a plain tuple and an empty sequence; the result
@@ -166,7 +166,7 @@ def test__to_cpu_tensor_list_forms(form):
         tu.assert_result_equal(res, ref)
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 def test__to_cpu_host_input_identity():
     # Host placement is part of the contract: host inputs come back as the same
     # objects, which `is` asserts and a value comparison cannot.
@@ -188,7 +188,7 @@ def test__to_cpu_host_input_identity():
         tu.assert_result_equal(res, snapshot)
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 def test__to_cpu_duplicate_entries():
     inp = tu.make_input(torch.float32, (16,), ["-1", "1"])
     source = tu.to_reference(inp)
@@ -257,7 +257,7 @@ LAYOUT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("kind", LAYOUT_CASES)
 def test__to_cpu_layout(kind):
     inp = _layout_input(kind)
@@ -291,7 +291,7 @@ def _lazy_flag_input(kind):
 LAZY_CASES = tu.selected_cases(["neg", "conj"], quick=["neg", "conj"])
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("kind", LAZY_CASES)
 def test__to_cpu_lazy_view_flags(kind):
     inp = _lazy_flag_input(kind)
@@ -331,7 +331,7 @@ BACKWARD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("dtype,shape", BACKWARD_CASES)
 def test__to_cpu_backward(dtype, shape):
     # The gradient flows through the original leaf. The reference leaf is an
@@ -360,7 +360,7 @@ def test__to_cpu_backward(dtype, shape):
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[])
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test__to_cpu_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -385,7 +385,7 @@ _INVALID_ARGUMENTS = {
 }
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 @pytest.mark.parametrize("kind", sorted(_INVALID_ARGUMENTS))
 def test__to_cpu_rejects_invalid_arguments(kind):
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"])

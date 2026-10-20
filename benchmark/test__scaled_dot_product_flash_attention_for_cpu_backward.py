@@ -93,7 +93,7 @@ class ScaledDotProductFlashAttentionForCpuBackwardBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward():
     bench = ScaledDotProductFlashAttentionForCpuBackwardBenchmark(
         op_name="_scaled_dot_product_flash_attention_for_cpu_backward",

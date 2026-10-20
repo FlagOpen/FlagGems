@@ -140,7 +140,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape,dim0,dim1", _VALUE_ROWS)
 def test__mkldnn_transpose(shape, dim0, dim1, value_range, dtype):
@@ -162,7 +162,7 @@ def test__mkldnn_transpose(shape, dim0, dim1, value_range, dtype):
     tu.assert_result_equal(inp.to_dense(), snapshot)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", _MKLDNN_DTYPES)
 @pytest.mark.parametrize("shape,dim0,dim1", _DIM_ROWS)
 def test__mkldnn_transpose_dims(shape, dim0, dim1, dtype):
@@ -176,7 +176,7 @@ def test__mkldnn_transpose_dims(shape, dim0, dim1, dtype):
     tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", _MKLDNN_DTYPES)
 @pytest.mark.parametrize("shape,dim0,dim1", _OUT_ROWS)
 def test__mkldnn_transpose_out(shape, dim0, dim1, dtype):
@@ -195,7 +195,7 @@ def test__mkldnn_transpose_out(shape, dim0, dim1, dtype):
     tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_MKLDNN_DTYPES), quick=[]),
@@ -213,7 +213,7 @@ def test__mkldnn_transpose_special_values(dtype, scenario):
     tu.assert_result_equal(res_out.to_dense(), ref_out.to_dense())
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test__mkldnn_transpose_backward(dtype):
     # The candidate is exercised through the original leaf: the mkldnn operand
@@ -237,7 +237,7 @@ def test__mkldnn_transpose_backward(dtype):
         torch.autograd.grad(res_out, leaf, grad_outputs=upstream)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", _NEG_DTYPES)
 @pytest.mark.parametrize("shape,dim0,dim1", _OOB_DIM_ROWS)
 def test__mkldnn_transpose_rejects_out_of_range_dims(shape, dim0, dim1, dtype):
@@ -246,7 +246,7 @@ def test__mkldnn_transpose_rejects_out_of_range_dims(shape, dim0, dim1, dtype):
         flag_gems._mkldnn_transpose(inp, dim0, dim1)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", _NEG_DTYPES)
 @pytest.mark.parametrize("dim0,dim1", [(0.5, 1), (0, "1")])
 def test__mkldnn_transpose_rejects_non_int_dims(dim0, dim1, dtype):
@@ -255,7 +255,7 @@ def test__mkldnn_transpose_rejects_non_int_dims(dim0, dim1, dtype):
         flag_gems._mkldnn_transpose(inp, dim0, dim1)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 def test__mkldnn_transpose_rejects_non_tensor_self():
     # The first schema argument is a Tensor; native dispatch rejects a
     # non-tensor with "failed to match any schema".
@@ -263,7 +263,7 @@ def test__mkldnn_transpose_rejects_non_tensor_self():
         flag_gems._mkldnn_transpose(3, 0, 1)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 @pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
 def test__mkldnn_transpose_rejects_strided_operand(dtype):
     # The operand must already be opaque: a plain strided tensor is outside this
@@ -275,7 +275,7 @@ def test__mkldnn_transpose_rejects_strided_operand(dtype):
         flag_gems._mkldnn_transpose(dense, 0, 1)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 def test__mkldnn_transpose_out_rejects_wrong_shape():
     inp = _mkldnn_operand(tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"]))
     out = torch.empty(3, 2, 5, dtype=torch.float32).to_mkldnn()
@@ -283,7 +283,7 @@ def test__mkldnn_transpose_out_rejects_wrong_shape():
         flag_gems._mkldnn_transpose(inp, 0, 1, out=out)
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 def test__mkldnn_transpose_out_rejects_dtype_mismatch():
     inp = _mkldnn_operand(tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"]))
     out = torch.empty(3, 2, 4, dtype=torch.bfloat16).to_mkldnn()

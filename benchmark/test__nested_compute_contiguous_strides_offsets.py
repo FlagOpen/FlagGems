@@ -83,7 +83,7 @@ class NestedComputeContiguousStridesOffsetsBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.nested_compute_contiguous_strides_offsets
+@pytest.mark.underscore_nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets():
     bench = NestedComputeContiguousStridesOffsetsBenchmark(
         op_name=_OP_NAME,

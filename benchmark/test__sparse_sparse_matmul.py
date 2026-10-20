@@ -151,7 +151,7 @@ class SparseSparseMatmulBenchmark(OperatorBenchmark):
         self.shapes = [_validated_triple(shape) for shape in self.shapes]
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 def test__sparse_sparse_matmul():
     bench = SparseSparseMatmulBenchmark(
         op_name="_sparse_sparse_matmul",

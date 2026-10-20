@@ -132,7 +132,7 @@ class ParallelMaterializeBenchmark(base.GenericBenchmark):
         self.shapes = list(dict.fromkeys(shapes))
 
 
-@pytest.mark.test_parallel_materialize
+@pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize():
     bench = ParallelMaterializeBenchmark(
         op_name="_test_parallel_materialize",

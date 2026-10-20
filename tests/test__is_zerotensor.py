@@ -146,7 +146,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__is_zerotensor_dense_input(shape, value_range, dtype):
@@ -159,7 +159,7 @@ def test__is_zerotensor_dense_input(shape, value_range, dtype):
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize(
     "expected_flag,construction",
     [(expected, build) for _, build, expected in _ZERO_CONSTRUCTIONS],
@@ -176,7 +176,7 @@ def test__is_zerotensor_marker_vs_dense_zero(shape, dtype, expected_flag, constr
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize(
     "expected_flag,transform",
     [(expected, transform) for _, transform, expected in _FLAG_KINDS],
@@ -192,7 +192,7 @@ def test__is_zerotensor_marker_through_view(transform, expected_flag, dtype):
     _assert_flag(res, torch.ops.aten._is_zerotensor(transform(ref_inp)))
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize(
     "expected_flag,construction",
     [(expected, build) for _, build, expected in _ZERO_CONSTRUCTIONS],
@@ -215,7 +215,7 @@ def test__is_zerotensor_keeps_input_state(expected_flag, construction, dtype):
     assert torch.ops.aten._is_zerotensor(inp) is expected_flag
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(
@@ -235,7 +235,7 @@ def test__is_zerotensor_special_values(dtype, scenario):
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__is_zerotensor_differentiable_input(dtype):
     # The result is a Python bool with no grad_fn, so the operator has no
@@ -248,20 +248,20 @@ def test__is_zerotensor_differentiable_input(dtype):
     assert inp.requires_grad is True
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 def test__is_zerotensor_undefined_tensor():
     # ``None`` is a valid undefined-tensor operand for the native operator.
     _assert_flag(flag_gems._is_zerotensor(None), torch.ops.aten._is_zerotensor(None))
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 @pytest.mark.parametrize("value", _NON_TENSOR_ARGUMENTS, ids=_NON_TENSOR_IDS)
 def test__is_zerotensor_rejects_non_tensor(value):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._is_zerotensor(value)
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 def test__is_zerotensor_rejects_missing_argument():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._is_zerotensor()

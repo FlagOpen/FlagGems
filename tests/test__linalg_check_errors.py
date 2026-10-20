@@ -113,7 +113,7 @@ _INFO_GRID_CASES = [
 ]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("shape,value_range,is_matrix", _INFO_GRID_CASES)
 def test__linalg_check_errors_info_grid(shape, value_range, is_matrix, dtype):
@@ -147,7 +147,7 @@ _ZERO_INFO_SHAPES = tu.selected_cases(
 )
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("is_matrix", [False, True])
 @pytest.mark.parametrize("shape", _ZERO_INFO_SHAPES)
 def test__linalg_check_errors_zero_info(shape, is_matrix):
@@ -184,7 +184,7 @@ _API_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("api_name,shape,is_matrix", _API_CASES)
 def test__linalg_check_errors_api_name_dispatch(api_name, shape, is_matrix):
     """``api_name`` is observable only through the raised message and its class:
@@ -217,7 +217,7 @@ _BATCH_POSITION_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("shape,values,is_matrix", _BATCH_POSITION_CASES)
 def test__linalg_check_errors_reports_first_failure(shape, values, is_matrix):
     """Mixed and repeated codes make the reported position and code decisive: a
@@ -239,7 +239,7 @@ _SCALAR_INFO_CODES = tu.selected_cases(
 )
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("code", _SCALAR_INFO_CODES)
 def test__linalg_check_errors_scalar_info(code):
     """With is_matrix=True the tensor is read as a single status code, so the
@@ -258,7 +258,7 @@ def test__linalg_check_errors_scalar_info(code):
 _NON_SINGLETON_SCALAR_CASES = [[1, 0], [0, 1, 0], [0, 0, 0, 1]]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("values", _NON_SINGLETON_SCALAR_CASES)
 def test__linalg_check_errors_scalar_flag_needs_one_element(values):
     info = torch.tensor(values, dtype=torch.int32, device=flag_gems.device)
@@ -291,7 +291,7 @@ if utils.fp8_is_supported:
     _NEGATIVE_DTYPES.extend([torch.float8_e4m3fn, torch.float8_e5m2])
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("bad_dtype", _NEGATIVE_DTYPES)
 def test__linalg_check_errors_rejects_non_int32_dtype(bad_dtype):
     """Only int32 reaches the kernel; any other constructible dtype is an
@@ -307,7 +307,7 @@ _NON_CONTIGUOUS_VIEWS = [
 ]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("buffer_shape,size,stride", _NON_CONTIGUOUS_VIEWS)
 def test__linalg_check_errors_rejects_non_contiguous_info(buffer_shape, size, stride):
     """The reference asserts ``infos.is_contiguous()``, so a strided info view is
@@ -335,7 +335,7 @@ _OFFSET_VIEW_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("length,start,stop,failing", _OFFSET_VIEW_CASES)
 def test__linalg_check_errors_offset_view(length, start, stop, failing):
     """The reported position is relative to the contiguous view rather than to
@@ -355,7 +355,7 @@ def test__linalg_check_errors_offset_view(length, start, stop, failing):
 _READ_ONLY_CASES = [[0, 0, 0], [0, 1, 0], [0, -1, 0], [4, 0, 0]]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("values", _READ_ONLY_CASES)
 def test__linalg_check_errors_leaves_info_unchanged(values):
     """Checking the codes is a read-only report: neither the silent nor the
@@ -369,7 +369,7 @@ def test__linalg_check_errors_leaves_info_unchanged(values):
     tu.assert_result_equal(info, snapshot)
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("extra", [(), (False,)], ids=["omitted", "positional"])
 def test__linalg_check_errors_is_matrix_must_be_a_keyword(extra):
     """``is_matrix`` is keyword-only in the schema, so omitting it or passing it
@@ -379,7 +379,7 @@ def test__linalg_check_errors_is_matrix_must_be_a_keyword(extra):
         flag_gems._linalg_check_errors(info, API_NAME, *extra)
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 def test__linalg_check_errors_requires_api_name():
     """``api_name`` has no default either: a lone info tensor is invalid."""
     info = torch.zeros((3,), dtype=torch.int32, device=flag_gems.device)
@@ -390,7 +390,7 @@ def test__linalg_check_errors_requires_api_name():
 _NON_BOOL_FLAGS = ["x", [1], b"x", ()]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("bad_flag", _NON_BOOL_FLAGS)
 def test__linalg_check_errors_rejects_non_bool_is_matrix(bad_flag):
     """Numbers, None and 0-dim bool tensors are coerced to bool by the schema,
@@ -404,7 +404,7 @@ def test__linalg_check_errors_rejects_non_bool_is_matrix(bad_flag):
 _NON_STR_API_NAMES = [123, None, 1.5]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("bad_name", _NON_STR_API_NAMES)
 def test__linalg_check_errors_rejects_non_str_api_name(bad_name):
     info = torch.zeros((3,), dtype=torch.int32, device=flag_gems.device)
@@ -415,7 +415,7 @@ def test__linalg_check_errors_rejects_non_str_api_name(bad_name):
 _NON_TENSOR_INFO = [[0, 0], None]
 
 
-@pytest.mark.linalg_check_errors
+@pytest.mark.underscore_linalg_check_errors
 @pytest.mark.parametrize("bad_info", _NON_TENSOR_INFO)
 def test__linalg_check_errors_rejects_non_tensor_info(bad_info):
     """A plain Python sequence or None is not an info tensor."""

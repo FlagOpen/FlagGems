@@ -78,7 +78,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__cast_Int_value_range(dtype, value_range, shape):
@@ -94,7 +94,7 @@ def test__cast_Int_value_range(dtype, value_range, shape):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("dtype,scenario", tu.selected_cases(SPECIAL_CASES, quick=[]))
 def test__cast_Int_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -139,7 +139,7 @@ _LAYOUTS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("layout", _LAYOUTS)
 def test__cast_Int_strided_input(layout):
     inp = _layout_input(layout)
@@ -159,7 +159,7 @@ def test__cast_Int_strided_input(layout):
 _EMPTY_SHAPES = [(0,), (2, 0, 3), (3, 0, 2)]
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 @pytest.mark.parametrize("shape", tu.selected_cases(_EMPTY_SHAPES, quick=[(0,)]))
 def test__cast_Int_zero_extent(dtype, shape):
@@ -227,7 +227,7 @@ _POSITIVE_BOUNDARY_CASES = [
 ]
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize(
     "case_name,dtype,values",
     tu.selected_cases(
@@ -262,7 +262,7 @@ def _identity_input(kind):
     return torch.empty((0,), dtype=torch.int32, device=flag_gems.device)
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("kind", tu.selected_cases(_IDENTITY_KINDS, quick=[]))
 def test__cast_Int_int32_identity(kind):
     inp = _identity_input(kind)
@@ -376,7 +376,7 @@ def _coo_input(dtype, shape, indices, values, coalesce, empty):
     return coo.coalesce() if coalesce else coo
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize(
     "case_name,dtype,shape,indices,values,coalesce,empty",
     tu.selected_cases(_COO_CASES, quick=[]),
@@ -410,7 +410,7 @@ def test__cast_Int_sparse_coo(
 # covered in positional and keyword form; the omitted argument (schema default)
 # is already exercised by the main value-range grid, which calls without it.
 # These positive extras are default-only per the parameter-coverage rule.
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("dtype", _AUX_FLOAT_DTYPES + [torch.int32])
 @pytest.mark.parametrize("non_blocking", tu.selected_cases([True, False], quick=[]))
 @pytest.mark.parametrize("as_keyword", tu.selected_cases([False, True], quick=[]))
@@ -437,7 +437,7 @@ def test__cast_Int_non_blocking_value(dtype, non_blocking, as_keyword):
 # "missing value for argument 'self'"); an argument-binding Python wrapper
 # raises TypeError for the same calls. AttributeError is deliberately not
 # accepted so a missing candidate implementation cannot pass these tests.
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("non_blocking", ["yes", (1,)])
 def test__cast_Int_rejects_invalid_non_blocking(non_blocking):
     inp = _fractional_tensor((16,))
@@ -446,13 +446,13 @@ def test__cast_Int_rejects_invalid_non_blocking(non_blocking):
         flag_gems._cast_Int(inp, non_blocking)
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 def test__cast_Int_rejects_non_tensor_self():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Int(3.14)
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 def test__cast_Int_rejects_missing_self():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Int()

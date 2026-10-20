@@ -275,7 +275,7 @@ def _bad_thread_masks(kind):
     raise ValueError(f"unknown mask layout {kind}")
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("shape", TILE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -294,7 +294,7 @@ def test__sparse_semi_structured_apply_value_ranges(shape, value_range, dtype):
     tu.assert_result_equal(res_out1, ref_out1)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 @pytest.mark.parametrize("pattern", MASK_PATTERNS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -316,7 +316,7 @@ def test__sparse_semi_structured_apply_mask_patterns(shape, pattern, dtype):
     tu.assert_result_equal(masks, masks_before)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("layout", tu.selected_cases(["row_step2", "offset"], quick=[]))
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_semi_structured_apply_mask_layout(layout, dtype):
@@ -335,7 +335,7 @@ def test__sparse_semi_structured_apply_mask_layout(layout, dtype):
     tu.assert_result_equal(res_out1, ref_out1)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("layout,base_shape", STRIDED_LAYOUTS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_semi_structured_apply_strided_input(layout, base_shape, dtype):
@@ -354,7 +354,7 @@ def test__sparse_semi_structured_apply_strided_input(layout, base_shape, dtype):
     tu.assert_result_equal(res_out1, ref_out1)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUES)
 def test__sparse_semi_structured_apply_special_values(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
@@ -373,7 +373,7 @@ def test__sparse_semi_structured_apply_special_values(dtype, scenario):
     tu.assert_result_equal(res_out1, ref_out1)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test__sparse_semi_structured_apply_rejects_unsupported_dtype(dtype):
     inp = torch.zeros((32, 64), dtype=dtype, device=flag_gems.device)
@@ -382,7 +382,7 @@ def test__sparse_semi_structured_apply_rejects_unsupported_dtype(dtype):
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("dtype", UNSUPPORTED_MASK_DTYPES)
 def test__sparse_semi_structured_apply_rejects_mask_dtype(dtype):
     inp = torch.zeros((32, 64), dtype=torch.float16, device=flag_gems.device)
@@ -391,7 +391,7 @@ def test__sparse_semi_structured_apply_rejects_mask_dtype(dtype):
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("mask_shape", BAD_MASK_SHAPES)
 def test__sparse_semi_structured_apply_rejects_mask_shape(mask_shape):
     inp = torch.zeros((32, 64), dtype=torch.float16, device=flag_gems.device)
@@ -400,7 +400,7 @@ def test__sparse_semi_structured_apply_rejects_mask_shape(mask_shape):
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("shape,error", BAD_RANKS)
 def test__sparse_semi_structured_apply_rejects_rank(shape, error):
     inp = torch.zeros(shape, dtype=torch.float16, device=flag_gems.device)
@@ -409,7 +409,7 @@ def test__sparse_semi_structured_apply_rejects_rank(shape, error):
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("shape", BAD_TILES)
 def test__sparse_semi_structured_apply_rejects_bad_tile(shape):
     inp = torch.zeros(shape, dtype=torch.float16, device=flag_gems.device)
@@ -418,7 +418,7 @@ def test__sparse_semi_structured_apply_rejects_bad_tile(shape):
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 def test__sparse_semi_structured_apply_rejects_misstrided_input():
     # A column slice of a 324-wide tensor is row-major with stride(0) == 324, and a
     # row-major tile requires input.stride(0) % 8 == 0.
@@ -428,7 +428,7 @@ def test__sparse_semi_structured_apply_rejects_misstrided_input():
         flag_gems._sparse_semi_structured_apply(inp, masks)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("kind", MASK_LAYOUT_KINDS)
 def test__sparse_semi_structured_apply_rejects_misstrided_masks(kind):
     inp = torch.zeros((32, 64), dtype=torch.float16, device=flag_gems.device)

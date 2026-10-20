@@ -162,7 +162,7 @@ class ReshapeCopyBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 def test__reshape_copy():
     bench = ReshapeCopyBenchmark(
         op_name="_reshape_copy",

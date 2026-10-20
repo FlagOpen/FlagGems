@@ -104,7 +104,7 @@ class SparseMmReduceBackwardBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys([*loaded, *_SHAPES]))
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 def test__sparse_mm_reduce_impl_backward():
     bench = SparseMmReduceBackwardBenchmark(
         op_name="_sparse_mm_reduce_impl_backward",

@@ -86,7 +86,7 @@ def _build_inputs_fn(plan, dtype, device):
     return tensors, {}
 
 
-@pytest.mark.to_cpu
+@pytest.mark.underscore_to_cpu
 def test__to_cpu():
     bench = base.GenericBenchmark(
         op_name="_to_cpu",

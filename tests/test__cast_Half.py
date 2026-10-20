@@ -113,7 +113,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__cast_Half_value_range(dtype, value_range, shape):
@@ -145,7 +145,7 @@ _LAYOUT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,shape,layout", _LAYOUT_CASES)
 def test__cast_Half_layouts(dtype, shape, layout):
     inp = _view_input(dtype, shape, layout)
@@ -175,7 +175,7 @@ _IDENTITY_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,shape,layout", _IDENTITY_CASES)
 def test__cast_Half_float16_identity(dtype, shape, layout):
     inp = _view_input(dtype, shape, layout)
@@ -209,7 +209,7 @@ _NON_BLOCKING_FORMS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype", _PARAM_DTYPES)
 @pytest.mark.parametrize("args,kwargs", _NON_BLOCKING_FORMS)
 def test__cast_Half_non_blocking(dtype, args, kwargs):
@@ -241,7 +241,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cast_Half_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -328,7 +328,7 @@ _ROUNDING_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,values", _ROUNDING_CASES)
 def test__cast_Half_rounding_boundaries(dtype, values):
     inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
@@ -365,7 +365,7 @@ _COMPLEX_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,shape", _COMPLEX_CASES)
 def test__cast_Half_complex_payload(dtype, shape):
     inp = torch.tensor(_COMPLEX_VALUES, dtype=dtype, device=flag_gems.device).reshape(
@@ -396,7 +396,7 @@ _GRAD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 @pytest.mark.parametrize("dtype,shape,layout", _GRAD_CASES)
 def test__cast_Half_backward(dtype, shape, layout):
     inp = _view_input(dtype, shape, layout)
@@ -419,19 +419,19 @@ def test__cast_Half_backward(dtype, shape, layout):
 # The native operator rejects these call forms, so the candidate must too.
 # Non-bool values such as None or 1 are coerced by the native binding, so a
 # string is the invalid non_blocking value used here.
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 def test__cast_Half_rejects_non_tensor_input():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Half(3.5)
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 def test__cast_Half_rejects_missing_input():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Half()
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 def test__cast_Half_rejects_invalid_non_blocking_type():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):

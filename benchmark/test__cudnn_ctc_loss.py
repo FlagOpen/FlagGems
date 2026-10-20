@@ -142,7 +142,7 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
-@pytest.mark.cudnn_ctc_loss
+@pytest.mark.underscore_cudnn_ctc_loss
 def test__cudnn_ctc_loss():
     bench = _CudnnCtcLossBenchmark(
         op_name="_cudnn_ctc_loss",

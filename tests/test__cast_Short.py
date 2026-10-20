@@ -243,7 +243,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Short(dtype, value_range, shape):
@@ -256,7 +256,7 @@ def test__cast_Short(dtype, value_range, shape):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("shape,layout", _DEFINED_CASES)
 @pytest.mark.parametrize("dtype", CAST_DTYPES)
 def test__cast_Short_defined_values(dtype, shape, layout):
@@ -269,7 +269,7 @@ def test__cast_Short_defined_values(dtype, shape, layout):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,values", _BOUNDARY_CASES)
 def test__cast_Short_int16_boundaries(dtype, values):
     inp = torch.tensor(values, device=flag_gems.device, dtype=dtype).reshape(1, -1)
@@ -281,7 +281,7 @@ def test__cast_Short_int16_boundaries(dtype, values):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("shape,layout", _ALIAS_CASES)
 def test__cast_Short_int16_alias(shape, layout):
     # Native same-dtype contract: for an int16 input ``torch.ops.aten._cast_Short``
@@ -301,7 +301,7 @@ def test__cast_Short_int16_alias(shape, layout):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("shape", _CONJ_CASES)
 def test__cast_Short_lazy_conjugate_view(shape):
     # The reference accepts a tensor whose lazy conjugate bit is set; casting
@@ -316,7 +316,7 @@ def test__cast_Short_lazy_conjugate_view(shape):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("non_blocking", _NON_BLOCKING_CASES)
 @pytest.mark.parametrize("dtype", _PARAM_DTYPES)
 def test__cast_Short_non_blocking(dtype, non_blocking):
@@ -333,7 +333,7 @@ def test__cast_Short_non_blocking(dtype, non_blocking):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cast_Short_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -347,7 +347,7 @@ def test__cast_Short_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,shape", _EMPTY_CASES)
 def test__cast_Short_empty(dtype, shape):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -362,7 +362,7 @@ def test__cast_Short_empty(dtype, shape):
 _NON_TENSOR_INPUTS = [[1, 2, 3], 1.5, None, "abc"]
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("bad_input", _NON_TENSOR_INPUTS)
 def test__cast_Short_rejects_non_tensor_input(bad_input):
     # A candidate backed by the native schema reports RuntimeError while a plain
@@ -377,7 +377,7 @@ def test__cast_Short_rejects_non_tensor_input(bad_input):
 _INVALID_FLAGS = ["yes", [True]]
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("bad_flag", _INVALID_FLAGS)
 def test__cast_Short_rejects_invalid_non_blocking(bad_flag):
     inp = _defined_payload(torch.float32, (8,))
@@ -385,20 +385,20 @@ def test__cast_Short_rejects_invalid_non_blocking(bad_flag):
         flag_gems._cast_Short(inp, non_blocking=bad_flag)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 def test__cast_Short_rejects_unknown_keyword():
     inp = _defined_payload(torch.float32, (8,))
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Short(inp, dtype=torch.int16)
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 def test__cast_Short_rejects_missing_argument():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Short()
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 def test__cast_Short_rejects_extra_argument():
     inp = _defined_payload(torch.float32, (8,))
     with pytest.raises((TypeError, RuntimeError)):

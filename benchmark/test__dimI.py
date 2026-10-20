@@ -102,7 +102,7 @@ class DimIBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test__dimI():
     bench = DimIBenchmark(
         op_name="_dimI",

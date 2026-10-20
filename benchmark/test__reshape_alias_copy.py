@@ -110,7 +110,7 @@ class ReshapeAliasCopyBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=RESHAPE_ALIAS_COPY_CASES)
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy():
     bench = ReshapeAliasCopyBenchmark(
         op_name="_reshape_alias_copy",

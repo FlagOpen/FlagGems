@@ -98,7 +98,7 @@ class CastHalfBenchmark(OperatorBenchmark, base.UnaryPointwiseBenchmark):
         return base.UnaryPointwiseBenchmark.set_more_shapes(self)
 
 
-@pytest.mark.cast_Half
+@pytest.mark.underscore_cast_Half
 def test__cast_Half():
     bench = CastHalfBenchmark(
         op_name="_cast_Half",

@@ -126,7 +126,7 @@ _SHAPE_DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("shape,dtype,value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test__reshape_alias_copy_value_range(shape, value_range, dtype):
     size, stride = _permuted_spec(shape)
@@ -177,7 +177,7 @@ _LAYOUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("shape,size,stride", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_layout(shape, size, stride, dtype):
@@ -217,7 +217,7 @@ def _view_spec(inp, mode):
     return [shape[dim] for dim in order], [strides[dim] for dim in order]
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("base_shape,slicer,mode", _STRIDED_INPUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_strided_input(base_shape, slicer, mode, dtype):
@@ -256,7 +256,7 @@ _EXTRA_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,shape,size,stride,conj", _EXTRA_ROWS)
 def test__reshape_alias_copy_extra_dtypes(dtype, shape, size, stride, conj):
     base = tu.make_input(dtype, shape, ("-1", "1"))
@@ -342,7 +342,7 @@ _OUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("shape,size,stride,out_layout", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 def test__reshape_alias_copy_out(shape, size, stride, out_layout, dtype):
@@ -382,7 +382,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("shape,size,stride", _BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__reshape_alias_copy_backward(shape, size, stride, dtype):
@@ -418,7 +418,7 @@ if utils.fp8_is_supported:
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__reshape_alias_copy_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(1, 5)
@@ -454,7 +454,7 @@ def _complex_special_input(scenario):
     )
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("scenario,conj", _COMPLEX_SPECIAL_ROWS)
 def test__reshape_alias_copy_complex_special_values(scenario, conj):
     base = _complex_special_input(scenario)
@@ -478,27 +478,27 @@ def test__reshape_alias_copy_complex_special_values(scenario, conj):
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_mismatched_rank():
     inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._reshape_alias_copy(inp, [6, 4], [1])
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_non_tensor_input():
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._reshape_alias_copy([1.0, 2.0, 3.0], [3], [1])
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_non_integer_stride():
     inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._reshape_alias_copy(inp, [6, 4], [1.5, 6])
 
 
-@pytest.mark.reshape_alias_copy
+@pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_out_rejects_dtype_mismatch():
     inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
     out = torch.empty(6, 4, dtype=torch.int32, device=flag_gems.device)

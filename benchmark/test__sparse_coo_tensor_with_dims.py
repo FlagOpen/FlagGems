@@ -105,7 +105,7 @@ class SparseCooTensorWithDimsBenchmark(OperatorBenchmark):
 
 # getattr(..., None) keeps the module importable (and --list-cases working)
 # before a candidate exists; the KernelGen override is picked up at runtime.
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 def test_sparse_coo_tensor_with_dims():
     bench = SparseCooTensorWithDimsBenchmark(
         op_name="_sparse_coo_tensor_with_dims",
@@ -118,7 +118,7 @@ def test_sparse_coo_tensor_with_dims():
     bench.run()
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 def test_sparse_coo_tensor_with_dims_out():
     bench = SparseCooTensorWithDimsBenchmark(
         op_name="_sparse_coo_tensor_with_dims",

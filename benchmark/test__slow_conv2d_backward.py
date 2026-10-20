@@ -86,7 +86,7 @@ class SlowConv2dBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SLOW_CONV2D_BACKWARD_SHAPES)
 
 
-@pytest.mark.slow_conv2d_backward
+@pytest.mark.underscore_slow_conv2d_backward
 def test__slow_conv2d_backward():
     bench = SlowConv2dBackwardBenchmark(
         op_name="_slow_conv2d_backward",

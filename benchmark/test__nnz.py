@@ -114,7 +114,7 @@ class NnzBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_NNZ_SHAPES)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 def test__nnz():
     bench = NnzBenchmark(
         op_name="_nnz",

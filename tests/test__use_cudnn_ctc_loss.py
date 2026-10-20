@@ -101,7 +101,7 @@ def _assert_bool(res_out, ref_out):
     assert res_out == ref_out, (res_out, ref_out)
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _ACCEPTED_LOG_PROBS_DTYPES)
@@ -121,7 +121,7 @@ def test__use_cudnn_ctc_loss(shape, value_range, dtype):
     _assert_bool(res_out, ref_out)
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _REJECTED_LOG_PROBS_DTYPES)
 def test__use_cudnn_ctc_loss_rejected_log_probs_dtype(shape, dtype):
@@ -141,7 +141,7 @@ def test__use_cudnn_ctc_loss_rejected_log_probs_dtype(shape, dtype):
     _assert_bool(res_out, ref_out)
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize(
     "targets_dtype", [torch.int32, torch.int64, torch.int16, torch.float32]
 )
@@ -173,7 +173,7 @@ def _targets_variant(kind, batch, length):
     raise ValueError(kind)
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize(
     "kind", ["contiguous", "offset", "noncontiguous", "device", "rank2", "rank0"]
 )
@@ -204,7 +204,7 @@ _LENGTH_ROWS = [
 ]
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize(
     "log_probs_shape,input_lengths,target_lengths",
     _LENGTH_ROWS,
@@ -234,7 +234,7 @@ def test__use_cudnn_ctc_loss_lengths(log_probs_shape, input_lengths, target_leng
     _assert_bool(res_out, ref_out)
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("blank", [0, 1, -1, 255, 256])
 def test__use_cudnn_ctc_loss_blank(blank):
     log_probs = tu.make_input(torch.float32, (8, 3, 5), ["-1", "1"])
@@ -265,7 +265,7 @@ _TENSOR_ROWS = [
 ]
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize(
     "row",
     _TENSOR_ROWS,
@@ -320,7 +320,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("dtype, scenario", _SPECIAL_CASES)
 def test__use_cudnn_ctc_loss_special_values(dtype, scenario):
     log_probs = tu.make_special_input(dtype, scenario).reshape(5, 1, 1)
@@ -342,7 +342,7 @@ _INVALID_CALLS = [
 ]
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("case", _INVALID_CALLS)
 def test__use_cudnn_ctc_loss_invalid_call(case):
     log_probs = tu.make_input(torch.float32, (8, 3, 5), ["-1", "1"])
@@ -367,7 +367,7 @@ def test__use_cudnn_ctc_loss_invalid_call(case):
             )
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 @pytest.mark.parametrize("shape", [(), (8,), (8, 3), (8, 3, 5), (8, 3, 5, 2)])
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("form", ["list", "tensor"])

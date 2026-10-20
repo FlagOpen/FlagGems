@@ -156,7 +156,7 @@ class SparseCompressedTensorUnsafeBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 def test__sparse_compressed_tensor_unsafe():
     bench = SparseCompressedTensorUnsafeBenchmark(
         op_name="_sparse_compressed_tensor_unsafe",

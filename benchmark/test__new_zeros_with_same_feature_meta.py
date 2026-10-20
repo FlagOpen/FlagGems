@@ -66,7 +66,7 @@ class NewZerosWithSameFeatureMetaBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.new_zeros_with_same_feature_meta
+@pytest.mark.underscore_new_zeros_with_same_feature_meta
 def test__new_zeros_with_same_feature_meta():
     bench = NewZerosWithSameFeatureMetaBenchmark(
         op_name="_new_zeros_with_same_feature_meta",

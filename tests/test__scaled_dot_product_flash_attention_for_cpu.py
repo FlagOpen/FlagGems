@@ -155,7 +155,7 @@ BACKWARD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("shape", ATTENTION_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
@@ -174,7 +174,7 @@ def test__scaled_dot_product_flash_attention_for_cpu(shape, value_range, dtype):
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("shape", BOUNDARY_SHAPES)
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_boundary_shapes(shape, dtype):
@@ -190,7 +190,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_boundary_shapes(shape, dtyp
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("q_shape,kv_shape", CROSS_SHAPES)
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_cross_attention(
@@ -210,7 +210,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_cross_attention(
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("shape", STRIDED_SHAPES)
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_non_contiguous(shape, dtype):
@@ -228,7 +228,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_non_contiguous(shape, dtype
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("mask_shape", MASK_SHAPES)
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_with_mask(mask_shape, dtype):
@@ -248,7 +248,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_with_mask(mask_shape, dtype
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dtype,mask_dtype", MIXED_MASK_CASES)
 def test__scaled_dot_product_flash_attention_for_cpu_float32_mask(dtype, mask_dtype):
     q, k, v = _qkv(dtype, MASK_QUERY_SHAPE, ["-1", "1"])
@@ -267,7 +267,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_float32_mask(dtype, mask_dt
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("q_shape,kv_shape", CAUSAL_CASES)
 @pytest.mark.parametrize("is_causal", [True, False])
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
@@ -291,7 +291,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_causal(
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_scale(scale, dtype):
@@ -309,7 +309,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_scale(scale, dtype):
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dtype", ATTENTION_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_dropout_zero(dtype):
     # dropout_p=0.0 is the only value the CPU kernel accepts; the schema default
@@ -341,7 +341,7 @@ def _special_input(dtype, scenario, shape):
     return inp
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 @pytest.mark.parametrize("slot", ["q", "k", "v", "all"])
 def test__scaled_dot_product_flash_attention_for_cpu_special_values(
@@ -367,7 +367,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_special_values(
     tu.assert_result_close(res_lse, ref_lse)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("q_shape,kv_shape,is_causal,dtype", BACKWARD_CASES)
 @pytest.mark.parametrize("use_mask", [False, True])
 @pytest.mark.parametrize("scale", [None, 0.5])
@@ -417,7 +417,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_backward(
 BAD_RANKS = [(1, 1, 2, 3, 4), (2, 5, 8), (5, 8), (8,)]
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("shape", BAD_RANKS)
 def test__scaled_dot_product_flash_attention_for_cpu_negative_rank(shape):
     q = _cpu_input(torch.float32, shape, ["-1", "1"])
@@ -427,7 +427,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_negative_rank(shape):
         flag_gems._scaled_dot_product_flash_attention_for_cpu(q, q, q)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 def test__scaled_dot_product_flash_attention_for_cpu_negative_head_dim():
     dtype = torch.float32
     q = _cpu_input(dtype, (2, 3, 5, 8), ["-1", "1"])
@@ -439,7 +439,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_negative_head_dim():
 BAD_MASK_SHAPES = [(5,), (2, 5, 5), (5, 6)]
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("mask_shape", BAD_MASK_SHAPES)
 def test__scaled_dot_product_flash_attention_for_cpu_negative_mask_shape(mask_shape):
     dtype = torch.float32
@@ -454,7 +454,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_negative_mask_shape(mask_sh
 BAD_MASK_DTYPES = [torch.float16, torch.float64, torch.bool]
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("mask_dtype", BAD_MASK_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_negative_mask_dtype(mask_dtype):
     # A float32 query accepts a float32 mask only.
@@ -465,7 +465,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_negative_mask_dtype(mask_dt
         flag_gems._scaled_dot_product_flash_attention_for_cpu(q, k, v, attn_mask=mask)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dropout_p", [0.5, -1.0])
 def test__scaled_dot_product_flash_attention_for_cpu_negative_dropout(dropout_p):
     q, k, v = _qkv(torch.float32, MASK_QUERY_SHAPE, ["-1", "1"])
@@ -473,7 +473,7 @@ def test__scaled_dot_product_flash_attention_for_cpu_negative_dropout(dropout_p)
         flag_gems._scaled_dot_product_flash_attention_for_cpu(q, k, v, dropout_p)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 def test__scaled_dot_product_flash_attention_for_cpu_negative_scale():
     q, k, v = _qkv(torch.float32, MASK_QUERY_SHAPE, ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
@@ -493,7 +493,7 @@ UNSUPPORTED_DTYPES = [
 ]
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test__scaled_dot_product_flash_attention_for_cpu_negative_dtype(dtype):
     # Values are irrelevant: the native kernel rejects the dtype before reading

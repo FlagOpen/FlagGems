@@ -114,7 +114,7 @@ class OptionalIntlistBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 def test__test_optional_intlist():
     bench = OptionalIntlistBenchmark(
         op_name="_test_optional_intlist",

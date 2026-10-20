@@ -61,7 +61,7 @@ class FwPrimalBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=FW_PRIMAL_SHAPES)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 def test__fw_primal():
     bench = FwPrimalBenchmark(
         op_name="_fw_primal",

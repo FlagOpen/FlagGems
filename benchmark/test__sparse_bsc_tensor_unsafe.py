@@ -130,7 +130,7 @@ class SparseBscTensorUnsafeBenchmark(base.GenericBenchmark):
         self.shapes = merged
 
 
-@pytest.mark.sparse_bsc_tensor_unsafe
+@pytest.mark.underscore_sparse_bsc_tensor_unsafe
 def test__sparse_bsc_tensor_unsafe():
     bench = SparseBscTensorUnsafeBenchmark(
         op_name="_sparse_bsc_tensor_unsafe",

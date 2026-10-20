@@ -145,7 +145,7 @@ class ConvertIndicesFromCsrToCooBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 def test__convert_indices_from_csr_to_coo():
     bench = ConvertIndicesFromCsrToCooBenchmark(
         op_name=_OP_NAME,

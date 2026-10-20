@@ -80,7 +80,7 @@ class CudnnInitDropoutStateBenchmark(OperatorBenchmark):
 # flag_gems may not export this operator yet; getattr(..., None) keeps listing
 # working, while execution still requires the KernelGen override to supply a
 # real candidate.
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state():
     bench = CudnnInitDropoutStateBenchmark(
         op_name="_cudnn_init_dropout_state",
@@ -93,7 +93,7 @@ def test__cudnn_init_dropout_state():
     bench.run()
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_out():
     bench = CudnnInitDropoutStateBenchmark(
         op_name="_cudnn_init_dropout_state",

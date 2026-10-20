@@ -84,7 +84,7 @@ class MkldnnReshapeBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(s for s in shapes if len(s) > 0))
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 def test__mkldnn_reshape():
     bench = MkldnnReshapeBenchmark(
         op_name="_mkldnn_reshape",

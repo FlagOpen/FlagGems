@@ -116,7 +116,7 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, weight, bias, padding, stride
 
 
-@pytest.mark.nnpack_spatial_convolution
+@pytest.mark.underscore_nnpack_spatial_convolution
 @pytest.mark.skipif(
     not _NNPACK_AVAILABLE,
     reason="PyTorch was built without NNPACK",

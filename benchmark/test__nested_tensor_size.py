@@ -106,7 +106,7 @@ class NestedTensorSizeBenchmark(OperatorBenchmark):
         return parsed_args if parsed_args else parsed_kwargs
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 def test__nested_tensor_size():
     # torch_op is the perf comparison reference; gems_op is the candidate under
     # test. They share the same single-argument call semantics

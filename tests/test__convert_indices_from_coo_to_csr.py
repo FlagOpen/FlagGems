@@ -204,7 +204,7 @@ def _spread_rows(nnz, size, dtype):
     return (step * torch.arange(nnz, dtype=arith, device=flag_gems.device)).to(dtype)
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", INTEGER_DTYPES)
@@ -223,7 +223,7 @@ def test__convert_indices_from_coo_to_csr(shape, value_range, dtype):
 
 # Parameter coverage for the boolean ``out_int32`` flag: both values here, the omitted
 # schema default above, on the spec shape (1024, 1024) with the [-1, 1] value range.
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("shape", tu.selected_cases([(1024, 1024)], quick=[]))
 @pytest.mark.parametrize("out_int32", tu.selected_cases([False, True], quick=[]))
 @pytest.mark.parametrize(
@@ -250,7 +250,7 @@ _SIZE_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("nnz,size", _SIZE_CASES)
 def test__convert_indices_from_coo_to_csr_size(nnz, size):
     inp = _gathered_rows(nnz, size, torch.int32)
@@ -267,7 +267,7 @@ def test__convert_indices_from_coo_to_csr_size(nnz, size):
 _SCALAR_CASES = tu.selected_cases([(0, 1), (3, 4), (3, 32)], quick=[])
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("value,size", _SCALAR_CASES)
 def test__convert_indices_from_coo_to_csr_scalar_input(value, size):
     inp = torch.tensor(value, dtype=torch.int32, device=flag_gems.device)
@@ -298,7 +298,7 @@ _DISTRIBUTION_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("builder,nnz,size", _DISTRIBUTION_ROWS)
 @pytest.mark.parametrize("dtype", INTEGER_DTYPES)
 def test__convert_indices_from_coo_to_csr_distribution(builder, nnz, size, dtype):
@@ -324,7 +324,7 @@ _BOUNDARY_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("dtype,size", _BOUNDARY_CASES)
 def test__convert_indices_from_coo_to_csr_max_index(dtype, size):
     inp = torch.tensor(
@@ -344,7 +344,7 @@ def test__convert_indices_from_coo_to_csr_max_index(dtype, size):
 _OFFSET_CASES = tu.selected_cases([(3, 6, 200), (7, 33, 256)], quick=[])
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("offset,length,size", _OFFSET_CASES)
 def test__convert_indices_from_coo_to_csr_offset_input(offset, length, size):
     base = torch.arange(2 * size, dtype=torch.int32, device=flag_gems.device) + 1
@@ -369,7 +369,7 @@ _OUT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("guard,out_int32", _OUT_CASES)
 def test__convert_indices_from_coo_to_csr_out(guard, out_int32):
     size = 64
@@ -399,7 +399,7 @@ def test__convert_indices_from_coo_to_csr_out(guard, out_int32):
 
 # Negative cases. Every form was measured on the native operator first; only the
 # candidate exception is asserted.
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 4), (1, 1, 1, 1), (1, 1, 1, 1, 1)])
 def test__convert_indices_from_coo_to_csr_non_vector_input(shape):
     inp = torch.zeros(shape, dtype=torch.int32, device=flag_gems.device)
@@ -407,7 +407,7 @@ def test__convert_indices_from_coo_to_csr_non_vector_input(shape):
         flag_gems._convert_indices_from_coo_to_csr(inp, 8)
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("dtype", REJECTED_DTYPE_ROWS)
 def test__convert_indices_from_coo_to_csr_unsupported_dtype(dtype):
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
@@ -415,7 +415,7 @@ def test__convert_indices_from_coo_to_csr_unsupported_dtype(dtype):
         flag_gems._convert_indices_from_coo_to_csr(inp, 8)
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUE_ROWS)
 def test__convert_indices_from_coo_to_csr_nan_inf_input(dtype, scenario):
     # A float payload is rejected whatever its values, NaN and Inf included.
@@ -424,7 +424,7 @@ def test__convert_indices_from_coo_to_csr_nan_inf_input(dtype, scenario):
         flag_gems._convert_indices_from_coo_to_csr(inp, 8)
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("size", [-2, -3, 2.5, None, "4"])
 def test__convert_indices_from_coo_to_csr_invalid_size(size):
     inp = torch.zeros(4, dtype=torch.int32, device=flag_gems.device)
@@ -432,7 +432,7 @@ def test__convert_indices_from_coo_to_csr_invalid_size(size):
         flag_gems._convert_indices_from_coo_to_csr(inp, size)
 
 
-@pytest.mark.convert_indices_from_coo_to_csr
+@pytest.mark.underscore_convert_indices_from_coo_to_csr
 @pytest.mark.parametrize("out_int32", ["x"])
 def test__convert_indices_from_coo_to_csr_invalid_out_int32(out_int32):
     inp = torch.zeros(4, dtype=torch.int32, device=flag_gems.device)

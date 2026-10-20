@@ -59,7 +59,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__shape_as_tensor_value_ranges(shape, value_range, dtype):
@@ -72,7 +72,7 @@ def test__shape_as_tensor_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out, inp)
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__shape_as_tensor_empty(shape, value_range, dtype):
@@ -85,7 +85,7 @@ def test__shape_as_tensor_empty(shape, value_range, dtype):
     _assert_result(res_out, ref_out, inp)
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__shape_as_tensor_non_contiguous(view_case, value_range, dtype):
@@ -102,7 +102,7 @@ def test__shape_as_tensor_non_contiguous(view_case, value_range, dtype):
     _assert_result(res_out, ref_out, inp)
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 @pytest.mark.parametrize(
     "dtype, scenario",
     tu.selected_cases(tu.special_value_cases(_SHAPE_AS_TENSOR_INPUT_DTYPES)),
@@ -117,7 +117,7 @@ def test__shape_as_tensor_nan_inf(dtype, scenario):
     _assert_result(res_out, ref_out, inp)
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 @pytest.mark.parametrize("shape", [(), (1,), (2, 3, 5)])
 def test__shape_as_tensor_ignores_autograd(shape):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"]).requires_grad_()
@@ -130,7 +130,7 @@ def test__shape_as_tensor_ignores_autograd(shape):
     _assert_result(res_out, ref_out, inp.detach())
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 def test__shape_as_tensor_rejects_non_tensor_input():
     for bad in (5, [1, 2, 3], "abc", 3.14):
         with pytest.raises(RuntimeError):

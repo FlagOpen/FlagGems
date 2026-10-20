@@ -71,7 +71,7 @@ class DebugHasInternalOverlapBenchmark(base.GenericBenchmark):
         return super().set_more_shapes() + _LAYOUT_SHAPES
 
 
-@pytest.mark.debug_has_internal_overlap
+@pytest.mark.underscore_debug_has_internal_overlap
 def test_debug_has_internal_overlap():
     bench = DebugHasInternalOverlapBenchmark(
         op_name="_debug_has_internal_overlap",

@@ -134,7 +134,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__foobar(shape, value_range, dtype):
@@ -151,7 +151,7 @@ def test__foobar(shape, value_range, dtype):
     assert res_out is inp
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("kwargs", _PARAM_CASES)
 @pytest.mark.parametrize("dtype", _PARAM_DTYPES)
 def test__foobar_bool_params(dtype, kwargs):
@@ -164,7 +164,7 @@ def test__foobar_bool_params(dtype, kwargs):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("dtype,non_contiguous", _OUT_CASES)
 def test__foobar_out(dtype, non_contiguous):
     inp = tu.make_input(dtype, _OUT_SHAPE, ["-1", "1"]).to(_CPU)
@@ -196,7 +196,7 @@ def test__foobar_out(dtype, non_contiguous):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("dtype", DTYPES)
 def test__foobar_out_guard_storage(dtype):
     inp = tu.make_input(dtype, (3, 4), ["-1", "1"]).cpu()
@@ -215,7 +215,7 @@ def test__foobar_out_guard_storage(dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("builder", _LAYOUT_CASES)
 def test__foobar_layouts(builder):
     inp = builder()
@@ -241,7 +241,7 @@ def test__foobar_layouts(builder):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__foobar_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).to(_CPU)
@@ -254,7 +254,7 @@ def test__foobar_special_values(dtype, scenario):
     assert res_out is inp
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("dtype,graph", _GRAPH_ROWS)
 def test__foobar_rejects_backward(dtype, graph):
     # A non-leaf input ensures backward reaches the missing native derivative.
@@ -283,14 +283,14 @@ def test__foobar_rejects_backward(dtype, graph):
         torch.autograd.grad(res_out, base, grad_outputs=upstream)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("bad_self", _NON_TENSOR_ARGUMENTS)
 def test__foobar_rejects_non_tensor_self(bad_self):
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._foobar(bad_self)
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 @pytest.mark.parametrize("inp_dtype,out_dtype", _OUT_DTYPE_MISMATCH)
 def test__foobar_rejects_mismatched_out_dtype(inp_dtype, out_dtype):
     inp = tu.make_input(inp_dtype, (5,), ["-1", "1"]).to(_CPU)

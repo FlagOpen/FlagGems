@@ -61,7 +61,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 @pytest.mark.parametrize("shape, dim", _DIM_ARANGE_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
@@ -74,7 +74,7 @@ def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
     _assert_arange_result(res_out, ref_out, inp)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__dim_arange_non_contiguous(view_case, value_range, dtype):
@@ -91,7 +91,7 @@ def test__dim_arange_non_contiguous(view_case, value_range, dtype):
     _assert_arange_result(res_out, ref_out, inp)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 @pytest.mark.parametrize(
     "dtype, scenario",
     tu.selected_cases(tu.special_value_cases(_DIM_ARANGE_INPUT_DTYPES)),
@@ -106,7 +106,7 @@ def test__dim_arange_nan_inf(dtype, scenario):
     _assert_arange_result(res_out, ref_out, inp)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__dim_arange_no_autograd(dtype):
     inp = tu.make_input(dtype, (3, 5), ["-1", "1"]).requires_grad_()
@@ -121,7 +121,7 @@ def test__dim_arange_no_autograd(dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 def test__dim_arange_rejects_out_of_range_dim():
     inp = tu.make_input(torch.float32, (3, 5), ["-1", "1"])
     with pytest.raises(IndexError):
@@ -134,7 +134,7 @@ def test__dim_arange_rejects_out_of_range_dim():
         flag_gems._dim_arange(inp, -3)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 def test__dim_arange_rejects_zero_dim_like():
     inp = tu.make_input(torch.float32, (), ["-1", "1"])
     with pytest.raises(IndexError):
@@ -143,7 +143,7 @@ def test__dim_arange_rejects_zero_dim_like():
         flag_gems._dim_arange(inp, 0)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 def test__dim_arange_rejects_non_integer_dim():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"])
     with pytest.raises(RuntimeError):

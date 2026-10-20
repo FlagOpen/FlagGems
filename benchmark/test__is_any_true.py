@@ -115,7 +115,7 @@ class IsAnyTrueBenchmark(OperatorBenchmark):
         self.shapes = [_normalize_shape(shape) for shape in self.shapes]
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 def test__is_any_true():
     bench = IsAnyTrueBenchmark(
         op_name="_is_any_true",

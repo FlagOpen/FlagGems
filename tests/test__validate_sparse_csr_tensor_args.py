@@ -228,7 +228,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 @pytest.mark.parametrize(
     "case,dtype,value_range",
@@ -281,7 +281,7 @@ def _uneven_row_entries(size):
     return [widths[row] if row < len(widths) else min(1, cols) for row in range(rows)]
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("size", UNEVEN_GEOMETRIES)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_uneven_rows(size, index_dtype):
@@ -316,7 +316,7 @@ def test_validate_sparse_csr_tensor_args_uneven_rows(size, index_dtype):
 VALUES_LAYOUT_KINDS = tu.selected_cases(["offset", "strided"], quick=[])
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("kind", VALUES_LAYOUT_KINDS)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_offsets_and_strides(kind, index_dtype):
@@ -376,7 +376,7 @@ def test_validate_sparse_csr_tensor_args_offsets_and_strides(kind, index_dtype):
 BATCHED_OFFSET_VIEW_SIZES = tu.selected_cases([(2, 3, 4)], quick=[])
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("size", BATCHED_OFFSET_VIEW_SIZES)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_batched_offset_views(size, index_dtype):
@@ -438,7 +438,7 @@ LARGE_COLUMN_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("column", LARGE_COLUMN_CASES)
 def test_validate_sparse_csr_tensor_args_column_index_beyond_int32(column):
     device = flag_gems.device
@@ -481,7 +481,7 @@ SPECIAL_VALUE_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
@@ -555,7 +555,7 @@ def _index_tensor(values, index_dtype=PRIMARY_INDEX_DTYPE):
     return torch.tensor(values, dtype=index_dtype, device=flag_gems.device)
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "crow_len,col_len,match",
     [
@@ -578,7 +578,7 @@ def test_validate_sparse_csr_tensor_args_bad_index_length(crow_len, col_len, mat
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("bad_size", [[], [3], [256], [3, 4, 5]])
 def test_validate_sparse_csr_tensor_args_bad_size_rank(bad_size):
     crow_indices, col_indices, values, _ = _valid_csr_args()
@@ -592,7 +592,7 @@ def test_validate_sparse_csr_tensor_args_bad_size_rank(bad_size):
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "match",
     [
@@ -615,7 +615,7 @@ def test_validate_sparse_csr_tensor_args_zero_rank_argument(match):
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "crow_shape,col_shape,values_shape,size",
     [
@@ -643,7 +643,7 @@ def test_validate_sparse_csr_tensor_args_index_shape_mismatch(
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "size,values_shape,match",
     [
@@ -667,7 +667,7 @@ def test_validate_sparse_csr_tensor_args_values_shape_mismatch(
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -697,7 +697,7 @@ def test_validate_sparse_csr_tensor_args_non_integer_index_rejected(dtype):
 MIXED_INDEX_DTYPES = [(torch.int32, torch.int64)] if utils.int64_is_supported else []
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("crow_dtype,col_dtype", MIXED_INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_mixed_index_dtype_rejected(
     crow_dtype, col_dtype
@@ -718,7 +718,7 @@ def test_validate_sparse_csr_tensor_args_mixed_index_dtype_rejected(
 NON_CONTIGUOUS_TARGETS = ["crow_indices", "col_indices"]
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("target", NON_CONTIGUOUS_TARGETS)
 def test_validate_sparse_csr_tensor_args_non_contiguous_index_rejected(target):
     crow_indices, col_indices, values, size = _valid_csr_args()
@@ -742,7 +742,7 @@ def test_validate_sparse_csr_tensor_args_non_contiguous_index_rejected(target):
 OTHER_DEVICES = (["cpu"] if str(flag_gems.device) != "cpu" else []) + ["meta"]
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("other_device", OTHER_DEVICES)
 def test_validate_sparse_csr_tensor_args_values_device_mismatch_rejected(other_device):
     crow_indices, col_indices, _, size = _valid_csr_args()
@@ -754,7 +754,7 @@ def test_validate_sparse_csr_tensor_args_values_device_mismatch_rejected(other_d
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("bad_size", [[-3, 4]], ids=["negative_num_rows"])
 def test_validate_sparse_csr_tensor_args_negative_num_rows(bad_size):
     crow_indices, col_indices, values, _ = _valid_csr_args()
@@ -765,7 +765,7 @@ def test_validate_sparse_csr_tensor_args_negative_num_rows(bad_size):
         )
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 def test_validate_sparse_csr_tensor_args_non_tensor_crow_indices():
     _, col_indices, values, size = _valid_csr_args()
     # the native dispatcher rejects a non-Tensor argument with TypeError; a

@@ -204,7 +204,7 @@ class _SparseBscArgsBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args():
     bench = _SparseBscArgsBenchmark(
         op_name="_validate_sparse_bsc_tensor_args",

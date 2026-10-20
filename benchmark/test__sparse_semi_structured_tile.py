@@ -130,7 +130,7 @@ class SparseSemiStructuredTileBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=SSST_SHAPES)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 def test__sparse_semi_structured_tile():
     bench = SparseSemiStructuredTileBenchmark(
         op_name="_sparse_semi_structured_tile",

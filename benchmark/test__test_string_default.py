@@ -110,7 +110,7 @@ class StringDefaultBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 def test_test_string_default():
     bench = StringDefaultBenchmark(
         op_name="_test_string_default",

@@ -68,7 +68,7 @@ class RemoveBatchDimBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim():
     bench = RemoveBatchDimBenchmark(
         op_name="_remove_batch_dim",

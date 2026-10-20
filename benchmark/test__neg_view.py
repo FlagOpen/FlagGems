@@ -64,7 +64,7 @@ class NegViewBenchmark(OperatorBenchmark):
         self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_NUMEL]
 
 
-@pytest.mark.neg_view
+@pytest.mark.underscore_neg_view
 def test__neg_view():
     bench = NegViewBenchmark(
         op_name="_neg_view",

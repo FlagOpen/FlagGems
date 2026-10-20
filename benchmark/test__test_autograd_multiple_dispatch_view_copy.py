@@ -147,7 +147,7 @@ class AutogradViewCopyBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 def test__test_autograd_multiple_dispatch_view_copy():
     bench = AutogradViewCopyBenchmark(
         op_name="_test_autograd_multiple_dispatch_view_copy",

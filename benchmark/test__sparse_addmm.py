@@ -162,7 +162,7 @@ class SparseAddmmZeroExtentBenchmark(SparseAddmmBenchmark):
     default_mnk = _ZERO_EXTENT_MNK
 
 
-@pytest.mark.sparse_addmm
+@pytest.mark.underscore_sparse_addmm
 def test__sparse_addmm():
     bench = SparseAddmmBenchmark(
         op_name="_sparse_addmm",
@@ -175,7 +175,7 @@ def test__sparse_addmm():
     bench.run()
 
 
-@pytest.mark.sparse_addmm
+@pytest.mark.underscore_sparse_addmm
 def test__sparse_addmm_zero_extent():
     bench = SparseAddmmZeroExtentBenchmark(
         op_name="_sparse_addmm",

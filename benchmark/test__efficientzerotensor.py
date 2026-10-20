@@ -71,7 +71,7 @@ class EfficientZeroTensorBenchmark(OperatorBenchmark):
 # ``flag_gems._efficientzerotensor`` is not registered in every checkout;
 # ``getattr(..., None)`` keeps the module importable while ``Benchmark._candidate_call``
 # inside the benchmark still picks up the KernelGen override at runtime.
-@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
 def test__efficientzerotensor():
     bench = EfficientZeroTensorBenchmark(
         op_name="_efficientzerotensor",

@@ -57,7 +57,7 @@ class NnpackAvailableBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available():
     bench = NnpackAvailableBenchmark(
         op_name="_nnpack_available",

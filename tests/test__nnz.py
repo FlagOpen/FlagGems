@@ -93,7 +93,7 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("case", _NNZ_COO_CASES)
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_coo_layouts(case, dtype):
@@ -108,7 +108,7 @@ def test__nnz_coo_layouts(case, dtype):
     assert inp.sparse_dim() == sparse_dim
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 1]
 )
@@ -125,7 +125,7 @@ def test__nnz_spec_shapes_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_empty(dtype):
     shape, sparse_dim = (3, 4), 2
@@ -140,7 +140,7 @@ def test__nnz_empty(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_empty_hybrid(dtype):
     shape, sparse_dim = (4, 5, 6), 2
@@ -155,7 +155,7 @@ def test__nnz_empty_hybrid(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_uncoalesced(dtype):
     shape = (3, 4)
@@ -171,7 +171,7 @@ def test__nnz_uncoalesced(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_explicit_zeros(dtype):
     shape = (3, 3)
@@ -189,7 +189,7 @@ def test__nnz_explicit_zeros(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_full_storage(dtype):
     shape = (2, 3)
@@ -208,7 +208,7 @@ def test__nnz_full_storage(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_NNZ_DTYPES))
 )
@@ -224,7 +224,7 @@ def test__nnz_nan_inf_values_ignored(dtype, scenario):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("case", [(4, 4), (2, 4, 4), (3, 5, 7)])
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_csr(case, dtype):
@@ -239,7 +239,7 @@ def test__nnz_csr(case, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_csr_value_ranges(value_range, dtype):
@@ -253,7 +253,7 @@ def test__nnz_csr_value_ranges(value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if 2 <= len(shape) <= 3]
 )
@@ -269,7 +269,7 @@ def test__nnz_spec_shapes_csr(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 @pytest.mark.parametrize("dtype", _NNZ_DTYPES)
 def test__nnz_csr_dense_dims(dtype):
     rows, cols, dense, nnz = 4, 4, 3, 5
@@ -288,7 +288,7 @@ def test__nnz_csr_dense_dims(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 def test__nnz_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
@@ -297,7 +297,7 @@ def test__nnz_dense_raises():
         flag_gems._nnz(inp)
 
 
-@pytest.mark.nnz
+@pytest.mark.underscore_nnz
 def test__nnz_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._nnz(3.14)

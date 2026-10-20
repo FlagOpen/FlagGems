@@ -114,7 +114,7 @@ class PrintBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(_message_size(row) for row in self.shapes))
 
 
-@pytest.mark.print
+@pytest.mark.underscore_print
 def test__print():
     bench = PrintBenchmark(
         op_name="_print",

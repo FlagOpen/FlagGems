@@ -69,7 +69,7 @@ class SlowConv2dForwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=SLOW_CONV2D_SHAPES)
 
 
-@pytest.mark.slow_conv2d_forward
+@pytest.mark.underscore_slow_conv2d_forward
 def test__slow_conv2d_forward():
     # ``flag_gems._slow_conv2d_forward`` is only public once KernelGen registers
     # the candidate; before that the benchmark resolves the candidate through

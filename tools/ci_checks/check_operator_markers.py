@@ -34,6 +34,10 @@ from pathlib import Path
 
 import yaml
 
+# Support direct script execution as well as module imports.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tools.operator_markers import marker_overrides, operator_marker  # noqa: E402
+
 OPERATORS_YAML = Path("conf/operators.yaml")
 TESTS_DIR = Path("tests")
 ALIASES_FILE = Path("conf/ci_test_aliases.yaml")
@@ -91,23 +95,8 @@ def find_test_file(op_id: str, aliases: dict[str, str]) -> Path | None:
 
 
 def expected_marker(op_id: str, all_op_ids: set) -> str:
-    """Return the pytest marker name expected for an operator id.
-
-    Convention:
-      1. Non-underscore ids use the id verbatim.
-      2. Ids with a leading underscore drop it (``_stack`` -> ``stack``).
-      3. If the stripped name collides with an existing operator id (e.g. the
-         distinct ``stack`` operator), the ``underscore_`` prefix is used
-         instead (``_stack`` -> ``underscore_stack``).
-
-    This mirrors op_marker() in tools/run_tests.py.
-    """
-    if not op_id.startswith("_"):
-        return op_id
-    stripped = op_id.lstrip("_")
-    if stripped in all_op_ids:
-        return f"underscore_{stripped}"
-    return stripped
+    """Resolve the shared override/legacy pytest marker convention."""
+    return operator_marker(op_id, all_op_ids)
 
 
 def check_marker_in_file(filepath: Path, op_id: str) -> bool:
@@ -116,14 +105,30 @@ def check_marker_in_file(filepath: Path, op_id: str) -> bool:
         source = filepath.read_text()
         tree = ast.parse(source)
     except (SyntaxError, UnicodeDecodeError):
-        # If we can't parse, assume marker is present (don't block on parse errors)
-        return True
+        # Unparseable files cannot establish collectible marker coverage.
+        return False
 
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             for decorator in node.decorator_list:
                 if _is_pytest_mark(decorator, op_id):
                     return True
+        # pytest also applies module-level pytestmark to every collected test.
+        if (
+            node in tree.body
+            and isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "pytestmark"
+                for target in node.targets
+            )
+        ):
+            values = (
+                node.value.elts
+                if isinstance(node.value, (ast.List, ast.Tuple))
+                else [node.value]
+            )
+            if any(_is_pytest_mark(value, op_id) for value in values):
+                return True
     return False
 
 
@@ -170,12 +175,15 @@ def main():
 
     all_operators = load_operators_yaml()
     all_op_ids = set(all_operators)
+    overrides = marker_overrides()
     aliases = load_aliases()
     if aliases:
         print(f"Loaded {len(aliases)} test aliases")
 
-    # Only check operators that exist in the registry
-    ops_to_check = [op_id for op_id in op_ids if op_id in all_operators]
+    # Explicit marker overrides also cover generated operators absent from the registry.
+    ops_to_check = [
+        op_id for op_id in op_ids if op_id in all_operators or op_id in overrides
+    ]
     if not ops_to_check:
         print("None of the specified operators found in registry.")
         sys.exit(0)
@@ -184,7 +192,7 @@ def main():
     errors = []
 
     for op_id in sorted(ops_to_check):
-        op_info = all_operators[op_id]
+        op_info = all_operators.get(op_id, {})
         labels = op_info.get("labels", [])
 
         # Skip fused operators that don't have aten label - they may have different test patterns
@@ -207,7 +215,7 @@ def main():
         has_marker = check_marker_in_file(test_file, marker)
         if not has_marker:
             # For inplace variants (e.g., abs_), also accept base marker
-            if op_id.endswith("_"):
+            if op_id.endswith("_") and op_id not in overrides:
                 base_id = op_id[:-1]
                 has_marker = check_marker_in_file(test_file, base_id)
 
@@ -216,6 +224,25 @@ def main():
                 f"Operator '{op_id}': test file {test_file} has no "
                 f"@pytest.mark.{marker} decorator"
             )
+
+        if op_id in overrides:
+            # Migrated generated operators own a correctness/benchmark pair.
+            # Require the canonical marker in both, and reject lingering aliases.
+            benchmark_file = Path("benchmark") / f"test_{op_id}.py"
+            if not benchmark_file.exists() or not check_marker_in_file(
+                benchmark_file, marker
+            ):
+                errors.append(
+                    f"Operator '{op_id}': benchmark file {benchmark_file} has no "
+                    f"@pytest.mark.{marker} decorator"
+                )
+            legacy_marker = op_id.lstrip("_")
+            for filepath in (test_file, benchmark_file):
+                if filepath.exists() and check_marker_in_file(filepath, legacy_marker):
+                    errors.append(
+                        f"Operator '{op_id}': {filepath} retains legacy "
+                        f"@pytest.mark.{legacy_marker} decorator"
+                    )
 
     if errors:
         print(f"\n❌ Found {len(errors)} issue(s):\n")

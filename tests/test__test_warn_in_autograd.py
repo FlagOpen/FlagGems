@@ -173,7 +173,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__test_warn_in_autograd(shape, value_range, dtype):
@@ -188,7 +188,7 @@ def test__test_warn_in_autograd(shape, value_range, dtype):
     _assert_copy_not_view(res_out, ref_out, inp)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("shape,layout", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _OP_DTYPES)
 def test__test_warn_in_autograd_layout(shape, layout, dtype):
@@ -205,7 +205,7 @@ def test__test_warn_in_autograd_layout(shape, layout, dtype):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("shape,layout", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", _OP_DTYPES)
 def test__test_warn_in_autograd_out(shape, layout, dtype):
@@ -239,7 +239,7 @@ def test__test_warn_in_autograd_out(shape, layout, dtype):
         tu.assert_result_equal(parent, ref_parent)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("dtype", _CONJ_DTYPES)
 def test__test_warn_in_autograd_conj_view(dtype):
     base = tu.make_input(dtype, (4, 8), ["-1", "1"])
@@ -254,7 +254,7 @@ def test__test_warn_in_autograd_conj_view(dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("dtype", _NEG_VIEW_DTYPES)
 def test__test_warn_in_autograd_neg_view(dtype):
     base = tu.make_input(dtype, (4, 8), ["-1", "1"])
@@ -269,7 +269,7 @@ def test__test_warn_in_autograd_neg_view(dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("dtype", _OP_DTYPES)
 def test__test_warn_in_autograd_result_is_independent(dtype):
     inp = tu.make_input(dtype, (8, 16), ["-1", "1"])
@@ -287,7 +287,7 @@ def test__test_warn_in_autograd_result_is_independent(dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 def test__test_warn_in_autograd_backward(shape, dtype):
@@ -317,7 +317,7 @@ def test__test_warn_in_autograd_backward(shape, dtype):
     tu.assert_result_equal(res_grad, tu.to_reference(grad))
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__test_warn_in_autograd_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -331,13 +331,13 @@ def test__test_warn_in_autograd_special_values(dtype, scenario):
     _assert_copy_not_view(res_out, ref_out, inp)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_warn_in_autograd([1.0, 2.0, 3.0])
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd_out_rejects_wrong_dtype():
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"])
     buf = torch.empty(4, 8, dtype=torch.float16, device=flag_gems.device)
@@ -345,7 +345,7 @@ def test__test_warn_in_autograd_out_rejects_wrong_dtype():
         flag_gems._test_warn_in_autograd(inp, out=buf)
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd_out_rejects_non_tensor():
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):

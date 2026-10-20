@@ -238,7 +238,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__functional_assert_scalar(dtype, shape, value_range):
@@ -252,7 +252,7 @@ def test__functional_assert_scalar(dtype, shape, value_range):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize(
     "dtype",
     tu.selected_cases(_support_gated([torch.float32, torch.int64]), quick=[]),
@@ -269,7 +269,7 @@ def test__functional_assert_scalar_token_layout(layout, dtype):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("layout", tu.selected_cases(CONJ_LAYOUTS, quick=[]))
 def test__functional_assert_scalar_conj_token(layout):
     # The lazy conjugate bit must be resolved by the copy: the fixture's imaginary
@@ -284,7 +284,7 @@ def test__functional_assert_scalar_conj_token(layout):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize(
     "dtype",
     tu.selected_cases(_support_gated([torch.float32, torch.int8]), quick=[]),
@@ -301,7 +301,7 @@ def test__functional_assert_scalar_empty_token(view, dtype):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize(
     "dtype",
     tu.selected_cases(_support_gated([torch.float32, torch.int64]), quick=[]),
@@ -318,7 +318,7 @@ def test__functional_assert_scalar_scalar_operand(scalar, dtype):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize(
     "dtype",
     tu.selected_cases(_support_gated([torch.float32, torch.int64]), quick=[]),
@@ -339,7 +339,7 @@ def test__functional_assert_scalar_keyword_arguments(dtype):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_TOKEN_CASES)
 def test__functional_assert_scalar_special_token_values(dtype, scenario):
     # dep_token values are copied verbatim, so nan/inf must survive the copy.
@@ -353,7 +353,7 @@ def test__functional_assert_scalar_special_token_values(dtype, scenario):
     _assert_token_copy(res_out, token, ref_out, before)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("scalar", ZERO_SCALARS)
 def test__functional_assert_scalar_zero_scalar_raises(scalar):
     token = tu.make_input(torch.float32, (4,), ["-1", "1"])
@@ -364,7 +364,7 @@ def test__functional_assert_scalar_zero_scalar_raises(scalar):
     assert MSG in str(excinfo.value)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("msg,expected", MESSAGE_CASES)
 def test__functional_assert_scalar_assert_message(msg, expected):
     token = tu.make_input(torch.float32, (4,), ["-1", "1"])
@@ -375,7 +375,7 @@ def test__functional_assert_scalar_assert_message(msg, expected):
     assert expected in str(excinfo.value)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 def test__functional_assert_scalar_rejects_tensor_self():
     # A 0-dim Tensor is rejected by schema validation ('Expected a value of type
     # number for argument self'), so the Scalar operand is always a Python number.
@@ -387,7 +387,7 @@ def test__functional_assert_scalar_rejects_tensor_self():
         )
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 def test__functional_assert_scalar_rejects_non_number_self():
     token = tu.make_input(torch.float32, (4,), ["-1", "1"])
 
@@ -395,7 +395,7 @@ def test__functional_assert_scalar_rejects_non_number_self():
         flag_gems._functional_assert_scalar("1.0", MSG, token)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("msg", [None, 123, 1.5, ["m"]])
 def test__functional_assert_scalar_rejects_non_str_message(msg):
     # bytes are accepted natively as a str argument, so they are not a negative case.
@@ -405,14 +405,14 @@ def test__functional_assert_scalar_rejects_non_str_message(msg):
         flag_gems._functional_assert_scalar(1.0, msg, token)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("dep_token", [None, 7, "token", [1.0, 2.0]])
 def test__functional_assert_scalar_rejects_non_tensor_token(dep_token):
     with pytest.raises(RuntimeError):
         flag_gems._functional_assert_scalar(1.0, MSG, dep_token)
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 def test__functional_assert_scalar_rejects_missing_token():
     # A missing required argument is a TypeError for a Python-level candidate and a
     # RuntimeError for the native schema; both are valid rejections.

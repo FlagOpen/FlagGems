@@ -102,7 +102,7 @@ class LazyCloneBenchmark(OperatorBenchmark):
         return super().set_more_shapes() + LAZY_CLONE_EXTRA_SHAPES
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 def test__lazy_clone():
     bench = LazyCloneBenchmark(
         op_name="_lazy_clone",

@@ -114,7 +114,7 @@ class CufftClearPlanCacheBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 def test__cufft_clear_plan_cache():
     bench = CufftClearPlanCacheBenchmark(
         op_name="_cufft_clear_plan_cache",

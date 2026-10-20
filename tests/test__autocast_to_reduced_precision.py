@@ -92,7 +92,7 @@ def _assert_alias_matches_native(res_out, res_inp, ref_out, ref_inp):
     assert (res_out is res_inp) == (ref_out is ref_inp)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("src_dtype,cuda_dtype", _CONVERSION_ROWS)
@@ -121,7 +121,7 @@ _ENABLE_FLAGS = tu.selected_cases(
 )
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("shape", [(20, 320, 15)])
 @pytest.mark.parametrize("cuda_enabled,cpu_enabled", _ENABLE_FLAGS)
 def test__autocast_to_reduced_precision_enable_flags(shape, cuda_enabled, cpu_enabled):
@@ -179,7 +179,7 @@ def _make_strided(layout, base):
     return base[1:, 1:]
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("layout", _STRIDED_LAYOUTS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("src_dtype,cuda_dtype", _CONVERTED_STRIDED_ROWS)
@@ -201,7 +201,7 @@ def test__autocast_to_reduced_precision_strided_conversion(
     _assert_alias_matches_native(res_out, inp, ref_out, ref_inp)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("layout", _STRIDED_LAYOUTS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("src_dtype,cuda_dtype", _IDENTITY_STRIDED_ROWS)
@@ -241,7 +241,7 @@ _BACKWARD_ROWS = [
 ]
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
 @pytest.mark.parametrize(
     "cuda_enabled,src_dtype,cuda_dtype,upstream_dtype", _BACKWARD_ROWS
@@ -291,7 +291,7 @@ if utils.bf16_is_supported:
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("cuda_dtype", _SPECIAL_TARGETS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__autocast_to_reduced_precision_special_values(dtype, scenario, cuda_dtype):
@@ -318,7 +318,7 @@ _FP8_TARGETS = [
 _FP8_SPECIAL_CASES = tu.selected_cases(["nan", "inf", "mixed"], quick=[])
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("cuda_dtype", _FP8_TARGETS)
 @pytest.mark.parametrize("scenario", _FP8_SPECIAL_CASES)
 def test__autocast_to_reduced_precision_fp8_target_special_values(cuda_dtype, scenario):
@@ -361,7 +361,7 @@ _BOUNDARY_VALUES = [
 _BOUNDARY_TARGETS = tu.selected_cases(_REDUCED_TARGETS, quick=[])
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("cuda_dtype", _BOUNDARY_TARGETS)
 def test__autocast_to_reduced_precision_finite_boundaries(cuda_dtype):
     inp = torch.tensor(_BOUNDARY_VALUES, dtype=torch.float32, device=flag_gems.device)
@@ -386,7 +386,7 @@ _KEYWORD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("shape", [(1024, 1024), (20, 320, 15)])
 @pytest.mark.parametrize("cuda_enabled,cpu_enabled", _KEYWORD_CASES)
 def test__autocast_to_reduced_precision_keyword_arguments(
@@ -422,7 +422,7 @@ def test__autocast_to_reduced_precision_keyword_arguments(
 _CPU_DTYPE_CASES = tu.selected_cases([torch.float16, torch.float64], quick=[])
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("cpu_dtype", _CPU_DTYPE_CASES)
 def test__autocast_to_reduced_precision_cpu_dtype_ignored(cpu_dtype):
     inp = tu.make_input(torch.float32, (20, 320, 15), _UNIT_RANGE)
@@ -468,7 +468,7 @@ def _make_geometry_view(kind, base):
     return base.expand(base.shape[0], 3, base.shape[-1])
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("kind,base_shape", _GEOMETRY_CASES)
 def test__autocast_to_reduced_precision_pass_through_geometry(kind, base_shape):
     base = tu.make_input(torch.float16, base_shape, _UNIT_RANGE)
@@ -488,7 +488,7 @@ def test__autocast_to_reduced_precision_pass_through_geometry(kind, base_shape):
     _assert_alias_matches_native(res_out, inp, ref_out, ref_inp)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("kind,base_shape", _GEOMETRY_CASES)
 def test__autocast_to_reduced_precision_converted_geometry(kind, base_shape):
     base = tu.make_input(torch.float32, base_shape, _UNIT_RANGE)
@@ -506,7 +506,7 @@ def test__autocast_to_reduced_precision_converted_geometry(kind, base_shape):
     _assert_alias_matches_native(res_out, inp, ref_out, ref_inp)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 def test__autocast_to_reduced_precision_missing_argument_raises():
     inp = tu.make_input(torch.float32, (4,), _UNIT_RANGE)
     # ``cpu_dtype`` is a required argument of the schema.
@@ -514,7 +514,7 @@ def test__autocast_to_reduced_precision_missing_argument_raises():
         flag_gems._autocast_to_reduced_precision(inp, True, False, torch.float16)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 @pytest.mark.parametrize("invalid_dtype", [None, 1.5])
 def test__autocast_to_reduced_precision_invalid_dtype_argument_raises(invalid_dtype):
     inp = tu.make_input(torch.float32, (4,), _UNIT_RANGE)
@@ -525,7 +525,7 @@ def test__autocast_to_reduced_precision_invalid_dtype_argument_raises(invalid_dt
         )
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 def test__autocast_to_reduced_precision_invalid_flag_argument_raises():
     inp = tu.make_input(torch.float32, (4,), _UNIT_RANGE)
     # The flags are bool; a string is rejected (integer 1/0 is accepted).
@@ -535,7 +535,7 @@ def test__autocast_to_reduced_precision_invalid_flag_argument_raises():
         )
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 def test__autocast_to_reduced_precision_non_tensor_input_raises():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._autocast_to_reduced_precision(

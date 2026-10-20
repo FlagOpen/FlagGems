@@ -142,7 +142,7 @@ def _assert_identity(res_out, ref_out, values):
     assert res_out.dtype == ref_out.dtype
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _IDENTITY_DTYPES)
@@ -162,7 +162,7 @@ def test_test_optional_intlist_identity(shape, value_range, dtype):
     tu.assert_result_equal(values, torch.zeros_like(values))
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("layout,shape", _LAYOUT_ROWS)
 def test_test_optional_intlist_identity_layout(layout, shape):
     values, ref_values = _layout_operands(torch.float32, shape, layout)
@@ -176,7 +176,7 @@ def test_test_optional_intlist_identity_layout(layout, shape):
     tu.assert_result_equal(values, before)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("addends", [None, [1, -2, 3, 0]])
 def test_test_optional_intlist_keyword_addends(addends):
     values, ref_values = _independent_operands(torch.int32, (4,), ["-1", "1"])
@@ -191,7 +191,7 @@ def test_test_optional_intlist_keyword_addends(addends):
         assert not torch._C._is_alias_of(res_out, values)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("shape", _ONE_D_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_test_optional_intlist_addends(shape, value_range):
@@ -210,7 +210,7 @@ def test_test_optional_intlist_addends(shape, value_range):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("length,addends", _ADDENDS_FORM_ROWS)
 def test_test_optional_intlist_addends_forms(length, addends):
     values = torch.arange(length, dtype=torch.int32, device=_CPU) - 3
@@ -228,7 +228,7 @@ def test_test_optional_intlist_addends_forms(length, addends):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("payload,addends", _WRAP_ROWS)
 def test_test_optional_intlist_addends_wraparound(payload, addends):
     values = torch.tensor(payload, dtype=torch.int32, device=_CPU)
@@ -241,7 +241,7 @@ def test_test_optional_intlist_addends_wraparound(payload, addends):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("shape", _OUT_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_test_optional_intlist_out(shape, value_range):
@@ -261,7 +261,7 @@ def test_test_optional_intlist_out(shape, value_range):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("layout", _OUT_LAYOUTS)
 @pytest.mark.parametrize("with_addends", [False, True])
 def test_test_optional_intlist_out_strided(layout, with_addends):
@@ -284,7 +284,7 @@ def test_test_optional_intlist_out_strided(layout, with_addends):
     tu.assert_result_equal(base, ref_base)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("with_addends", [False, True])
 def test_test_optional_intlist_out_resize(with_addends):
     values = torch.arange(4, dtype=torch.int32, device=_CPU)
@@ -302,7 +302,7 @@ def test_test_optional_intlist_out_resize(with_addends):
     tu.assert_result_equal(out, ref_out)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_test_optional_intlist_special_values(dtype, scenario):
     values = tu.make_special_input(dtype, scenario).to(_CPU)
@@ -316,7 +316,7 @@ def test_test_optional_intlist_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("layout", _GRAD_LAYOUTS)
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test_test_optional_intlist_rejects_backward(layout, dtype):
@@ -345,7 +345,7 @@ def test_test_optional_intlist_rejects_backward(layout, dtype):
         torch.autograd.grad(res_out, base, grad_outputs=upstream)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("dtype", _REJECT_VALUES_DTYPES)
 def test_test_optional_intlist_addends_rejects_values_dtype(dtype):
     values = torch.zeros(4, dtype=dtype, device=_CPU)
@@ -353,7 +353,7 @@ def test_test_optional_intlist_addends_rejects_values_dtype(dtype):
         flag_gems._test_optional_intlist(values, [1, 1, 1, 1])
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("shape", _REJECT_VALUES_SHAPES)
 def test_test_optional_intlist_addends_rejects_values_rank(shape):
     values = torch.zeros(shape, dtype=torch.int32, device=_CPU)
@@ -362,20 +362,20 @@ def test_test_optional_intlist_addends_rejects_values_rank(shape):
         flag_gems._test_optional_intlist(values, addends)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 def test_test_optional_intlist_addends_rejects_short_list():
     values = torch.arange(4, dtype=torch.int32, device=_CPU)
     with pytest.raises((RuntimeError, IndexError)):
         flag_gems._test_optional_intlist(values, [1, 1])
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 def test_test_optional_intlist_rejects_non_tensor_values():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_intlist([1, 2, 3], None)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 def test_test_optional_intlist_rejects_tensor_addends():
     values = torch.arange(4, dtype=torch.int32, device=_CPU)
     tensor_addends = torch.zeros(4, dtype=torch.int32, device=_CPU)
@@ -383,7 +383,7 @@ def test_test_optional_intlist_rejects_tensor_addends():
         flag_gems._test_optional_intlist(values, tensor_addends)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("out_dtype", _OUT_REJECT_DTYPES)
 def test_test_optional_intlist_out_rejects_dtype(out_dtype):
     values = torch.arange(4, dtype=torch.int32, device=_CPU)
@@ -392,7 +392,7 @@ def test_test_optional_intlist_out_rejects_dtype(out_dtype):
         flag_gems._test_optional_intlist(values, [1, 1, 1, 1], out=out)
 
 
-@pytest.mark.test_optional_intlist
+@pytest.mark.underscore_test_optional_intlist
 def test__test_optional_intlist_rejects_missing_addends():
     # Optional describes the value (None), not whether the argument can be omitted.
     values = torch.zeros(2, dtype=torch.int32, device="cpu")

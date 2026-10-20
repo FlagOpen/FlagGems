@@ -79,7 +79,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Float(shape, value_range, dtype):
@@ -92,7 +92,7 @@ def test__cast_Float(shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize(
     "view", tu.selected_cases(["transpose", "slice", "offset"], quick=[])
 )
@@ -114,7 +114,7 @@ def test__cast_Float_strided_input(view, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize(
     "shape", tu.selected_cases([(0,), (3, 0, 4), (0, 0)], quick=[])
 )
@@ -145,7 +145,7 @@ _IDENTITY_VIEWS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("view,shape", _IDENTITY_VIEWS)
 def test__cast_Float_float32_identity(view, shape):
     base = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -176,7 +176,7 @@ def test__cast_Float_float32_identity(view, shape):
 _NON_BLOCKING_CASES = tu.selected_cases([False, True], quick=[])
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("non_blocking", _NON_BLOCKING_CASES)
 @pytest.mark.parametrize("dtype", _PARAM_DTYPES)
 def test__cast_Float_non_blocking(non_blocking, dtype):
@@ -237,7 +237,7 @@ if utils.fp64_is_supported:
 _ROUNDING_CASES = tu.selected_cases(_ROUNDING_ROWS, quick=[])
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("dtype,values", _ROUNDING_CASES)
 def test__cast_Float_rounding_boundaries(dtype, values):
     inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
@@ -257,7 +257,7 @@ def test__cast_Float_rounding_boundaries(dtype, values):
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_CAST_DTYPES), quick=[])
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cast_Float_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -283,7 +283,7 @@ _BACKWARD_LAYOUTS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 @pytest.mark.parametrize("layout,shape", _BACKWARD_LAYOUTS)
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 def test__cast_Float_backward(layout, shape, dtype):
@@ -311,33 +311,33 @@ def test__cast_Float_backward(layout, shape, dtype):
 
 # Negative cases: the candidate must reject arguments the native schema
 # rejects. Only its own exceptions are asserted.
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float_rejects_missing_argument():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Float()
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float_rejects_non_tensor_input():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Float(3.14)
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float_rejects_invalid_non_blocking():
     inp = tu.make_input(torch.float16, (2, 19, 7), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Float(inp, non_blocking="yes")
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float_rejects_unknown_keyword():
     inp = tu.make_input(torch.float16, (2, 19, 7), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Float(inp, unknown_flag=True)
 
 
-@pytest.mark.cast_Float
+@pytest.mark.underscore_cast_Float
 def test__cast_Float_rejects_extra_arguments():
     inp = tu.make_input(torch.float16, (2, 19, 7), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):

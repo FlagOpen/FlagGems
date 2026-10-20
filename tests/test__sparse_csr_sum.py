@@ -19,7 +19,7 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.sparse_csr_sum
+pytestmark = pytest.mark.underscore_sparse_csr_sum
 
 _DEVICE_FLAGS = flag_gems.runtime.device
 

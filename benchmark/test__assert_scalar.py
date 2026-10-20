@@ -93,7 +93,7 @@ class AssertScalarBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.assert_scalar
+@pytest.mark.underscore_assert_scalar
 def test__assert_scalar():
     bench = AssertScalarBenchmark(
         op_name="_assert_scalar",

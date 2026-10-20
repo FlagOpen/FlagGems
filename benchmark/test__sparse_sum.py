@@ -142,7 +142,7 @@ class SparseSumBenchmark(OperatorBenchmark):
         return _SPARSE_SUM_MORE_SHAPES
 
 
-@pytest.mark.sparse_sum
+@pytest.mark.underscore_sparse_sum
 def test__sparse_sum():
     bench = SparseSumBenchmark(
         op_name="_sparse_sum",

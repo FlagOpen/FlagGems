@@ -254,7 +254,7 @@ def _assert_projection(res_out, ref_out, operand, *, arithmetic=False):
     assert res_out.device == operand.device
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", tu.selected_shapes())
@@ -288,7 +288,7 @@ def _duplicate_operands(dtype, shape, duplicate_count):
     )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _ACCUMULATE_DTYPES)
 @pytest.mark.parametrize("duplicate_count", _DUPLICATE_COUNTS)
 @pytest.mark.parametrize("accumulate_matches", _ACCUMULATE_VALUES)
@@ -358,7 +358,7 @@ def _layout_operand(shape, index_rows, values, coalesced, dtype):
     return operand.coalesce() if coalesced else operand
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 @pytest.mark.parametrize("accumulate_matches", [False, True])
 @pytest.mark.parametrize("row", _LAYOUT_ROWS, ids=[row[0] for row in _LAYOUT_ROWS])
@@ -430,7 +430,7 @@ def _hybrid_operands(row):
     )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("row", _HYBRID_ROWS, ids=[row[0] for row in _HYBRID_ROWS])
 def test_sparse_mask_projection_hybrid_coo(row):
     inp, mask = _hybrid_operands(row)
@@ -459,7 +459,7 @@ _STRIDED_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize(
     "case,mask_flags", _STRIDED_ROWS, ids=[row[0] for row in _STRIDED_ROWS]
 )
@@ -497,7 +497,7 @@ def test_sparse_mask_projection_strided_storage(case, mask_flags, dtype):
     tu.assert_result_equal(index_buffer, index_buffer_before)
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype,scenario,shape", _SPECIAL_CASES)
 def test_sparse_mask_projection_special_values(dtype, scenario, shape):
     payload = tu.make_special_input(dtype, scenario)
@@ -527,7 +527,7 @@ def _sentinel_coo(shape, dtype):
     return _coo_operand(sentinel, _stored_positions(shape, 2, 0))
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 @pytest.mark.parametrize("shape,accumulate_matches", _OUT_CASES)
 def test_sparse_mask_projection_out(shape, accumulate_matches, dtype):
@@ -570,7 +570,7 @@ _OUT_LAYOUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _OUT_LAYOUT_DTYPES)
 @pytest.mark.parametrize(
     "case,shape,sparse_dim,self_positions,mask_positions,accumulate_matches",
@@ -620,7 +620,7 @@ def _valid_pair(dtype, shape=(8,)):
     return operand, operand
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_dense_self(dtype):
     _, mask = _valid_pair(dtype)
@@ -630,7 +630,7 @@ def test_sparse_mask_projection_rejects_dense_self(dtype):
         )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_dense_mask(dtype):
     operand, _ = _valid_pair(dtype)
@@ -640,7 +640,7 @@ def test_sparse_mask_projection_rejects_dense_mask(dtype):
         )
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_size_mismatch(dtype):
     operand, _ = _valid_pair(dtype)
@@ -649,7 +649,7 @@ def test_sparse_mask_projection_rejects_size_mismatch(dtype):
         flag_gems._sparse_mask_projection(operand, other)
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_sparse_dim_mismatch(dtype):
     # Same size and same nnz, so the failure can only come from the sparse_dim
@@ -668,7 +668,7 @@ def test_sparse_mask_projection_rejects_sparse_dim_mismatch(dtype):
         flag_gems._sparse_mask_projection(self_operand, mask)
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_invalid_accumulate(dtype):
     operand, mask = _valid_pair(dtype)
@@ -676,7 +676,7 @@ def test_sparse_mask_projection_rejects_invalid_accumulate(dtype):
         flag_gems._sparse_mask_projection(operand, mask, "yes")
 
 
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _NEGATIVE_DTYPES)
 def test_sparse_mask_projection_rejects_dense_out(dtype):
     operand, mask = _valid_pair(dtype)
@@ -693,7 +693,7 @@ def test_sparse_mask_projection_rejects_dense_out(dtype):
 # operator, not from input construction; the coalesced form is not part of this
 # test because torch's own "coalesce_sparse_cuda" is unimplemented for FP8. The
 # parametrization is statically empty when the backend cannot allocate FP8.
-@pytest.mark.sparse_mask_projection
+@pytest.mark.underscore_sparse_mask_projection
 @pytest.mark.parametrize("dtype", _FP8_DTYPES)
 def test_sparse_mask_projection_rejects_fp8(dtype):
     shape = (4,)

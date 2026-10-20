@@ -89,7 +89,7 @@ class CastShortBenchmark(OperatorBenchmark):
                     )
 
 
-@pytest.mark.cast_Short
+@pytest.mark.underscore_cast_Short
 def test__cast_Short():
     bench = CastShortBenchmark(
         op_name="_cast_Short",

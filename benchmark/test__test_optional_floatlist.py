@@ -109,7 +109,7 @@ class OptionalFloatlistBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 def test__test_optional_floatlist():
     bench = OptionalFloatlistBenchmark(
         op_name="_test_optional_floatlist",

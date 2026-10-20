@@ -174,7 +174,7 @@ class SparseBroadcastToBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 def test__sparse_broadcast_to():
     bench = SparseBroadcastToBenchmark(
         op_name="_sparse_broadcast_to",

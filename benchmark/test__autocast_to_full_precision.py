@@ -89,7 +89,7 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, dict(plan.params)
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 def test__autocast_to_full_precision():
     # gems_op is resolved here, never at import time, so a process-local override
     # installed for this run wins while listing still works without a candidate.

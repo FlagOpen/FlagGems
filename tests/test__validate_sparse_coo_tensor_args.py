@@ -791,7 +791,7 @@ _LAYOUT_DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("layout,dtype,value_range", _LAYOUT_DTYPE_RANGE_CASES)
 def test__validate_sparse_coo_tensor_args_valid(layout, dtype, value_range):
     size, nnz, dense_shape = layout
@@ -814,7 +814,7 @@ def test__validate_sparse_coo_tensor_args_valid(layout, dtype, value_range):
     _assert_size_unchanged(size_snapshot, size_arg)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("kind,flag", _COALESCED_CASES, ids=_COALESCED_CASE_IDS)
 @pytest.mark.parametrize("dtype", _FLAG_PAYLOAD_DTYPES)
 def test__validate_sparse_coo_tensor_args_coalesced_flag(kind, flag, dtype):
@@ -846,7 +846,7 @@ def test__validate_sparse_coo_tensor_args_coalesced_flag(kind, flag, dtype):
     _assert_size_unchanged(size_snapshot, size)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("size_kind,is_coalesced,call_style", _FORM_CASES)
 def test__validate_sparse_coo_tensor_args_call_forms(
     size_kind, is_coalesced, call_style
@@ -885,7 +885,7 @@ def test__validate_sparse_coo_tensor_args_call_forms(
     _assert_size_unchanged(size_snapshot, size_arg)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
@@ -923,7 +923,7 @@ def test__validate_sparse_coo_tensor_args_special_values(dtype, scenario):
     _assert_size_unchanged(size_snapshot, size)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("row", _UNCHECKED_METADATA_ROWS, ids=_UNCHECKED_METADATA_IDS)
 @pytest.mark.parametrize("dtype", _FLAG_PAYLOAD_DTYPES)
 def test__validate_sparse_coo_tensor_args_accepts_unchecked_metadata(row, dtype):
@@ -945,7 +945,7 @@ def test__validate_sparse_coo_tensor_args_accepts_unchecked_metadata(row, dtype)
     _assert_size_unchanged(size_snapshot, size)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
     "indices_kind,values_kind", _STRIDED_ROWS, ids=_STRIDED_CASE_IDS
 )
@@ -968,7 +968,7 @@ def test__validate_sparse_coo_tensor_args_strided_inputs(indices_kind, values_ki
     _assert_size_unchanged(size_snapshot, size)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("axis", _STRIDED_OUT_OF_RANGE_AXES)
 def test__validate_sparse_coo_tensor_args_rejects_strided_out_of_range(axis):
     # The offending coordinate sits in the last stored column of a non-adjacent
@@ -983,7 +983,7 @@ def test__validate_sparse_coo_tensor_args_rejects_strided_out_of_range(axis):
         flag_gems._validate_sparse_coo_tensor_args(indices, values, list(_STRIDED_SIZE))
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
     "axis,coordinate", _ACCEPTED_LARGE_ROWS, ids=_ACCEPTED_LARGE_IDS
 )
@@ -1005,7 +1005,7 @@ def test__validate_sparse_coo_tensor_args_large_index_boundary(axis, coordinate)
     _assert_size_unchanged(size_snapshot, size)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
     "axis,coordinate", _REJECTED_LARGE_CASES, ids=_REJECTED_LARGE_IDS
 )
@@ -1019,7 +1019,7 @@ def test__validate_sparse_coo_tensor_args_rejects_large_index(axis, coordinate):
         flag_gems._validate_sparse_coo_tensor_args(indices, values, list(size))
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("row", _INVALID_CASE_ROWS, ids=_INVALID_CASE_IDS)
 def test__validate_sparse_coo_tensor_args_rejects(row):
     exc = row[-1]
@@ -1036,7 +1036,7 @@ def test__validate_sparse_coo_tensor_args_rejects(row):
 _MISSING_ARGUMENTS = ["indices", "values", "size"] if _INT64_COORDINATES else []
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("missing", _MISSING_ARGUMENTS)
 def test__validate_sparse_coo_tensor_args_rejects_missing_arguments(missing):
     # Each row omits exactly one required argument while every remaining
@@ -1057,7 +1057,7 @@ def test__validate_sparse_coo_tensor_args_rejects_missing_arguments(missing):
 _NNZ_BOUNDARIES = [31, 32, 33, 255, 256, 257, 1023, 1024, 1025]
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
     "nnz", _int64_gated(tu.selected_cases(_NNZ_BOUNDARIES, quick=[]))
 )
@@ -1079,7 +1079,7 @@ def test__validate_sparse_coo_tensor_args_nnz_boundary(nnz, is_coalesced):
     _assert_operands_unchanged(snapshot, indices, values)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize("nnz", _int64_gated(_NNZ_BOUNDARIES))
 @pytest.mark.parametrize("position", ["first", "middle", "last"])
 @pytest.mark.parametrize(

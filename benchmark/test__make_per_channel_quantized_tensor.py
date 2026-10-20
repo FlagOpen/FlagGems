@@ -127,7 +127,7 @@ class MakePerChannelQuantizedTensorBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.make_per_channel_quantized_tensor
+@pytest.mark.underscore_make_per_channel_quantized_tensor
 def test__make_per_channel_quantized_tensor():
     bench = MakePerChannelQuantizedTensorBenchmark(
         op_name="_make_per_channel_quantized_tensor",

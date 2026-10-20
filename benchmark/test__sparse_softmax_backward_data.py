@@ -94,7 +94,7 @@ class SparseSoftmaxBackwardDataBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SSBD_SHAPES)
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 def test__sparse_softmax_backward_data():
     bench = SparseSoftmaxBackwardDataBenchmark(
         op_name="_sparse_softmax_backward_data",

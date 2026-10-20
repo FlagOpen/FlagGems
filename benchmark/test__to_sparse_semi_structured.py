@@ -107,7 +107,7 @@ class StructuredSparseBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype", _BENCH_DTYPES)
 def test__to_sparse_semi_structured(dtype):
     StructuredSparseBenchmark(

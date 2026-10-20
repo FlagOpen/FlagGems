@@ -110,7 +110,7 @@ def _assert_empty_coo(res_out, ref_out, sparse_dim, dense_dim, size, dtype):
     tu.assert_result_equal(res_values, ref_values)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_sparse_coo_tensor_with_dims(shape, dtype):
@@ -150,7 +150,7 @@ SPLIT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape,split", SPLIT_CASES)
 def test_sparse_coo_tensor_with_dims_dim_split(shape, split, dtype):
@@ -175,7 +175,7 @@ SMALL_CASES = [
 ]
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("sparse_dim,dense_dim,size", SMALL_CASES)
 def test_sparse_coo_tensor_with_dims_small_sizes(sparse_dim, dense_dim, size, dtype):
@@ -192,7 +192,7 @@ DENSE_SHAPES = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape", DENSE_SHAPES)
 def test_sparse_coo_tensor_with_dims_dense_observation(shape, dtype):
@@ -230,7 +230,7 @@ def _out_buffer(state, dtype, device, sparse_dim, size):
 OUT_STATES = ["empty", "filled"]
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("state", OUT_STATES)
 def test_sparse_coo_tensor_with_dims_out(state, dtype):
@@ -252,7 +252,7 @@ PIN_MEMORY_DTYPES = [torch.float32, torch.float16, torch.int32]
 PIN_MEMORY_VALUES = [False, True]
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("dtype", PIN_MEMORY_DTYPES)
 @pytest.mark.parametrize("pin_memory", PIN_MEMORY_VALUES)
 def test_sparse_coo_tensor_with_dims_pin_memory(pin_memory, dtype):
@@ -262,7 +262,7 @@ def test_sparse_coo_tensor_with_dims_pin_memory(pin_memory, dtype):
     _assert_empty_coo(res_out, ref_out, sparse_dim, dense_dim, size, dtype)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_sparse_coo_tensor_with_dims_schema_default(shape):
     # dtype is omitted so the schema default (float32) is exercised. layout is
@@ -298,7 +298,7 @@ _NEGATIVE_ROWS = [
 ]
 
 
-@pytest.mark.sparse_coo_tensor_with_dims
+@pytest.mark.underscore_sparse_coo_tensor_with_dims
 @pytest.mark.parametrize(
     "args,kwargs,out_kind",
     [(row[1], row[2], row[3]) for row in _NEGATIVE_ROWS],

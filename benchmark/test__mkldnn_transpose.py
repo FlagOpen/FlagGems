@@ -86,7 +86,7 @@ class MkldnnTransposeBenchmark(OperatorBenchmark):
         self.shapes = [shape for shape in dict.fromkeys(merged) if len(shape) >= 1]
 
 
-@pytest.mark.mkldnn_transpose
+@pytest.mark.underscore_mkldnn_transpose
 def test__mkldnn_transpose():
     bench = MkldnnTransposeBenchmark(
         op_name="_mkldnn_transpose",

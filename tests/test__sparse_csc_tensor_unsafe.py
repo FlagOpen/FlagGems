@@ -134,7 +134,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "spec_shape", tu.selected_cases(_SPEC_SHAPES, quick=_QUICK_SPEC_SHAPES)
 )
@@ -195,7 +195,7 @@ _QUICK_STRUCT_CASES = [
 ]
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "size, per_column", tu.selected_cases(_STRUCT_CASES, quick=_QUICK_STRUCT_CASES)
 )
@@ -254,7 +254,7 @@ _UNCHECKED_CASES = [
 ]
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "case, size, ccol_spec, row_spec, values_shape", _UNCHECKED_CASES
 )
@@ -288,7 +288,7 @@ def test__sparse_csc_tensor_unsafe_unchecked_metadata(
     _assert_components(res_out, ref_out, torch.int64)
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 def test__sparse_csc_tensor_unsafe_aliases_component_storage():
     # Strided views with non-zero storage offsets: the constructor keeps the
     # buffers themselves, so the components must expose the same storage, shape,
@@ -377,7 +377,7 @@ _OPTION_CASES = [
 ]
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize("case, kwargs", _OPTION_CASES)
 def test__sparse_csc_tensor_unsafe_optional_kwargs(case, kwargs):
     ccol = torch.tensor([0, 1, 2], dtype=torch.int64, device="cpu")
@@ -401,7 +401,7 @@ def test__sparse_csc_tensor_unsafe_optional_kwargs(case, kwargs):
     assert res_out.values().is_pinned() == ref_out.values().is_pinned()
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype, scenario",
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
@@ -443,7 +443,7 @@ def _basic_buffers(dtype=torch.float32):
     return ccol, row, values
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "values_dtype, declared_dtype",
     [(torch.float16, torch.float32), (torch.float64, torch.float32)],
@@ -462,7 +462,7 @@ def test__sparse_csc_tensor_unsafe_rejects_dtype_mismatch(values_dtype, declared
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 def test__sparse_csc_tensor_unsafe_rejects_missing_dtype_for_other_values():
     ccol, row, values = _basic_buffers(torch.float64)
     with pytest.raises((RuntimeError, TypeError)):
@@ -476,7 +476,7 @@ def test__sparse_csc_tensor_unsafe_rejects_missing_dtype_for_other_values():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize("layout", [torch.sparse_csr, torch.sparse_coo])
 def test__sparse_csc_tensor_unsafe_rejects_foreign_layout(layout):
     ccol, row, values = _basic_buffers()
@@ -492,7 +492,7 @@ def test__sparse_csc_tensor_unsafe_rejects_foreign_layout(layout):
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 def test__sparse_csc_tensor_unsafe_rejects_non_list_size():
     ccol, row, values = _basic_buffers()
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -507,7 +507,7 @@ def test__sparse_csc_tensor_unsafe_rejects_non_list_size():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 def test__sparse_csc_tensor_unsafe_rejects_unknown_device():
     ccol, row, values = _basic_buffers()
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -522,7 +522,7 @@ def test__sparse_csc_tensor_unsafe_rejects_unknown_device():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="needs a non-CPU device")
 def test__sparse_csc_tensor_unsafe_rejects_missing_device_on_accelerator():
     ccol, row, values = _basic_buffers()
@@ -537,7 +537,7 @@ def test__sparse_csc_tensor_unsafe_rejects_missing_device_on_accelerator():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="needs a non-CPU device")
 def test__sparse_csc_tensor_unsafe_rejects_cross_device_buffers():
     ccol, row, values = _basic_buffers()
@@ -553,7 +553,7 @@ def test__sparse_csc_tensor_unsafe_rejects_cross_device_buffers():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.skipif(flag_gems.device == "cpu", reason="needs a non-CPU device")
 def test__sparse_csc_tensor_unsafe_rejects_pinned_accelerator_buffers():
     ccol, row, values = _basic_buffers()
@@ -570,7 +570,7 @@ def test__sparse_csc_tensor_unsafe_rejects_pinned_accelerator_buffers():
         )
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype",
     [dtype for dtype in _VALUE_DTYPES if dtype.is_floating_point or dtype.is_complex],

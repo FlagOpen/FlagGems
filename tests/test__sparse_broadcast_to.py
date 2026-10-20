@@ -230,7 +230,7 @@ def _assert_sparse_broadcast(res_out, ref_out, inp, snapshot, size):
     _assert_input_unchanged(inp, snapshot)
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 @pytest.mark.parametrize("size_mode", _SIZE_MODES)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -357,7 +357,7 @@ _EXTENDED_CASES = [
 _EXTRA_CASES = tu.selected_cases(_EXTENDED_CASES, quick=[])
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 @pytest.mark.parametrize("case", _EXTRA_CASES)
 def test__sparse_broadcast_to_extended(case):
     inp = _make_sparse_input(case)
@@ -376,7 +376,7 @@ def test__sparse_broadcast_to_extended(case):
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(SPECIAL_DTYPES), quick=[])
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 @pytest.mark.parametrize("size", [(5,), (2, 5)])
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__sparse_broadcast_to_special_values(dtype, scenario, size):
@@ -410,7 +410,7 @@ _INVALID_SIZE_ARGS = [
 ]
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 @pytest.mark.parametrize("shape,sparse_dim,bad_size", _INVALID_SIZE_ARGS)
 def test__sparse_broadcast_to_rejects_invalid_size(shape, sparse_dim, bad_size):
     inp = _float_operand(shape, sparse_dim)
@@ -419,7 +419,7 @@ def test__sparse_broadcast_to_rejects_invalid_size(shape, sparse_dim, bad_size):
         flag_gems._sparse_broadcast_to(inp, bad_size)
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 def test__sparse_broadcast_to_rejects_missing_size():
     inp = _float_operand((4, 6), 2)
 
@@ -455,7 +455,7 @@ def _layout_operand(layout):
     return torch.sparse_csr_tensor(crow, col, values, size=(2, 4)), [2, 4]
 
 
-@pytest.mark.sparse_broadcast_to
+@pytest.mark.underscore_sparse_broadcast_to
 @pytest.mark.parametrize("layout", _LAYOUT_CASES)
 def test__sparse_broadcast_to_rejects_unsupported_layout(layout):
     inp, size = _layout_operand(layout)

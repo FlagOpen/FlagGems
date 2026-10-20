@@ -215,7 +215,7 @@ def _assert_tile_outputs(res, ref):
         tu.assert_result_equal(res_part, ref_part)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize(
@@ -234,7 +234,7 @@ def test__sparse_semi_structured_tile_value_range(shape, value_range, dtype):
     tu.assert_result_equal(inp, inp_before)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", PAYLOAD_SHAPES)
 @pytest.mark.parametrize("kind,name", PAYLOAD_CASES)
@@ -248,7 +248,7 @@ def test__sparse_semi_structured_tile_payload_families(kind, name, shape, dtype)
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", ALGORITHM_SHAPES)
 def test__sparse_semi_structured_tile_default_algorithm_omitted(shape, dtype):
@@ -261,7 +261,7 @@ def test__sparse_semi_structured_tile_default_algorithm_omitted(shape, dtype):
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("algorithm", EXPLICIT_ALGORITHMS)
 @pytest.mark.parametrize("shape", ALGORITHM_SHAPES)
@@ -275,7 +275,7 @@ def test__sparse_semi_structured_tile_algorithm(algorithm, shape, dtype):
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", CUTLASS_SHAPES)
 @pytest.mark.parametrize("form", CUTLASS_FORMS)
@@ -294,7 +294,7 @@ def test__sparse_semi_structured_tile_algorithm_use_cutlass(form, shape, dtype):
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", SMALL_ALIGN_SHAPES)
 def test__sparse_semi_structured_tile_aligned64_geometry(shape, dtype):
@@ -307,7 +307,7 @@ def test__sparse_semi_structured_tile_aligned64_geometry(shape, dtype):
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("layout", VIEW_LAYOUTS)
 def test__sparse_semi_structured_tile_accepts_views(layout, dtype):
@@ -323,7 +323,7 @@ def test__sparse_semi_structured_tile_accepts_views(layout, dtype):
     _assert_tile_outputs(res_out, ref_out)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", BAD_RANK_SHAPES)
 def test__sparse_semi_structured_tile_rejects_rank(shape, dtype):
@@ -333,7 +333,7 @@ def test__sparse_semi_structured_tile_rejects_rank(shape, dtype):
         flag_gems._sparse_semi_structured_tile(inp)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", BAD_COLS_SHAPES)
 def test__sparse_semi_structured_tile_rejects_unaligned_cols(shape, dtype):
@@ -343,7 +343,7 @@ def test__sparse_semi_structured_tile_rejects_unaligned_cols(shape, dtype):
         flag_gems._sparse_semi_structured_tile(inp)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("layout", BAD_LAYOUTS)
 def test__sparse_semi_structured_tile_rejects_layout(layout, dtype):
@@ -355,7 +355,7 @@ def test__sparse_semi_structured_tile_rejects_layout(layout, dtype):
         flag_gems._sparse_semi_structured_tile(inp)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("algorithm", BAD_ALGORITHMS)
 def test__sparse_semi_structured_tile_rejects_unknown_algorithm(algorithm, dtype):
@@ -365,7 +365,7 @@ def test__sparse_semi_structured_tile_rejects_unknown_algorithm(algorithm, dtype
         flag_gems._sparse_semi_structured_tile(inp, algorithm)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("algorithm", BAD_ALGORITHM_TYPES)
 def test__sparse_semi_structured_tile_rejects_algorithm_type(algorithm, dtype):
@@ -377,7 +377,7 @@ def test__sparse_semi_structured_tile_rejects_algorithm_type(algorithm, dtype):
         flag_gems._sparse_semi_structured_tile(inp, algorithm)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", TILE_DTYPES)
 @pytest.mark.parametrize("shape", BAD_CUTLASS_SHAPES)
 def test__sparse_semi_structured_tile_rejects_cutlass_geometry(shape, dtype):
@@ -388,7 +388,7 @@ def test__sparse_semi_structured_tile_rejects_cutlass_geometry(shape, dtype):
         flag_gems._sparse_semi_structured_tile(inp, "", False)
 
 
-@pytest.mark.sparse_semi_structured_tile
+@pytest.mark.underscore_sparse_semi_structured_tile
 @pytest.mark.parametrize("dtype", REJECTED_DTYPES)
 def test__sparse_semi_structured_tile_rejects_dtype(dtype):
     inp = tu.make_input(dtype, (128, 128), ["-1", "1"])

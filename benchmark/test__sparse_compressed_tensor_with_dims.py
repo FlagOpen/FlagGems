@@ -120,7 +120,7 @@ class SparseCompressedTensorWithDimsBenchmark(OperatorBenchmark):
                 self.shapes.append(shape)
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 def test_sparse_compressed_tensor_with_dims():
     bench = SparseCompressedTensorWithDimsBenchmark(
         op_name="_sparse_compressed_tensor_with_dims",

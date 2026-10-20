@@ -87,7 +87,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__lazy_clone(shape, value_range, dtype):
@@ -149,7 +149,7 @@ def _layout_input(layout, storage_shape, dtype):
     raise AssertionError(f"unknown layout {layout}")
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("layout,storage_shape,dtype", _LAYOUT_CASES)
 def test__lazy_clone_preserves_layout(layout, storage_shape, dtype):
     inp = _layout_input(layout, storage_shape, dtype)
@@ -175,7 +175,7 @@ _ISOLATION_ROWS = [
 _ISOLATION_CASES = [row for row in _ISOLATION_ROWS if _dtype_supported(row[0])]
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("dtype,shape,clone_value,source_value", _ISOLATION_CASES)
 def test__lazy_clone_storage_isolation(dtype, shape, clone_value, source_value):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
@@ -224,7 +224,7 @@ _BACKWARD_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("dtype,shape", _BACKWARD_CASES)
 def test__lazy_clone_backward(dtype, shape):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).detach().requires_grad_(True)
@@ -250,7 +250,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__lazy_clone_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(1, 5)
@@ -273,7 +273,7 @@ _EMPTY_CASES = [
 ]
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("dtype,shape", _EMPTY_CASES)
 def test__lazy_clone_empty(dtype, shape):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
@@ -296,7 +296,7 @@ _NON_TENSOR_ARGS = [
 ]
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 @pytest.mark.parametrize("arg", _NON_TENSOR_ARGS)
 def test__lazy_clone_rejects_non_tensor(arg):
     if arg == "list":
@@ -305,7 +305,7 @@ def test__lazy_clone_rejects_non_tensor(arg):
         flag_gems._lazy_clone(arg)
 
 
-@pytest.mark.lazy_clone
+@pytest.mark.underscore_lazy_clone
 def test__lazy_clone_rejects_sparse_storage():
     inp = torch.zeros(4, 4, device=flag_gems.device).to_sparse()
     with pytest.raises((RuntimeError, NotImplementedError, TypeError)):

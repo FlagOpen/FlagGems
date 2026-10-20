@@ -239,7 +239,7 @@ class ValidateSparseCsrTensorArgsBenchmark(OperatorBenchmark):
                 pytest.skip("No CSR workloads in this values-emptiness group")
 
 
-@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize(
     "empty_values,dtype",
     [

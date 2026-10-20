@@ -109,7 +109,7 @@ class SparseSemiStructuredApplyBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_APPLY_SHAPES)
 
 
-@pytest.mark.sparse_semi_structured_apply
+@pytest.mark.underscore_sparse_semi_structured_apply
 def test__sparse_semi_structured_apply():
     bench = SparseSemiStructuredApplyBenchmark(
         op_name="_sparse_semi_structured_apply",

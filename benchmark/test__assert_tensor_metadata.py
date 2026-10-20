@@ -97,7 +97,7 @@ class AssertTensorMetadataBenchmark(base.GenericBenchmark):
         )
 
 
-@pytest.mark.assert_tensor_metadata
+@pytest.mark.underscore_assert_tensor_metadata
 def test__assert_tensor_metadata():
     bench = AssertTensorMetadataBenchmark(
         op_name="_assert_tensor_metadata",

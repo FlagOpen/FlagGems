@@ -362,7 +362,7 @@ def _view_of(base, layout, base_shape):
     raise AssertionError(f"unknown layout {layout!r}")
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape,value_range,dtype", _VALUE_CASES)
 def test__cast_Long(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
@@ -377,7 +377,7 @@ def test__cast_Long(shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("layout,base_shape,value_range", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _CAST_DTYPES)
 def test__cast_Long_layout(layout, base_shape, value_range, dtype):
@@ -394,7 +394,7 @@ def test__cast_Long_layout(layout, base_shape, value_range, dtype):
     tu.assert_result_equal(base, ref_base)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("layout,base_shape,values_kind,dtype", _DEFINED_LAYOUT_ROWS)
 def test__cast_Long_layout_defined_values(layout, base_shape, values_kind, dtype):
     base = _defined_base(base_shape, values_kind, dtype)
@@ -409,7 +409,7 @@ def test__cast_Long_layout_defined_values(layout, base_shape, values_kind, dtype
     tu.assert_result_equal(base, ref_base)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape,layout", _INT64_ALIAS_ROWS)
 def test__cast_Long_int64_alias(shape, layout):
     base = _int64_base(shape)
@@ -426,7 +426,7 @@ def test__cast_Long_int64_alias(shape, layout):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("kind", _FP64_BOUNDARY_CASES)
 def test__cast_Long_fp64_boundaries(kind):
     inp = _fp64_boundary_input(kind)
@@ -438,7 +438,7 @@ def test__cast_Long_fp64_boundaries(kind):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("non_blocking,as_keyword", _PARAM_CALLS)
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 @pytest.mark.parametrize("dtype", _CAST_DTYPES)
@@ -459,7 +459,7 @@ def test__cast_Long_non_blocking(non_blocking, as_keyword, shape, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _DEFAULT_ONLY_SHAPE)
 @pytest.mark.parametrize(
     "dtype", [dtype for dtype in _CAST_DTYPES if dtype != torch.int64]
@@ -477,7 +477,7 @@ def test__cast_Long_preserves_input(shape, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_CAST_FLOAT_DTYPES), quick=[]),
@@ -494,7 +494,7 @@ def test__cast_Long_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_non_bool_non_blocking(shape):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -503,7 +503,7 @@ def test__cast_Long_rejects_non_bool_non_blocking(shape):
         flag_gems._cast_Long(inp, "yes")
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_extra_positional(shape):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -512,7 +512,7 @@ def test__cast_Long_rejects_extra_positional(shape):
         flag_gems._cast_Long(inp, False, True)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_out_keyword(shape):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -524,13 +524,13 @@ def test__cast_Long_rejects_out_keyword(shape):
         flag_gems._cast_Long(inp, out=out)
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 def test__cast_Long_rejects_missing_operand():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Long()
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize(
     "bad_self", tu.selected_cases([3.14, [1.0, 2.0]], quick=[3.14])
 )

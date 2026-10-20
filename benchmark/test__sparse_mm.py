@@ -125,7 +125,7 @@ class SparseMMBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.sparse_mm
+@pytest.mark.underscore_sparse_mm
 def test__sparse_mm():
     bench = SparseMMBenchmark(
         op_name="_sparse_mm",

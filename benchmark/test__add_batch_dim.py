@@ -60,7 +60,7 @@ class AddBatchDimBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=ADD_BATCH_DIM_SHAPES)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 def test__add_batch_dim():
     bench = AddBatchDimBenchmark(
         op_name="_add_batch_dim",

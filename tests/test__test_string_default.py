@@ -111,7 +111,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize(
     "shape, dtype, value_range",
     [
@@ -158,7 +158,7 @@ _CALL_FORMS = [
 _CALL_FORM_SHAPES = tu.selected_cases([(2, 19, 7), (20, 320, 15)], quick=[(2, 19, 7)])
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("shape", _CALL_FORM_SHAPES)
 @pytest.mark.parametrize("args, kwargs", _CALL_FORMS)
 @pytest.mark.parametrize(
@@ -206,7 +206,7 @@ def _layout_view(base, layout):
     return base[:1].expand(4, base.shape[1])
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("layout, storage_shape", _LAYOUT_ROWS)
 @pytest.mark.parametrize(
     "dtype",
@@ -234,7 +234,7 @@ def test_test_string_default_preserves_layout(layout, storage_shape, dtype):
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("dtype", [torch.complex64])
 def test_test_string_default_preserves_lazy_conjugate(dtype):
     # A complex input carries the lazy conjugate bit.
@@ -249,7 +249,7 @@ def test_test_string_default_preserves_lazy_conjugate(dtype):
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -283,7 +283,7 @@ def test_test_string_default_preserves_lazy_negative(dtype):
 _EMPTY_SHAPES = [(0,), (0, 3), (3, 0, 7)]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 def test_test_string_default_empty_input(shape, dtype):
@@ -301,7 +301,7 @@ def test_test_string_default_empty_input(shape, dtype):
 _SCALAR_SHAPES = [(), (1,)]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("shape", _SCALAR_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
@@ -330,7 +330,7 @@ def test_test_string_default_scalar_operand(shape, dtype):
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize(
     "dtype, scenario",
     [
@@ -359,7 +359,7 @@ def test_test_string_default_special_values(dtype, scenario):
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -391,7 +391,7 @@ def test_test_string_default_backward(dtype):
     _assert_result_equal(res_grad, ref_grad)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -424,7 +424,7 @@ def test_test_string_default_alias_write_through(dtype):
     _assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 def test_test_string_default_accepts_none_operand():
     # A None operand is accepted and returned unchanged, so this is positive
     # coverage; the negative rows below deliberately exclude it.
@@ -446,7 +446,7 @@ _INVALID_DEFAULTS = [
 ]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("field, value", _INVALID_DEFAULTS)
 def test_test_string_default_rejects_invalid_default(field, value):
     # Only the exact schema default is accepted for either string.
@@ -465,7 +465,7 @@ _INVALID_ARGUMENTS = [
 ]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("kwargs", _INVALID_ARGUMENTS)
 def test_test_string_default_rejects_invalid_arguments(kwargs):
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"])
@@ -490,7 +490,7 @@ def _non_tensor_operand(label):
     }[label]
 
 
-@pytest.mark.test_string_default
+@pytest.mark.underscore_test_string_default
 @pytest.mark.parametrize("operand_label", _NON_TENSOR_OPERANDS)
 def test_test_string_default_rejects_non_tensor_operand(operand_label):
     with pytest.raises((RuntimeError, TypeError)):

@@ -99,7 +99,7 @@ class DimVBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.dimV
+@pytest.mark.underscore_dimV
 def test__dimV():
     bench = DimVBenchmark(
         op_name="_dimV",

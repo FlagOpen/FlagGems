@@ -87,7 +87,7 @@ class SerializationSubcmulBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(merged))
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 def test__test_serialization_subcmul():
     bench = SerializationSubcmulBenchmark(
         op_name="_test_serialization_subcmul",

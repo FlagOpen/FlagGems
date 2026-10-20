@@ -92,7 +92,7 @@ class FoobarBenchmark(OperatorBenchmark):
         self.shapes = merged
 
 
-@pytest.mark.foobar
+@pytest.mark.underscore_foobar
 def test__foobar():
     bench = FoobarBenchmark(
         op_name="_foobar",

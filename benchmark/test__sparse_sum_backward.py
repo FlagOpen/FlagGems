@@ -403,7 +403,7 @@ class SparseSumBackwardBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_ALL_ROWS)
 
 
-@pytest.mark.sparse_sum_backward
+@pytest.mark.underscore_sparse_sum_backward
 def test__sparse_sum_backward():
     bench = SparseSumBackwardBenchmark(
         op_name="_sparse_sum_backward",

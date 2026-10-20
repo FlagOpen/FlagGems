@@ -204,7 +204,7 @@ class CudnnRnnFlattenWeightBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_CONFIGS)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight():
     bench = CudnnRnnFlattenWeightBenchmark(
         op_name="_cudnn_rnn_flatten_weight",

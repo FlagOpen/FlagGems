@@ -114,7 +114,7 @@ class _CastDoubleBenchmark(base.GenericBenchmark):
         return list(super().set_more_shapes()) + list(_EXTRA_SHAPES)
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 def test__cast_Double():
     bench = _CastDoubleBenchmark(
         op_name="_cast_Double",

@@ -177,7 +177,7 @@ class ReshapeFromTensorBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=RFT_SHAPES)
 
 
-@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
 def test__reshape_from_tensor():
     bench = ReshapeFromTensorBenchmark(
         op_name="_reshape_from_tensor",

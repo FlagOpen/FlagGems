@@ -87,7 +87,7 @@ class AmbiguousDefaultsBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(current + extras))
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("native_overload,params,form", _CALL_FORMS)
 def test__test_ambiguous_defaults(native_overload, params, form):
     def case_fn(shape, dtype):

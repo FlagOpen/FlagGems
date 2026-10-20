@@ -163,7 +163,7 @@ class SparseMmReduceImplZeroExtentBenchmark(SparseMmReduceImplBenchmark):
     DEFAULT_SHAPES = _ZERO_EXTENT_MNK
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 def test__sparse_mm_reduce_impl():
     bench = SparseMmReduceImplBenchmark(
         op_name="_sparse_mm_reduce_impl",
@@ -176,7 +176,7 @@ def test__sparse_mm_reduce_impl():
     bench.run()
 
 
-@pytest.mark.sparse_mm_reduce_impl
+@pytest.mark.underscore_sparse_mm_reduce_impl
 def test__sparse_mm_reduce_impl_zero_extent():
     bench = SparseMmReduceImplZeroExtentBenchmark(
         op_name="_sparse_mm_reduce_impl",

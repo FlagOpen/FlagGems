@@ -199,7 +199,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__test_autograd_multiple_dispatch_view_copy(shape, value_range, dtype):
@@ -213,7 +213,7 @@ def test__test_autograd_multiple_dispatch_view_copy(shape, value_range, dtype):
     _assert_materialized_copy(res_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype", _COPY_DTYPES)
 @pytest.mark.parametrize("shape", _EMPTY_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_empty(shape, dtype):
@@ -227,7 +227,7 @@ def test__test_autograd_multiple_dispatch_view_copy_empty(shape, dtype):
     _assert_materialized_copy(res_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 @pytest.mark.parametrize("base_shape,layout", _STRIDED_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_strided_input(
@@ -243,7 +243,7 @@ def test__test_autograd_multiple_dispatch_view_copy_strided_input(
     _assert_materialized_copy(res_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 @pytest.mark.parametrize("out_kind", _OUT_KINDS)
 def test__test_autograd_multiple_dispatch_view_copy_out(out_kind, dtype):
@@ -268,7 +268,7 @@ def test__test_autograd_multiple_dispatch_view_copy_out(out_kind, dtype):
         tu.assert_result_equal(base, ref_base)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("lazy_bit,dtype,layout", _LAZY_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_materializes_lazy_view(
     lazy_bit, dtype, layout
@@ -289,7 +289,7 @@ def test__test_autograd_multiple_dispatch_view_copy_materializes_lazy_view(
     assert not res_out.is_neg() and not res_out.is_conj()
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 def test__test_autograd_multiple_dispatch_view_copy_does_not_alias_input():
     """The copy owns its storage and the source operand stays read-only."""
     inp = tu.make_input(torch.float32, _LAYOUT_BASE, _VALUE_RANGE)
@@ -310,7 +310,7 @@ def test__test_autograd_multiple_dispatch_view_copy_does_not_alias_input():
     tu.assert_result_equal(res_out, tu.to_reference(torch.ones_like(res_out)))
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 @pytest.mark.parametrize("shape", _BACKWARD_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_backward(shape, dtype):
@@ -331,7 +331,7 @@ def test__test_autograd_multiple_dispatch_view_copy_backward(shape, dtype):
     tu.assert_result_equal(res_grad, tu.to_reference(ref_grad))
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__test_autograd_multiple_dispatch_view_copy_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -344,7 +344,7 @@ def test__test_autograd_multiple_dispatch_view_copy_special_values(dtype, scenar
     _assert_materialized_copy(res_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("layout", list(_UNFLATTENABLE_BUILDERS))
 def test__test_autograd_multiple_dispatch_view_copy_rejects_unflattenable_layout(
     layout,
@@ -356,7 +356,7 @@ def test__test_autograd_multiple_dispatch_view_copy_rejects_unflattenable_layout
         flag_gems._test_autograd_multiple_dispatch_view_copy(inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("bad_argument,expected", _INVALID_ARGUMENT_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_rejects_invalid_arguments(
     bad_argument, expected
@@ -366,7 +366,7 @@ def test__test_autograd_multiple_dispatch_view_copy_rejects_invalid_arguments(
         flag_gems._test_autograd_multiple_dispatch_view_copy(*args)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view_copy
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view_copy
 @pytest.mark.parametrize("bad_out,expected", _INVALID_OUT_ROWS)
 def test__test_autograd_multiple_dispatch_view_copy_rejects_invalid_out(
     bad_out, expected

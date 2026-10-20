@@ -358,7 +358,7 @@ def _fill_canonical(tensor):
     values.fill_(1)
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("case", _ALLOCATION_CASES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_allocation_structure(case, dtype):
@@ -386,7 +386,7 @@ def test_allocation_structure(case, dtype):
     _assert_allocation(res, ref, case, dtype, flag_gems.device, index_dtype=torch.int64)
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("case", _LAYOUT_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 def test_index_dtype(case, index_dtype):
@@ -415,7 +415,7 @@ def test_index_dtype(case, index_dtype):
     _assert_allocation(res, ref, case, torch.float32, flag_gems.device)
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("nnz", _NNZ_VALUES)
 def test_requested_nnz_is_allocated(nnz):
     size = (5, 4)
@@ -452,7 +452,7 @@ def test_requested_nnz_is_allocated(nnz):
     assert values.numel() == nnz
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 def test_optional_kwargs_default_to_schema():
     # Only ``layout`` is required; the schema defaults to CPU storage and
     # float32 values.
@@ -472,7 +472,7 @@ def test_optional_kwargs_default_to_schema():
     )
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("pin_memory", _PIN_VALUES)
 def test_cpu_pin_memory(pin_memory):
     # Pinning is a CPU contract, so this workload uses the CPU device form of
@@ -511,7 +511,7 @@ def test_cpu_pin_memory(pin_memory):
         assert res_part.is_pinned() == ref_part.is_pinned() == pin_memory
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("case", _LAYOUT_CASES)
 def test_meta_device_allocation(case):
     layout, dense_dim, size, blocksize, nnz = case
@@ -549,7 +549,7 @@ def test_meta_device_allocation(case):
     )
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("case", _LAYOUT_CASES)
 def test_allocation_parts_are_independent(case):
     layout, dense_dim, size, blocksize, nnz = case
@@ -575,7 +575,7 @@ def test_allocation_parts_are_independent(case):
     assert len({comp.data_ptr(), other.data_ptr(), values.data_ptr()}) == 3
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("case", _WRITE_CASES)
 def test_written_allocation_densifies_like_reference(case):
     layout, dense_dim, size, blocksize, nnz = case
@@ -604,7 +604,7 @@ def test_written_allocation_densifies_like_reference(case):
     tu.assert_result_equal(res.to_dense(), ref.to_dense())
 
 
-@pytest.mark.sparse_compressed_tensor_with_dims
+@pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("args,kwargs,exc", _INVALID_CALLS)
 def test_invalid_arguments_are_rejected(args, kwargs, exc):
     with pytest.raises(exc):

@@ -297,7 +297,7 @@ _VALUE_DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize(
     "layout, batch, base, dense, blocks, nnz, values_dtype, value_range",
     [
@@ -399,7 +399,7 @@ def _capacity_base(layout, nnz, blocks):
     return (rows, cols) if layout in _ROW_MAJOR_LAYOUTS else (cols, rows)
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize(
     "values_dtype, scenario",
     [
@@ -471,7 +471,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("layout", _EXTRA_DTYPE_LAYOUTS)
 @pytest.mark.parametrize("values_dtype, value_range", _DTYPE_RANGE_CASES)
 def test_validate_sparse_compressed_tensor_args_extra_values_dtypes(
@@ -564,7 +564,7 @@ def _offset_args(case):
     return parents, slices, [3, 4], torch.sparse_csr
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("case", _OFFSET_CASES)
 def test_validate_sparse_compressed_tensor_args_offsets_and_strides(case):
     parents, slices, size, layout = _offset_args(case)
@@ -760,7 +760,7 @@ def _invalid_args(case):
     raise ValueError(f"unknown invalid case: {case!r}")
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("case", _NEGATIVE_CASES)
 def test_validate_sparse_compressed_tensor_args_rejects_invalid(case):
     compressed, plain, values, size, layout = _invalid_args(case)

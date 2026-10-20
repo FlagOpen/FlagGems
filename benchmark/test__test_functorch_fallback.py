@@ -82,7 +82,7 @@ class FunctorchFallbackBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 def test_test_functorch_fallback():
     bench = FunctorchFallbackBenchmark(
         op_name="_test_functorch_fallback",

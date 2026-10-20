@@ -90,7 +90,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_test_autograd_multiple_dispatch(shape, value_range, dtype):
@@ -103,7 +103,7 @@ def test_test_autograd_multiple_dispatch(shape, value_range, dtype):
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_test_autograd_multiple_dispatch_ntonly(shape, value_range, dtype):
@@ -116,7 +116,7 @@ def test_test_autograd_multiple_dispatch_ntonly(shape, value_range, dtype):
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize(
     "shape",
     tu.selected_cases([(256,), (7, 13, 29), (2, 19, 7)], quick=[(256,), (2, 19, 7)]),
@@ -133,7 +133,7 @@ def test_test_autograd_multiple_dispatch_ntonly_flag(shape, b, dtype):
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", _SCALAR_SHAPES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_test_autograd_multiple_dispatch_scalar(shape, dtype):
@@ -148,7 +148,7 @@ def test_test_autograd_multiple_dispatch_scalar(shape, dtype):
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_test_autograd_multiple_dispatch_out(shape, dtype):
@@ -173,7 +173,7 @@ def test_test_autograd_multiple_dispatch_out(shape, dtype):
     tu.assert_result_equal(inp, inp_before)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", _OUT_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_test_autograd_multiple_dispatch_out_non_contiguous(shape, dtype):
@@ -202,7 +202,7 @@ def test_test_autograd_multiple_dispatch_out_non_contiguous(shape, dtype):
     tu.assert_result_equal(inp, inp_before)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape, kind", _NONCONTIG_ROWS)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_test_autograd_multiple_dispatch_non_contiguous_input(shape, kind, dtype):
@@ -217,7 +217,7 @@ def test_test_autograd_multiple_dispatch_non_contiguous_input(shape, kind, dtype
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_test_autograd_multiple_dispatch_empty(shape, dtype):
@@ -234,7 +234,7 @@ def test_test_autograd_multiple_dispatch_empty(shape, dtype):
     assert res_out.stride() == ref_out.stride()
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_cases([(256,), (2, 19, 7)], quick=[]))
 @pytest.mark.parametrize(
     "dtype", tu.selected_cases(_FULLCOVERAGE_GRAD_DTYPES, quick=[])
@@ -260,7 +260,7 @@ def test_test_autograd_multiple_dispatch_backward(shape, dtype):
     tu.assert_result_equal(res_grad, tu.to_reference(native_grad))
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_cases([(256,), (2, 19, 7)], quick=[]))
 @pytest.mark.parametrize("dtype", tu.selected_cases(_NTONLY_GRAD_DTYPES, quick=[]))
 def test_test_autograd_multiple_dispatch_ntonly_backward(shape, dtype):
@@ -283,7 +283,7 @@ def test_test_autograd_multiple_dispatch_ntonly_backward(shape, dtype):
     tu.assert_result_equal(res_grad, tu.to_reference(native_grad))
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize(
     "dtype, scenario",
     tu.selected_cases(tu.special_value_cases(_DTYPES), quick=[]),
@@ -298,21 +298,21 @@ def test_test_autograd_multiple_dispatch_special_scenarios(dtype, scenario):
     _assert_copy_result(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 @pytest.mark.parametrize("bad_self", [3.14, [1.0, 2.0]])
 def test_test_autograd_multiple_dispatch_rejects_non_tensor(bad_self):
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._test_autograd_multiple_dispatch(bad_self)
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 def test_test_autograd_multiple_dispatch_rejects_non_bool_flag():
     inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._test_autograd_multiple_dispatch(inp, "not-a-bool")
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 def test_test_autograd_multiple_dispatch_rejects_out_dtype_mismatch():
     inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
     out = torch.empty(8, dtype=torch.float64, device=flag_gems.device)

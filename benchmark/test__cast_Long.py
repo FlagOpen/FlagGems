@@ -123,7 +123,7 @@ class CastLongBenchmark(OperatorBenchmark):
         self.shapes = [_validated_shape(shape) for shape in self.shapes]
 
 
-@pytest.mark.cast_Long
+@pytest.mark.underscore_cast_Long
 def test__cast_Long():
     bench = CastLongBenchmark(
         op_name="_cast_Long",

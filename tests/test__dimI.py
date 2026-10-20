@@ -95,7 +95,7 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("case", _DIMI_COO_CASES)
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_coo(case, dtype):
@@ -112,7 +112,7 @@ def test__dimI_coo(case, dtype):
     assert inp.dense_dim() == len(shape) - sparse_dim
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 1]
 )
@@ -129,7 +129,7 @@ def test__dimI_shape_value_range_grid(shape, value_range, dtype):
     assert inp.dense_dim() == 0
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("case", _DIMI_HYBRID_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
@@ -145,7 +145,7 @@ def test__dimI_hybrid_value_ranges(case, value_range, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("case", _DIMI_SMALL_CASES)
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_hybrid_dense_dim_zero(case, dtype):
@@ -160,7 +160,7 @@ def test__dimI_hybrid_dense_dim_zero(case, dtype):
     assert inp.sparse_dim() + inp.dense_dim() == len(shape)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_empty(dtype):
     shape, sparse_dim = (3, 4), 2
@@ -173,7 +173,7 @@ def test__dimI_empty(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("shape, sparse_dim", [((4, 5, 6), 2), ((4, 5, 6), 1)])
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_empty_hybrid(shape, sparse_dim, dtype):
@@ -187,7 +187,7 @@ def test__dimI_empty_hybrid(shape, sparse_dim, dtype):
     assert inp.dense_dim() == len(shape) - sparse_dim
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_single_entry(dtype):
     shape, sparse_dim = (3, 4, 5), 2
@@ -201,7 +201,7 @@ def test__dimI_single_entry(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", _DIMI_DTYPES)
 def test__dimI_uncoalesced(dtype):
     shape = (3, 4)
@@ -217,7 +217,7 @@ def test__dimI_uncoalesced(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DIMI_DTYPES))
 )
@@ -243,7 +243,7 @@ _NEGATIVE_EXC = (
 )
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test__dimI_dense_raises():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
@@ -252,7 +252,7 @@ def test__dimI_dense_raises():
         flag_gems._dimI(inp)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test__dimI_csr_raises():
     crow_indices = torch.tensor([0, 1, 2])
     col_indices = torch.tensor([0, 1])
@@ -266,7 +266,7 @@ def test__dimI_csr_raises():
         flag_gems._dimI(inp)
 
 
-@pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test__dimI_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._dimI(3.14)

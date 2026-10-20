@@ -104,7 +104,7 @@ class AutogradMultipleDispatchBenchmark(OperatorBenchmark):
         self.shapes = merged
 
 
-@pytest.mark.test_autograd_multiple_dispatch
+@pytest.mark.underscore_test_autograd_multiple_dispatch
 def test__test_autograd_multiple_dispatch():
     bench = AutogradMultipleDispatchBenchmark(
         op_name="_test_autograd_multiple_dispatch",

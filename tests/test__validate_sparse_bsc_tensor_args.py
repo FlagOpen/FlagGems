@@ -150,7 +150,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("shape", _BSC_SHAPES)
 @pytest.mark.parametrize(
     "dtype, value_range",
@@ -227,7 +227,7 @@ _LAYOUT_ROWS = [
 ]
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "layout",
     tu.selected_cases(_LAYOUT_ROWS, quick=[]),
@@ -256,7 +256,7 @@ def test__validate_sparse_bsc_tensor_args_layout(layout, dtype, index_dtype):
 # Every batch element has the same nnz here but distributes it over the block
 # columns differently; a validator that only checks one batch pattern would pass
 # the uniform layouts above and still accept this descriptor.
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "dtype", tu.selected_cases([torch.float32, torch.float16], quick=[])
 )
@@ -296,7 +296,7 @@ _OFFSET_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("case", _OFFSET_CASES)
 @pytest.mark.parametrize(
     "dtype", tu.selected_cases([torch.float32, torch.float16], quick=[])
@@ -360,7 +360,7 @@ _HUGE_ROW_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("dtype", _HUGE_ROW_CASES)
 def test__validate_sparse_bsc_tensor_args_int64_row_range(dtype):
     size = [2**32 + 4, 1]
@@ -387,7 +387,7 @@ def test__validate_sparse_bsc_tensor_args_int64_row_range(dtype):
 _ZERO_BLOCK_CASES = tu.selected_cases([torch.float32], quick=[])
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("dtype", _ZERO_BLOCK_CASES)
 def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
     ccol = torch.tensor(
@@ -414,7 +414,7 @@ def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
 # --- accepted `size` call forms ---------------------------------------------
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "form", tu.selected_cases(["list", "tuple", "torch.Size", "keyword"], quick=[])
 )
@@ -457,7 +457,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "dtype, scenario",
     [
@@ -509,7 +509,7 @@ def test__validate_sparse_bsc_tensor_args_special_values(dtype, scenario):
 # and are not emulated with a CPU oracle.
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("broken_shape", [(16,), (2, 8), (2, 2, 2, 2)])
 def test__validate_sparse_bsc_tensor_args_rejects_values_rank(broken_shape):
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
@@ -519,7 +519,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_values_rank(broken_shape):
         )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("bad_size", [[8], [8, 8, 1]])
 def test__validate_sparse_bsc_tensor_args_rejects_size_rank(bad_size):
     ccol, row, values, _ = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
@@ -527,7 +527,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_size_rank(bad_size):
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, bad_size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_dense_rank_mismatch():
     # A dense tail makes `size` one entry longer than a dense-free descriptor:
     # the worker derives the dense rank from `values` and requires
@@ -537,7 +537,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_dense_rank_mismatch():
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, [4, 4])
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "nrows,ncols,blocksize", [(4, 5, (2, 2)), (5, 4, (2, 2)), (8, 6, (3, 3))]
 )
@@ -551,14 +551,14 @@ def test__validate_sparse_bsc_tensor_args_rejects_indivisible_blocksize(
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_short_ccol():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
         flag_gems._validate_sparse_bsc_tensor_args(ccol[:-1], row, values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_long_ccol():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
@@ -567,14 +567,14 @@ def test__validate_sparse_bsc_tensor_args_rejects_long_ccol():
         )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_short_row():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row[:-1], values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_long_row():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
@@ -583,7 +583,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_long_row():
         )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_values_nnz_mismatch():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     broken = torch.ones(
@@ -593,7 +593,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_values_nnz_mismatch():
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, broken, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("bad_dtype", [torch.int8, torch.int16, torch.float32])
 def test__validate_sparse_bsc_tensor_args_rejects_index_dtype(bad_dtype):
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
@@ -610,7 +610,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_index_dtype(bad_dtype):
 _MIXED_INDEX_CASES = [torch.int32] if utils.int64_is_supported else []
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize(
     "bad_ccol_dtype", tu.selected_cases(_MIXED_INDEX_CASES, quick=_MIXED_INDEX_CASES)
 )
@@ -622,7 +622,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_mixed_index_dtype(bad_ccol_dty
         )
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_noncontiguous_ccol():
     # The strided view keeps the original logical contents; only the layout is
     # invalid (`stride(-1) == 1` is required per batch).
@@ -633,7 +633,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_noncontiguous_ccol():
         flag_gems._validate_sparse_bsc_tensor_args(buffer[::2], row, values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_noncontiguous_row():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     buffer = torch.zeros(2 * row.numel(), dtype=row.dtype, device=flag_gems.device)
@@ -642,28 +642,28 @@ def test__validate_sparse_bsc_tensor_args_rejects_noncontiguous_row():
         flag_gems._validate_sparse_bsc_tensor_args(ccol, buffer[::2], values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_batch_size_mismatch():
     ccol, row, values, _ = _bsc_inputs((2,), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, [3, 8, 8])
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_index_rank_mismatch():
     ccol, row, values, size = _bsc_inputs((2,), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row[0], values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_rank_zero_indices():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises(RuntimeError):
         flag_gems._validate_sparse_bsc_tensor_args(ccol[0], row, values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_negative_extent():
     # A negative logical extent is rejected by the derived column-block count
     # (native probe: ccol_indices.shape[-1] must be equal to the number of
@@ -673,7 +673,7 @@ def test__validate_sparse_bsc_tensor_args_rejects_negative_extent():
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, [8, -8])
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_int32_index_overflow():
     ccol, row, values, size = _bsc_inputs(
         (), 2**31 + 4, 1, (), (1, 1), 1, torch.float32, torch.int32
@@ -682,14 +682,14 @@ def test__validate_sparse_bsc_tensor_args_rejects_int32_index_overflow():
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_missing_size():
     ccol, row, values, _ = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values)
 
 
-@pytest.mark.validate_sparse_bsc_tensor_args
+@pytest.mark.underscore_validate_sparse_bsc_tensor_args
 def test__validate_sparse_bsc_tensor_args_rejects_non_tensor_inputs():
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     lists = (ccol.tolist(), row.tolist(), values.tolist())

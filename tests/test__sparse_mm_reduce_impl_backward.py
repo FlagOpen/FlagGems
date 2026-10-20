@@ -158,7 +158,7 @@ def _assert_backward_result(res, ref, mask):
             tu.assert_result_close(res_part, ref_part)
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("reduce", _GRID_REDUCES)
 @pytest.mark.parametrize("value_range", _GRID_RANGES)
@@ -186,7 +186,7 @@ def test__sparse_mm_reduce_impl_backward(shape, value_range, reduce, dtype):
     )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("mask", _MASK_CASES)
 @pytest.mark.parametrize("reduce", _REDUCES)
@@ -210,7 +210,7 @@ def test__sparse_mm_reduce_impl_backward_output_mask(mask, dtype, reduce):
     _assert_backward_result(res, ref, mask)
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("reduce", _REDUCES)
 @pytest.mark.parametrize("case", _SPECIAL_CASES)
 @pytest.mark.parametrize("placement", ["values", "grad_out", "weight", "all"])
@@ -239,7 +239,7 @@ def test__sparse_mm_reduce_impl_backward_special_values(case, reduce, placement)
     )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("case", _BACKWARD_CASES)
 def test__sparse_mm_reduce_impl_backward_autograd(case):
     reduce, dtype = case
@@ -273,7 +273,7 @@ def test__sparse_mm_reduce_impl_backward_autograd(case):
     tu.assert_result_close(res_weight, grad_weight)
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test__sparse_mm_reduce_impl_backward_unsupported_dtype(dtype):
     m, k, n, nnz = _NEGATIVE_SHAPE
@@ -288,7 +288,7 @@ def test__sparse_mm_reduce_impl_backward_unsupported_dtype(dtype):
         )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("reduce", ["prod", "bogus"])
 def test__sparse_mm_reduce_impl_backward_invalid_reduce(reduce):
     self_csr, grad_out, weight, arg_out = _make_inputs(
@@ -301,7 +301,7 @@ def test__sparse_mm_reduce_impl_backward_invalid_reduce(reduce):
         )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 def test__sparse_mm_reduce_impl_backward_invalid_output_mask():
     self_csr, grad_out, weight, arg_out = _make_inputs(
         _NEGATIVE_SHAPE, torch.float32, ("-1", "1"), "sum"
@@ -314,7 +314,7 @@ def test__sparse_mm_reduce_impl_backward_invalid_output_mask():
         )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 def test__sparse_mm_reduce_impl_backward_dense_self():
     m, k, n, _ = _NEGATIVE_SHAPE
     dense_self = _dense((m, k), torch.float32, ("-1", "1"))
@@ -329,7 +329,7 @@ def test__sparse_mm_reduce_impl_backward_dense_self():
         )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 def test__sparse_mm_reduce_impl_backward_weight_shape_mismatch():
     shape = _NEGATIVE_SHAPE
     self_csr, grad_out, _, arg_out = _make_inputs(
@@ -343,7 +343,7 @@ def test__sparse_mm_reduce_impl_backward_weight_shape_mismatch():
         )
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("reduce", _REDUCES)
 @pytest.mark.parametrize(
@@ -367,7 +367,7 @@ def test__sparse_mm_reduce_impl_backward_empty(shape, reduce, dtype):
     _assert_backward_result(res, ref, (True, True))
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("reduce", _REDUCES)
 @pytest.mark.parametrize("layout", ["transpose", "strided_offset"])
@@ -398,7 +398,7 @@ def test__sparse_mm_reduce_impl_backward_layout(layout, reduce, dtype):
     _assert_backward_result(res, ref, (True, True))
 
 
-@pytest.mark.sparse_mm_reduce_impl_backward
+@pytest.mark.underscore_sparse_mm_reduce_impl_backward
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("reduce", _REDUCES)
 @pytest.mark.parametrize("mask", _MASK_CASES)

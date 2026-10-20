@@ -84,7 +84,7 @@ def _assert_sizes(res_out, ref_out):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("num_tensors", _NUM_TENSORS)
 @pytest.mark.parametrize("num_dims", _COMPONENT_RANKS)
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
@@ -98,7 +98,7 @@ def test__nested_tensor_size(num_tensors, num_dims, dtype):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("case", _SHAPE_LEVEL_CASES)
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_size_shape_levels(case, dtype):
@@ -118,7 +118,7 @@ def test__nested_tensor_size_shape_levels(case, dtype):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("case", _VALUE_RANGE_LAYOUTS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
@@ -133,7 +133,7 @@ def test__nested_tensor_size_value_ranges(case, value_range, dtype):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_size_uniform(dtype):
     num_tensors = 6
@@ -150,7 +150,7 @@ def test__nested_tensor_size_uniform(dtype):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_size_with_empty_components(dtype):
     num_tensors = 4
@@ -168,7 +168,7 @@ def test__nested_tensor_size_with_empty_components(dtype):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_COMPONENT_DTYPES))
 )
@@ -192,7 +192,7 @@ def test__nested_tensor_size_nan_inf_values(dtype, scenario):
     _assert_sizes(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__nested_tensor_size_dense_raises(dtype):
     inp = tu.make_input(dtype, (4, 4), _VALUE_RANGE)
@@ -202,7 +202,7 @@ def test__nested_tensor_size_dense_raises(dtype):
         flag_gems._nested_tensor_size(inp)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__nested_tensor_size_jagged_raises(dtype):
     ref_device = torch.device("cpu") if utils.TO_CPU else flag_gems.device
@@ -219,7 +219,7 @@ def test__nested_tensor_size_jagged_raises(dtype):
         flag_gems._nested_tensor_size(inp)
 
 
-@pytest.mark.nested_tensor_size
+@pytest.mark.underscore_nested_tensor_size
 def test__nested_tensor_size_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._nested_tensor_size(3.14)

@@ -92,7 +92,7 @@ class CufftGetPlanCacheMaxSizeBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.cufft_get_plan_cache_max_size
+@pytest.mark.underscore_cufft_get_plan_cache_max_size
 def test__cufft_get_plan_cache_max_size():
     bench = CufftGetPlanCacheMaxSizeBenchmark(
         op_name=_OP_NAME,

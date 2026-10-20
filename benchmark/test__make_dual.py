@@ -61,7 +61,7 @@ class MakeDualBenchmark(OperatorBenchmark):
         self.shapes = [shape for shape in self.shapes if math.prod(shape) <= MAX_NUMEL]
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 def test__make_dual():
     # The level must stay live for the entire benchmark run, so dual_level() is
     # entered here and the input builder closes over the exact level index it
