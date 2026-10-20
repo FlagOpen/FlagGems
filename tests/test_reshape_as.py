@@ -126,8 +126,11 @@ def test_reshape_as_non_contiguous(source_shape, target_shape, dtype):
 @pytest.mark.parametrize("shape,layout,target", RESHAPE_AS_VIEW_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_reshape_as_view_strided(shape, layout, target, dtype):
-    # Strided layouts that native reshape still expresses as a view: the result
-    # must share storage and match native stride/offset, not materialize.
+    # Strided layouts that reshape still expresses as a view: the result must
+    # share storage and match the view expressible from the candidate input's
+    # own layout. The metadata expectation is computed from 'inp' itself
+    # because a cross-device reference (TO_CPU) compacts strides during the
+    # transfer and cannot describe the candidate layout.
     if layout == "expanded":
         base = torch.ones(shape, dtype=dtype, device=flag_gems.device)
         inp = base.expand((3, 5))
@@ -139,17 +142,18 @@ def test_reshape_as_view_strided(shape, layout, target, dtype):
         inp = _apply_layout(base, layout)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = ref_inp.reshape_as(
-        torch.empty(target, dtype=dtype, device=flag_gems.device)
-    )
+    expected = inp.view(target)
     res_out = flag_gems.reshape_as(
         inp, torch.empty(target, dtype=dtype, device=flag_gems.device)
     )
 
-    assert res_out.stride() == ref_out.stride()
-    assert res_out.storage_offset() == ref_out.storage_offset()
+    assert res_out.stride() == expected.stride()
+    assert res_out.storage_offset() == expected.storage_offset()
     assert res_out.data_ptr() == inp.data_ptr()
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(
+        res_out,
+        ref_inp.reshape_as(torch.empty(target, dtype=dtype, device=flag_gems.device)),
+    )
 
 
 @pytest.mark.reshape_as
@@ -209,8 +213,10 @@ def test_reshape_as_backward(shape, layout, dtype):
     res_out = flag_gems.reshape_as(inp, other)
     utils.gems_assert_equal(res_out, ref_out)
 
+    # Reference runs on the reference device, so its upstream must live there.
+    ref_upstream = utils.to_reference(upstream)
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
-    ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=upstream)[0]
+    ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
     utils.gems_assert_equal(res_grad, ref_grad)
 
 
