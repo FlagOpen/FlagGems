@@ -26,7 +26,141 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # Encode FP8 on CPU; device-side FP32-to-FP8 casts are unavailable.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if low == high:
+        result = torch.full(shape, low, dtype=dtype, device="cpu")
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return result.to(flag_gems.device)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], device="cpu", dtype=torch.float32)
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+
+
+def _comparison_to_cpu(tensor):
+    fp8 = tensor.dtype in tu._FP8_DTYPES
+    if tensor.layout == torch.strided and (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and tensor.device.type != "cpu"
+        or (fp8 and tensor.is_neg())
+    ):
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if fp8:
+            values = values.float()
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+    values = tensor.cpu()
+    return values.float() if fp8 else values
+
+
+def _assert_result_equal(result, reference):
+    # Validate the original device and metadata before CPU value observation.
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
+    assert result.shape == reference.shape
+    if utils.TO_CPU:
+        assert reference.device == torch.device("cpu")
+    else:
+        assert result.device == reference.device
+    if result.dtype in tu._FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()
+    ):
+        result, reference = _comparison_to_cpu(result), _comparison_to_cpu(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _to_reference(inp, upcast=False):
+    """Independent tensor oracle for these tests, retaining view metadata.
+
+    A plain clone or device transfer can compact strides, reset offsets or
+    materialize lazy flags. Copy dense storage to the reference device before
+    rebuilding the view. Optional upcasting still follows accuracy_utils' value
+    conversion policy. This does not reproduce inter-input aliases or autograd
+    history; version-counter tests use their own reference setup.
+    """
+    from . import accuracy_utils as utils
+
+    if inp is None:
+        return None
+    if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
+        reference = inp.detach().clone()
+    else:
+        storage = inp.untyped_storage()
+        if utils.TO_CPU and inp.device.type != "cpu":
+            storage = storage.cpu()
+        else:
+            storage = storage.clone()
+        reference = torch.empty(0, dtype=inp.dtype, device=storage.device).set_(
+            storage, inp.storage_offset(), inp.size(), inp.stride()
+        )
+        if inp.is_conj():
+            reference = reference.conj()
+        if inp.is_neg():
+            reference = torch._neg_view(reference)
+    reference.requires_grad_(inp.requires_grad)
+    return utils.to_reference(reference, upcast)
+
+
+def _lazy_skip_reason(kind, dtype):
+    if kind == "neg" and flag_gems.vendor_name == "kunlunxin":
+        return "Kunlunxin native materialization clears the negative-view flag without negating values"
+    if (
+        kind == "neg"
+        and flag_gems.vendor_name == "ascend"
+        and dtype
+        in (
+            torch.uint8,
+            torch.int16,
+        )
+    ):
+        return (
+            "Ascend native neg kernel does not support uint8/int16 lazy materialization"
+        )
+    return None
+
 
 _DEVICE = flag_gems.runtime.device
 
@@ -120,7 +254,7 @@ IDENTITY_ROWS = tu.selected_cases(
 
 def _layout_operand(kind, dtype, shape, value_range):
     """Dense operand that carries a non-default layout into the identity call."""
-    base = tu.make_input(dtype, shape, value_range)
+    base = _make_input(dtype, shape, value_range)
     if kind == "expanded":
         return base.expand(4, shape[0])
     if kind == "transposed":
@@ -128,6 +262,26 @@ def _layout_operand(kind, dtype, shape, value_range):
     if kind == "offset":
         return base[1:3]
     if kind == "channels_last":
+        if flag_gems.vendor_name == "ascend":
+            # NPU's to(memory_format=...) rejects channels_last. Build the
+            # same values and strides using CPU storage, then move raw bytes.
+            host = (
+                torch.empty(0, dtype=base.dtype, device="cpu")
+                .set_(
+                    base.untyped_storage().cpu(),
+                    base.storage_offset(),
+                    base.size(),
+                    base.stride(),
+                )
+                .contiguous(memory_format=torch.channels_last)
+            )
+            storage = host.untyped_storage().to(device=base.device)
+            return torch.empty(0, dtype=base.dtype, device=base.device).set_(
+                storage,
+                host.storage_offset(),
+                host.size(),
+                host.stride(),
+            )
         return base.to(memory_format=torch.channels_last)
     return base  # "empty": a zero-element operand
 
@@ -137,10 +291,10 @@ def _layout_operand(kind, dtype, shape, value_range):
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__test_parallel_materialize_identity(kind, shape, value_range, dtype):
     if kind is None:
-        inp = tu.make_input(dtype, shape, value_range)
+        inp = _make_input(dtype, shape, value_range)
     else:
         inp = _layout_operand(kind, dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, _NUM_PARALLEL)
     res_out = flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL)
@@ -148,7 +302,7 @@ def test__test_parallel_materialize_identity(kind, shape, value_range, dtype):
     # A materialized operand comes back as the same object, so storage, layout
     # and autograd state are all preserved by the call.
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # Materializing a lazy negative view needs a negation kernel, absent on CUDA FP8
@@ -178,15 +332,28 @@ def _is_lazy(tensor, kind):
 
 
 @pytest.mark.underscore_test_parallel_materialize
-@pytest.mark.parametrize("kind,dtype", LAZY_ROWS)
+@pytest.mark.parametrize(
+    "kind,dtype",
+    [
+        pytest.param(
+            kind,
+            dtype,
+            marks=pytest.mark.skipif(
+                _lazy_skip_reason(kind, dtype) is not None,
+                reason=_lazy_skip_reason(kind, dtype) or "native lazy path supported",
+            ),
+        )
+        for kind, dtype in LAZY_ROWS
+    ],
+)
 @pytest.mark.parametrize("offset", [False, True])
 @pytest.mark.parametrize("num_parallel,skip_first", _LAZY_PARAMS)
 def test__test_parallel_materialize_lazy(kind, dtype, offset, num_parallel, skip_first):
-    base = tu.make_input(dtype, _LAZY_SHAPE, _PARAM_RANGE)
+    base = _make_input(dtype, _LAZY_SHAPE, _PARAM_RANGE)
     source = base[1:] if offset else base
-    ref_source = tu.to_reference(source)
+    ref_source = _to_reference(source)
     inp = _lazy_operand(source, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(
         ref_inp, num_parallel, skip_first
@@ -198,32 +365,32 @@ def test__test_parallel_materialize_lazy(kind, dtype, offset, num_parallel, skip
     assert not _is_lazy(res_out, kind)
     assert res_out.device == inp.device
     assert res_out.is_contiguous()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # ... while the operand and the tensor it views stay untouched.
     assert _is_lazy(inp, kind)
-    tu.assert_result_equal(source, ref_source)
+    _assert_result_equal(source, ref_source)
 
 
 @pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("num_parallel", _NUM_PARALLEL_VALUES)
 @pytest.mark.parametrize("dtype", PARAM_DTYPES)
 def test__test_parallel_materialize_num_parallel(num_parallel, dtype):
-    inp = tu.make_input(dtype, _PARAM_SHAPE, _PARAM_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, _PARAM_SHAPE, _PARAM_RANGE)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, num_parallel)
     res_out = flag_gems._test_parallel_materialize(inp, num_parallel)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("skip_first", _SKIP_FIRST_VALUES)
 @pytest.mark.parametrize("dtype", PARAM_DTYPES)
 def test__test_parallel_materialize_skip_first(skip_first, dtype):
-    inp = tu.make_input(dtype, _PARAM_SHAPE, _PARAM_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, _PARAM_SHAPE, _PARAM_RANGE)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(
         ref_inp, _NUM_PARALLEL, skip_first
@@ -231,7 +398,7 @@ def test__test_parallel_materialize_skip_first(skip_first, dtype):
     res_out = flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL, skip_first)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 _CALL_FORMS = (
@@ -254,38 +421,44 @@ _CALL_FORMS = (
     ],
 )
 def test__test_parallel_materialize_call_forms(args, kwargs):
-    inp = tu.make_input(torch.float32, _PARAM_SHAPE, _PARAM_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.float32, _PARAM_SHAPE, _PARAM_RANGE)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, *args, **kwargs)
     res_out = flag_gems._test_parallel_materialize(inp, *args, **kwargs)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
-# fill_ works for every dtype an identity result can carry, so the mutation is
-# observable for floats, ints, bool and complex alike.
+# A write through the result must remain visible through the operand alias.
 _ALIAS_DTYPES = (torch.float32, torch.float16, torch.int32, torch.bool, torch.complex64)
 
 
 @pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("dtype", _ALIAS_DTYPES)
 def test__test_parallel_materialize_alias_storage(dtype):
-    inp = tu.make_input(dtype, _ALIAS_SHAPE, _PARAM_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, _ALIAS_SHAPE, _PARAM_RANGE)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, _NUM_PARALLEL)
     res_out = flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out is inp
     # Native returns the operand itself, so a write through the result shows up
     # in the operand: mutate the independent native and candidate results and
     # compare the candidate operand against the independent native operand.
-    res_out.fill_(1)
-    ref_out.fill_(1)
-    tu.assert_result_equal(inp, ref_inp)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex:
+        # Copy a value-one payload where the complex fill_ kernel is absent.
+        for output in (res_out, ref_out):
+            output.copy_(
+                torch.ones(output.shape, dtype=dtype, device="cpu").to(output.device)
+            )
+    else:
+        res_out.fill_(1)
+        ref_out.fill_(1)
+    _assert_result_equal(inp, ref_inp)
 
 
 # The dense identity path never inspects the payload, so the special-value matrix
@@ -310,11 +483,25 @@ SPECIAL_CASES = tu.selected_cases(
 
 
 @pytest.mark.underscore_test_parallel_materialize
-@pytest.mark.parametrize("kind,dtype,scenario", SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "kind,dtype,scenario",
+    [
+        pytest.param(
+            kind,
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                _lazy_skip_reason(kind, dtype) is not None,
+                reason=_lazy_skip_reason(kind, dtype) or "native lazy path supported",
+            ),
+        )
+        for kind, dtype, scenario in SPECIAL_CASES
+    ],
+)
 def test__test_parallel_materialize_special_values(kind, dtype, scenario):
-    source = tu.make_special_input(dtype, scenario)
+    source = _make_special_input(dtype, scenario)
     inp = source if kind is None else _lazy_operand(source, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_inp, _NUM_PARALLEL)
     res_out = flag_gems._test_parallel_materialize(inp, _NUM_PARALLEL)
@@ -324,7 +511,7 @@ def test__test_parallel_materialize_special_values(kind, dtype, scenario):
     else:
         assert res_out is not inp
         assert not _is_lazy(res_out, kind)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # Native registers no derivative for this operator: the operator call itself
@@ -338,24 +525,37 @@ _BACKWARD_ROWS = [
 
 
 @pytest.mark.underscore_test_parallel_materialize
-@pytest.mark.parametrize("kind,dtype", _BACKWARD_ROWS)
+@pytest.mark.parametrize(
+    "kind,dtype",
+    [
+        pytest.param(
+            kind,
+            dtype,
+            marks=pytest.mark.skipif(
+                _lazy_skip_reason(kind, dtype) is not None,
+                reason=_lazy_skip_reason(kind, dtype) or "native lazy path supported",
+            ),
+        )
+        for kind, dtype in _BACKWARD_ROWS
+    ],
+)
 def test__test_parallel_materialize_backward_not_implemented(kind, dtype):
-    inp = tu.make_input(dtype, _BACKWARD_SHAPE, _PARAM_RANGE).requires_grad_(True)
-    ref_inp = tu.to_reference(inp).detach().clone().requires_grad_(True)
+    inp = _make_input(dtype, _BACKWARD_SHAPE, _PARAM_RANGE).requires_grad_(True)
+    ref_inp = _to_reference(inp).detach().clone().requires_grad_(True)
     operand = _lazy_operand(inp, kind)
     ref_operand = _lazy_operand(ref_inp, kind)
 
     ref_out = torch.ops.aten._test_parallel_materialize(ref_operand, _NUM_PARALLEL)
     res_out = flag_gems._test_parallel_materialize(operand, _NUM_PARALLEL)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
-    upstream = tu.make_input(dtype, _BACKWARD_SHAPE, _PARAM_RANGE)
+    upstream = _make_input(dtype, _BACKWARD_SHAPE, _PARAM_RANGE)
 
     with pytest.raises(
         RuntimeError,
         match="derivative for aten::_test_parallel_materialize is not implemented",
     ):
-        torch.autograd.grad(ref_out, ref_inp, grad_outputs=tu.to_reference(upstream))
+        torch.autograd.grad(ref_out, ref_inp, grad_outputs=_to_reference(upstream))
     with pytest.raises(
         RuntimeError,
         match="derivative for aten::_test_parallel_materialize is not implemented",
@@ -378,7 +578,7 @@ def test__test_parallel_materialize_rejects_non_tensor(operand):
 @pytest.mark.underscore_test_parallel_materialize
 @pytest.mark.parametrize("num_parallel", [1.5, "3", None])
 def test__test_parallel_materialize_rejects_invalid_num_parallel(num_parallel):
-    inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
+    inp = _make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_parallel_materialize(inp, num_parallel)
@@ -386,7 +586,7 @@ def test__test_parallel_materialize_rejects_invalid_num_parallel(num_parallel):
 
 @pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize_requires_num_parallel():
-    inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
+    inp = _make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_parallel_materialize(inp)
@@ -394,7 +594,7 @@ def test__test_parallel_materialize_requires_num_parallel():
 
 @pytest.mark.underscore_test_parallel_materialize
 def test__test_parallel_materialize_rejects_invalid_skip_first():
-    inp = tu.make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
+    inp = _make_input(torch.float32, _ALIAS_SHAPE, _PARAM_RANGE)
 
     # Natively skip_first accepts 1.5 / None (no bool conversion failure), so
     # only a value such as "yes" is a rejected parameter value.

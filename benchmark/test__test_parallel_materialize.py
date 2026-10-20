@@ -132,14 +132,61 @@ class ParallelMaterializeBenchmark(base.GenericBenchmark):
         self.shapes = list(dict.fromkeys(shapes))
 
 
+def _lazy_skip_reason(kind, dtype):
+    if kind == "neg" and flag_gems.vendor_name == "kunlunxin":
+        return "Kunlunxin native materialization clears the negative-view flag without negating values"
+    if (
+        kind == "neg"
+        and flag_gems.vendor_name == "ascend"
+        and dtype
+        in (
+            torch.uint8,
+            torch.int16,
+        )
+    ):
+        return (
+            "Ascend native neg kernel does not support uint8/int16 lazy materialization"
+        )
+    return None
+
+
+# Separate lazy and identity groups so a backend restriction skips only the
+# unsupported branch while the same dtype's identity workloads still run.
+_BENCH_GROUPS = [
+    pytest.param(
+        dtype,
+        kind,
+        id=f"{str(dtype).removeprefix('torch.')}-{kind}",
+        marks=pytest.mark.skipif(
+            _lazy_skip_reason(kind, dtype) is not None,
+            reason=_lazy_skip_reason(kind, dtype) or "native lazy path supported",
+        ),
+    )
+    for dtype in _BENCH_DTYPES
+    for kind in ("plain", "neg")
+    if kind == "plain" or dtype in _LAZY_DTYPES
+]
+
+
 @pytest.mark.underscore_test_parallel_materialize
-def test__test_parallel_materialize():
+@pytest.mark.parametrize("dtype,kind", _BENCH_GROUPS)
+def test__test_parallel_materialize(dtype, kind):
+    def selected_cases(shape, current_dtype):
+        if current_dtype == dtype:
+            for plan in _case_fn(shape, current_dtype):
+                if plan.params["kind"] == kind:
+                    yield plan
+
     bench = ParallelMaterializeBenchmark(
         op_name="_test_parallel_materialize",
-        case_fn=_case_fn,
+        case_fn=selected_cases,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._test_parallel_materialize,
         gems_op=getattr(flag_gems, "_test_parallel_materialize", None),
         dtypes=_BENCH_DTYPES,
     )
+    # Preserve the framework's error for unsupported global dtype requests.
+    bench.set_dtypes(base.Config.user_desired_dtypes)
+    if dtype not in bench.to_bench_dtypes:
+        pytest.skip("dtype not selected by --dtypes")
     bench.run()
