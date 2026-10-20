@@ -368,7 +368,7 @@ def _assert_unmutated(operand, snapshot):
     assert operand.layout == layout
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _MATMUL_DTYPES)
 @pytest.mark.parametrize("m, k, n, value_range", _MAIN_ROWS)
 def test__sparse_sparse_matmul_mm(m, k, n, value_range, dtype):
@@ -386,7 +386,7 @@ def test__sparse_sparse_matmul_mm(m, k, n, value_range, dtype):
     _assert_unmutated(inp_b, snapshots[1])
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _AUX_DTYPES)
 @pytest.mark.parametrize("shape, mat1_empty, mat2_empty", _EMPTY_ROWS)
 def test__sparse_sparse_matmul_empty(shape, mat1_empty, mat2_empty, dtype):
@@ -402,7 +402,7 @@ def test__sparse_sparse_matmul_empty(shape, mat1_empty, mat2_empty, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _AUX_DTYPES)
 @pytest.mark.parametrize("shape", _OUT_ROWS)
 def test__sparse_sparse_matmul_out(shape, dtype):
@@ -425,7 +425,7 @@ def test__sparse_sparse_matmul_out(shape, dtype):
     _assert_unmutated(inp_b, snapshots[1])
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _AUX_DTYPES)
 @pytest.mark.parametrize(
     "mat1_unsorted, mat2_unsorted, mat1_strided, mat2_strided", _LAYOUT_ROWS
@@ -468,7 +468,7 @@ def test__sparse_sparse_matmul_coo_layout(
     _assert_unmutated(inp_b, snapshots[1])
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _AUX_DTYPES)
 @pytest.mark.parametrize("store_zeros", _STORED_ZERO_ROWS)
 def test__sparse_sparse_matmul_stored_zero(store_zeros, dtype):
@@ -484,7 +484,7 @@ def test__sparse_sparse_matmul_stored_zero(store_zeros, dtype):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype, scenario", _SPECIAL_CASES)
 def test__sparse_sparse_matmul_special_values(dtype, scenario):
     # mat1 stores a complete special row next to a complete finite row and mat2
@@ -517,7 +517,7 @@ def test__sparse_sparse_matmul_special_values(dtype, scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 @pytest.mark.parametrize("m, k, n, fully_stored", _BACKWARD_ROWS)
 def test__sparse_sparse_matmul_backward(m, k, n, fully_stored, dtype):
@@ -558,7 +558,7 @@ def test__sparse_sparse_matmul_backward(m, k, n, fully_stored, dtype):
         tu.assert_result_close(res_grad.coalesce(), ref_grad.coalesce())
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPE_ROWS)
 def test__sparse_sparse_matmul_rejects_unsupported_dtype(dtype):
     inp_a = _constant_operand((4, 4), 4, dtype, seed=0)
@@ -567,7 +567,7 @@ def test__sparse_sparse_matmul_rejects_unsupported_dtype(dtype):
         flag_gems._sparse_sparse_matmul(inp_a, inp_b)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("side", _OPERAND_SIDES)
 @pytest.mark.parametrize("rank", _NON_2D_RANKS)
 def test__sparse_sparse_matmul_rejects_non_2d(rank, side):
@@ -580,7 +580,7 @@ def test__sparse_sparse_matmul_rejects_non_2d(rank, side):
         flag_gems._sparse_sparse_matmul(*args)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 def test__sparse_sparse_matmul_rejects_shape_mismatch():
     # mat1 (4, 5) cannot be multiplied with mat2 (6, 3).
     inp_a = _constant_operand((4, 5), 6, torch.float32, seed=0)
@@ -589,7 +589,7 @@ def test__sparse_sparse_matmul_rejects_shape_mismatch():
         flag_gems._sparse_sparse_matmul(inp_a, inp_b)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 def test__sparse_sparse_matmul_rejects_dtype_mismatch():
     # Both dtypes have kernels, but the two operands must agree.
     inp_a = _constant_operand((4, 4), 4, torch.float16, seed=0)
@@ -598,7 +598,7 @@ def test__sparse_sparse_matmul_rejects_dtype_mismatch():
         flag_gems._sparse_sparse_matmul(inp_a, inp_b)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("side", _OPERAND_SIDES)
 def test__sparse_sparse_matmul_rejects_dense_operand(side):
     # Each operand position is validated on its own; mat2 is not assumed to
@@ -610,7 +610,7 @@ def test__sparse_sparse_matmul_rejects_dense_operand(side):
         flag_gems._sparse_sparse_matmul(*args)
 
 
-@pytest.mark.sparse_sparse_matmul
+@pytest.mark.underscore_sparse_sparse_matmul
 @pytest.mark.parametrize("side", _OPERAND_SIDES)
 def test__sparse_sparse_matmul_rejects_csr_operand(side):
     valid = _constant_operand((4, 4), 4, torch.float32, seed=0)

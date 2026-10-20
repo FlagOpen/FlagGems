@@ -315,7 +315,7 @@ _SPECIAL_CONVERT_SCENARIOS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _SPARSE_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
@@ -331,7 +331,7 @@ def test__sparse_softmax_default_form(case, value_range, dtype):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _CONVERT_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _CONVERT_DTYPES)
@@ -349,7 +349,7 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _CONVERT64_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _FP64_TARGET_DTYPES)
@@ -365,7 +365,7 @@ def test__sparse_softmax_dtype_conversion_float64(case, value_range, dtype):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _DTYPE_NONE_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
@@ -383,7 +383,7 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _HYBRID_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
@@ -399,7 +399,7 @@ def test__sparse_softmax_hybrid(case, value_range, dtype):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _OUT_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
@@ -422,7 +422,7 @@ def test__sparse_softmax_out(case, value_range, dtype):
     assert res_ret.is_coalesced() == ref_ret.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _BACKWARD_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
@@ -444,7 +444,7 @@ def test__sparse_softmax_backward(case, value_range, dtype):
     tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _SPECIAL_ROWS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_SCENARIOS)
 def test__sparse_softmax_special_values(case, dtype, scenario):
@@ -459,7 +459,7 @@ def test__sparse_softmax_special_values(case, dtype, scenario):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("case", _SPECIAL_CONVERT_ROWS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CONVERT_SCENARIOS)
 def test__sparse_softmax_special_values_dtype_conversion(case, dtype, scenario):
@@ -476,7 +476,7 @@ def test__sparse_softmax_special_values_dtype_conversion(case, dtype, scenario):
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__sparse_softmax_rejects_dtype_in_default_form(dtype):
     # No native softmax kernel for the default half_to_float=False form on this
@@ -487,7 +487,7 @@ def test__sparse_softmax_rejects_dtype_in_default_form(dtype):
         flag_gems._sparse_softmax(inp, 1, half_to_float=False)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("dtype", _REJECTED_FP8_DTYPES)
 def test__sparse_softmax_rejects_fp8_in_default_form(dtype):
     # The default form coalesces the input first, and this vendor has no sparse
@@ -498,7 +498,7 @@ def test__sparse_softmax_rejects_fp8_in_default_form(dtype):
         flag_gems._sparse_softmax(inp, 1, half_to_float=False)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("dtype", _HALF_TO_FLOAT_REJECTED_DTYPES)
 def test__sparse_softmax_rejects_half_to_float(dtype):
     # half_to_float=True has no native kernel on this vendor. The argument is passed
@@ -510,7 +510,7 @@ def test__sparse_softmax_rejects_half_to_float(dtype):
         flag_gems._sparse_softmax(inp, 0, half_to_float=True)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("shape,invalid_dim", [((8, 9), 2), ((20, 320, 15), -4)])
 def test__sparse_softmax_rejects_out_of_range_dim(shape, invalid_dim):
     inp = _make_sparse(shape, 1, ("coords", 32), torch.float32, value_range=["-1", "1"])
@@ -519,7 +519,7 @@ def test__sparse_softmax_rejects_out_of_range_dim(shape, invalid_dim):
         flag_gems._sparse_softmax(inp, invalid_dim, half_to_float=False)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 @pytest.mark.parametrize("nnz", [0, 1, 3])
 @pytest.mark.parametrize("dim", [0, -1])
 def test__sparse_softmax_rejects_zero_dim_input(nnz, dim):
@@ -538,7 +538,7 @@ def test__sparse_softmax_rejects_zero_dim_input(nnz, dim):
         flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
 
-@pytest.mark.sparse_softmax
+@pytest.mark.underscore_sparse_softmax
 def test__sparse_softmax_rejects_dense_input():
     inp = tu.make_input(torch.float32, (8, 9), ["-1", "1"])
 

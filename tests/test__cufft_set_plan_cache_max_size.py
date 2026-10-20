@@ -125,7 +125,7 @@ def _call_arguments(call_form, index, capacity):
     return (), {"device_index": index, "max_size": capacity}
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("call_form", _CALL_FORMS)
 @pytest.mark.parametrize("capacity", _STORE_CASES)
 @pytest.mark.parametrize("device_index", _DEVICE_INDICES)
@@ -146,7 +146,7 @@ _TRANSITIONS = [(0, 4096), (4096, 0), ((1 << 63) - 1, 0), (0, (1 << 63) - 1)]
 _TRANSITION_CASES = _TRANSITIONS
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("first,second", _TRANSITION_CASES)
 def test_repeated_set_overwrites_previous(first, second):
     with _plan_cache_capacity() as index:
@@ -156,7 +156,7 @@ def test_repeated_set_overwrites_previous(first, second):
             assert torch.ops.aten._cufft_get_plan_cache_max_size(index) == capacity
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 def test_bool_max_size_uses_int_subclass_semantics():
     # bool subclasses int, so the int parameter accepts True as capacity 1.
     with _plan_cache_capacity() as index:
@@ -180,7 +180,7 @@ _TENSOR_ARG_ROWS = [
 ]
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("argument,dtype,payload,expected", _TENSOR_ARG_ROWS)
 def test_tensor_argument_follows_native_conversion(argument, dtype, payload, expected):
     # The tensor is built from parametrized metadata, so collection allocates
@@ -220,7 +220,7 @@ _INVALID_SIZES = [
 ]
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("max_size", _INVALID_SIZES)
 def test_reject_invalid_max_size(max_size):
     with pytest.raises(RuntimeError):
@@ -236,7 +236,7 @@ _OUT_OF_RANGE_DEVICE_INDICES = [
 ]
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("device_index", _OUT_OF_RANGE_DEVICE_INDICES)
 def test_reject_unusable_device_index(device_index):
     with pytest.raises(RuntimeError):
@@ -246,7 +246,7 @@ def test_reject_unusable_device_index(device_index):
 _NON_INTEGER_DEVICE_INDICES = [1.5, "0", None]
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("device_index", _NON_INTEGER_DEVICE_INDICES)
 def test_reject_non_integer_device_index(device_index):
     with pytest.raises((RuntimeError, TypeError)):
@@ -267,7 +267,7 @@ _ARITY_MISMATCH_CALLS = [
 ]
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("args,kwargs", _ARITY_MISMATCH_CALLS)
 def test_reject_arity_mismatch(args, kwargs):
     with pytest.raises((RuntimeError, TypeError)):
@@ -304,7 +304,7 @@ def _run_capacity_scenario(index, plan_count, capacity, set_capacity):
     )
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 @pytest.mark.parametrize("plan_count,capacity", _EVICTION_CASES)
 @pytest.mark.parametrize("device_index", _DEVICE_INDICES)
 def test_set_plan_cache_max_size_affects_live_cache(plan_count, capacity, device_index):

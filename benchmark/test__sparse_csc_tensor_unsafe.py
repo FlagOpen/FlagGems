@@ -174,7 +174,7 @@ class SparseCscTensorUnsafeBenchmark(base.GenericBenchmark):
         return list(super().set_more_shapes()) + list(_CSC_DEF_SHAPES)
 
 
-@pytest.mark.sparse_csc_tensor_unsafe
+@pytest.mark.underscore_sparse_csc_tensor_unsafe
 def test__sparse_csc_tensor_unsafe():
     bench = SparseCscTensorUnsafeBenchmark(
         op_name="_sparse_csc_tensor_unsafe",

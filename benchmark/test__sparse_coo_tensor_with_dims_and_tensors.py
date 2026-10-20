@@ -127,7 +127,7 @@ class SparseCooTensorWithDimsAndTensorsBenchmark(OperatorBenchmark):
         self.shapes = merged
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors():
     bench = SparseCooTensorWithDimsAndTensorsBenchmark(
         op_name="_sparse_coo_tensor_with_dims_and_tensors",

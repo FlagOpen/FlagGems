@@ -147,7 +147,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
@@ -167,7 +167,7 @@ def test__test_ambiguous_defaults_grid(
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("shape", _PACKET_SHAPES)
 @pytest.mark.parametrize("tail", _PACKET_TAILS)
 @pytest.mark.parametrize("dtype", _DTYPES)
@@ -183,7 +183,7 @@ def test__test_ambiguous_defaults_packet_call_forms(shape, tail, dtype):
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("native_overload,kwargs", _KEYWORD_CALLS)
 def test__test_ambiguous_defaults_keyword_forms(native_overload, kwargs):
     # Named schema arguments must reach the same overload as the positional form.
@@ -198,7 +198,7 @@ def test__test_ambiguous_defaults_keyword_forms(native_overload, kwargs):
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("value_range", [["0", "0"], ["1", "1"]])
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
 def test__test_ambiguous_defaults_operand_is_unread(
@@ -217,7 +217,7 @@ def test__test_ambiguous_defaults_operand_is_unread(
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("tail", [(), (1, 1), (2, "2")])
 def test__test_ambiguous_defaults_undefined_operand(tail):
     # The schema accepts an undefined tensor and the implementation never reads it.
@@ -228,7 +228,7 @@ def test__test_ambiguous_defaults_undefined_operand(tail):
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("kind,shape", _OPERAND_LAYOUT_CASES)
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
 def test__test_ambiguous_defaults_operand_layouts(kind, shape, native_overload, params):
@@ -245,7 +245,7 @@ def test__test_ambiguous_defaults_operand_layouts(kind, shape, native_overload, 
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test__test_ambiguous_defaults_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -259,7 +259,7 @@ def test__test_ambiguous_defaults_special_values(dtype, scenario):
     _assert_scalar_contract(res_out)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("native_overload,params", _CALL_FORMS)
 @pytest.mark.parametrize(
     "dtype", [dtype for dtype in _DTYPES if dtype.is_floating_point or dtype.is_complex]
@@ -281,7 +281,7 @@ def test__test_ambiguous_defaults_has_no_gradient(native_overload, params, dtype
         torch.autograd.grad(res_out, dummy, allow_unused=True)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("label,params", _NEGATIVE_PARAM_ROWS)
 def test__test_ambiguous_defaults_rejects_invalid_params(label, params):
     dummy = tu.make_input(torch.float32, (2, 19, 7), ["-1", "1"])
@@ -290,14 +290,14 @@ def test__test_ambiguous_defaults_rejects_invalid_params(label, params):
         flag_gems._test_ambiguous_defaults(dummy, *params)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 @pytest.mark.parametrize("bad_operand", _NON_TENSOR_OPERANDS)
 def test__test_ambiguous_defaults_rejects_non_tensor_operand(bad_operand):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_ambiguous_defaults(bad_operand)
 
 
-@pytest.mark.test_ambiguous_defaults
+@pytest.mark.underscore_test_ambiguous_defaults
 def test__test_ambiguous_defaults_rejects_missing_operand():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_ambiguous_defaults()

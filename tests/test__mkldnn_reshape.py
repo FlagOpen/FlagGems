@@ -80,7 +80,7 @@ def _assert_mkldnn_result(res, ref):
     tu.assert_result_equal(torch.ops.aten.to_dense(res), torch.ops.aten.to_dense(ref))
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize("shape", GRID_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
@@ -118,7 +118,7 @@ SHAPE_ROWS = [
 ]
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize(
     "shape,target,resolved",
     SHAPE_ROWS,
@@ -137,7 +137,7 @@ def test__mkldnn_reshape_target_shape(shape, target, resolved):
     _assert_mkldnn_result(res, ref)
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize("shape", GRID_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int8])
 def test__mkldnn_reshape_out(shape, dtype):
@@ -156,7 +156,7 @@ def test__mkldnn_reshape_out(shape, dtype):
     _assert_mkldnn_result(res, ref)
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize(
     "shape", [s for s in GRID_SHAPES if _target_shape(s) != tuple(s)]
 )
@@ -172,7 +172,7 @@ def test__mkldnn_reshape_out_returns_out(shape):
     assert res is out
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 def test__mkldnn_reshape_shares_source_memory():
     """The reshaped result observes later writes to the source tensor."""
     inp = _mkldnn_input(torch.float32, (2, 3))
@@ -194,7 +194,7 @@ def test__mkldnn_reshape_shares_source_memory():
 # Backward is differentiated through the original mkldnn leaf with a nonuniform
 # upstream gradient. A reshape gradient is a pure relayout of that upstream, so
 # it is compared exactly.
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize("shape", tu.selected_cases(GRID_SHAPES, quick=[]))
 @pytest.mark.parametrize("dtype", tu.selected_cases(_FLOAT_DTYPES, quick=[]))
 def test__mkldnn_reshape_backward(shape, dtype):
@@ -231,7 +231,7 @@ def test__mkldnn_reshape_backward(shape, dtype):
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[])
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test__mkldnn_reshape_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).cpu().to_mkldnn()
@@ -258,7 +258,7 @@ NEGATIVE_SHAPE_ROWS = [
 ]
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize(
     "shape,target",
     NEGATIVE_SHAPE_ROWS,
@@ -270,7 +270,7 @@ def test__mkldnn_reshape_rejects_invalid_target_shape(shape, target):
         flag_gems._mkldnn_reshape(inp, list(target))
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test__mkldnn_reshape_rejects_dense_input(dtype):
     dense = torch.zeros((2, 3), dtype=dtype)
@@ -278,7 +278,7 @@ def test__mkldnn_reshape_rejects_dense_input(dtype):
         flag_gems._mkldnn_reshape(dense, [3, 2])
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 def test__mkldnn_reshape_out_requires_mkldnn_out():
     inp = _mkldnn_input(torch.float32, (2, 3))
     dense_out = torch.zeros((3, 2), dtype=torch.float32)
@@ -286,7 +286,7 @@ def test__mkldnn_reshape_out_requires_mkldnn_out():
         flag_gems._mkldnn_reshape(inp, [3, 2], out=dense_out)
 
 
-@pytest.mark.mkldnn_reshape
+@pytest.mark.underscore_mkldnn_reshape
 def test__mkldnn_reshape_out_rejects_wrong_shape():
     inp = _mkldnn_input(torch.float32, (2, 3))
     out = torch.zeros(6, dtype=torch.float32).to_mkldnn()

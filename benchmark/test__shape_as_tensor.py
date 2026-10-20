@@ -58,7 +58,7 @@ class ShapeAsTensorBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_SHAPE_AS_TENSOR_SHAPES)
 
 
-@pytest.mark.shape_as_tensor
+@pytest.mark.underscore_shape_as_tensor
 def test__shape_as_tensor():
     bench = ShapeAsTensorBenchmark(
         op_name="_shape_as_tensor",

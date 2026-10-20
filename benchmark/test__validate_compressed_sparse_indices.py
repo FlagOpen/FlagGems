@@ -156,7 +156,7 @@ class ValidateCompressedSparseIndicesBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 def test_validate_compressed_sparse_indices():
     bench = ValidateCompressedSparseIndicesBenchmark(
         op_name="_validate_compressed_sparse_indices",

@@ -99,7 +99,7 @@ class EmptyAffineQuantizedBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.empty_affine_quantized
+@pytest.mark.underscore_empty_affine_quantized
 def test__empty_affine_quantized():
     bench = EmptyAffineQuantizedBenchmark(
         op_name="_empty_affine_quantized",

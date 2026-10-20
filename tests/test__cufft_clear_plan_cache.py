@@ -219,7 +219,7 @@ def _tensor_argument(label):
     raise ValueError(f"unknown tensor argument label {label!r}")
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.skipif(not _CUFFT_PLAN_CACHE_AVAILABLE, reason=_SKIP_REASON)
 @pytest.mark.parametrize("kind,fill,capacity", _CACHE_STATE_ROWS)
 @pytest.mark.parametrize("device_index", _VALID_DEVICE_INDICES)
@@ -236,7 +236,7 @@ def test__cufft_clear_plan_cache(kind, fill, capacity, device_index):
     _assert_cleared(ref, res)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.skipif(not _CUFFT_PLAN_CACHE_AVAILABLE, reason=_SKIP_REASON)
 @pytest.mark.parametrize("device_index", _VALID_DEVICE_INDICES)
 def test__cufft_clear_plan_cache_keyword_device_index(device_index):
@@ -260,7 +260,7 @@ def test__cufft_clear_plan_cache_keyword_device_index(device_index):
     _assert_cleared(ref, res)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.skipif(not _CUFFT_PLAN_CACHE_AVAILABLE, reason=_SKIP_REASON)
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("device_index", _VALID_DEVICE_INDICES)
@@ -288,7 +288,7 @@ def test__cufft_clear_plan_cache_index_tensor(dtype, device_index):
     _assert_cleared(ref, res)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.skipif(not _CUFFT_PLAN_CACHE_AVAILABLE, reason=_SKIP_REASON)
 @pytest.mark.parametrize("device_index", _ALIASED_DEVICE_INDICES)
 def test__cufft_clear_plan_cache_aliased_device_index(device_index):
@@ -314,7 +314,7 @@ def test__cufft_clear_plan_cache_aliased_device_index(device_index):
     _assert_cleared(ref, res)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.parametrize("args,kwargs", _SIGNATURE_CASES)
 def test__cufft_clear_plan_cache_rejects_invalid_signature(args, kwargs):
     """Omitting the index, repeating it or spelling the keyword differently is not a valid
@@ -324,7 +324,7 @@ def test__cufft_clear_plan_cache_rejects_invalid_signature(args, kwargs):
         flag_gems._cufft_clear_plan_cache(*args, **kwargs)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.parametrize("device_index", _OUT_OF_RANGE_INDICES)
 def test__cufft_clear_plan_cache_rejects_out_of_range_device_index(device_index):
     """An index that names no device has to be rejected; a candidate that unconditionally
@@ -334,7 +334,7 @@ def test__cufft_clear_plan_cache_rejects_out_of_range_device_index(device_index)
         flag_gems._cufft_clear_plan_cache(device_index)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.parametrize("device_index", _NON_INT_INDICES)
 def test__cufft_clear_plan_cache_rejects_non_int_device_index(device_index):
     """Only an int (or a 0-D integer tensor) names a device, so any other value is an
@@ -344,7 +344,7 @@ def test__cufft_clear_plan_cache_rejects_non_int_device_index(device_index):
         flag_gems._cufft_clear_plan_cache(device_index)
 
 
-@pytest.mark.cufft_clear_plan_cache
+@pytest.mark.underscore_cufft_clear_plan_cache
 @pytest.mark.parametrize("label", _TENSOR_ARGUMENT_LABELS)
 def test__cufft_clear_plan_cache_rejects_tensor_device_index(label):
     """A tensor that does not hold exactly one integer cannot name a single device index

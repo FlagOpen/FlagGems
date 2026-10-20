@@ -155,7 +155,7 @@ def _warm_plan_cache(warm_count, device_index):
         torch.ops.aten.fft_rfft(torch.ones(length, dtype=torch.float32, device=device))
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("device_index", _DEVICE_INDICES)
 @pytest.mark.parametrize("call_form", _CALL_FORMS)
 @pytest.mark.parametrize("warm_count,capacity", _CACHE_STATE_ROWS)
@@ -179,7 +179,7 @@ def test_cufft_plan_cache_size_matches_native(
     assert res == ref
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("device_index", _DEVICE_INDICES)
 def test_cufft_plan_cache_size_query_leaves_the_cache_unchanged(device_index):
     with _isolated_plan_cache(device_index, 5):
@@ -196,7 +196,7 @@ def test_cufft_plan_cache_size_query_leaves_the_cache_unchanged(device_index):
     assert after == before
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("alias_index", _ALIAS_INDICES)
 def test_cufft_plan_cache_size_resolves_the_low_byte_alias(alias_index):
     device_index = alias_index & 0xFF
@@ -212,7 +212,7 @@ def test_cufft_plan_cache_size_resolves_the_low_byte_alias(alias_index):
     assert res == ref
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("invalid_index", _INVALID_INDICES)
 def test_cufft_plan_cache_size_rejects_out_of_range_index(invalid_index):
     # torch surfaces the malformed native range message as UnicodeDecodeError, a
@@ -221,20 +221,20 @@ def test_cufft_plan_cache_size_rejects_out_of_range_index(invalid_index):
         flag_gems._cufft_get_plan_cache_size(invalid_index)
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("invalid_argument", _INVALID_ARGUMENTS)
 def test_cufft_plan_cache_size_rejects_non_integer_argument(invalid_argument):
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._cufft_get_plan_cache_size(invalid_argument)
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 def test_cufft_plan_cache_size_requires_the_device_index():
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._cufft_get_plan_cache_size()
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.parametrize("device_index", _DEVICE_INDICES)
 def test_cufft_plan_cache_size_rejects_extra_arguments(device_index):
     with pytest.raises((RuntimeError, TypeError, ValueError)):

@@ -123,7 +123,7 @@ def _out_view(layout, storage):
     return storage
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("shape", IDENTITY_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", IDENTITY_DTYPES)
@@ -139,7 +139,7 @@ def test__test_optional_floatlist_identity(shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("shape", IDENTITY_SHAPES)
 @pytest.mark.parametrize("use_keyword", [False, True])
 def test__test_optional_floatlist_identity_call_forms(shape, use_keyword):
@@ -159,7 +159,7 @@ def test__test_optional_floatlist_identity_call_forms(shape, use_keyword):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("shape", ADDENDS_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("addend_case", ADDENDS_ROWS)
@@ -180,7 +180,7 @@ def test__test_optional_floatlist_addends(shape, value_range, addend_case):
     tu.assert_result_equal(inp, snapshot)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("addends", [[1.5, -0.5, 2.0, 0.0], (1.5, -0.5, 2.0, 0.0)])
 def test__test_optional_floatlist_elementwise_addends(addends):
     inp = _cpu_input(torch.float32, (4,), ("-1", "1"))
@@ -194,7 +194,7 @@ def test__test_optional_floatlist_elementwise_addends(addends):
     assert not torch._C._is_alias_of(res_out, inp)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("layout", OUT_LAYOUTS)
 @pytest.mark.parametrize("with_addends", [False, True])
 def test__test_optional_floatlist_out_buffer(layout, with_addends):
@@ -227,7 +227,7 @@ def test__test_optional_floatlist_out_buffer(layout, with_addends):
     assert res_out.storage_offset() == ref_out.storage_offset()
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("with_addends", [False, True])
 def test__test_optional_floatlist_out_resize(with_addends):
     # A zero-element out buffer is the size-changing form the native operator
@@ -249,7 +249,7 @@ def test__test_optional_floatlist_out_resize(with_addends):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test__test_optional_floatlist_special_values(dtype, scenario):
     # NaN / Inf / mixed payloads for every supported floating dtype, compared as
@@ -265,7 +265,7 @@ def test__test_optional_floatlist_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("scenario", [case[1] for case in ADDENDS_SPECIAL_CASES])
 def test__test_optional_floatlist_addends_special_values(scenario):
     inp = tu.make_special_input(torch.float32, scenario).cpu()
@@ -278,7 +278,7 @@ def test__test_optional_floatlist_addends_special_values(scenario):
     tu.assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_test_optional_floatlist_rejects_backward(dtype):
     # A non-leaf view reaches the operator's missing derivative; a leaf identity
@@ -302,7 +302,7 @@ def test_test_optional_floatlist_rejects_backward(dtype):
         torch.autograd.grad(res_out, base, grad_outputs=upstream)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("shape", [(2, 3), ()])
 def test__test_optional_floatlist_rejects_non_1d_values(shape):
     values = _cpu_input(torch.float32, shape, ("-1", "1"))
@@ -311,7 +311,7 @@ def test__test_optional_floatlist_rejects_non_1d_values(shape):
         flag_gems._test_optional_floatlist(values, addends)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize(
     "dtype", [torch.float16, torch.bfloat16, torch.int64, torch.bool]
 )
@@ -321,7 +321,7 @@ def test__test_optional_floatlist_rejects_non_float32_values(dtype):
         flag_gems._test_optional_floatlist(values, [0.0] * values.numel())
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("length", [0, 2])
 def test__test_optional_floatlist_rejects_short_addends(length):
     # Fewer addends than elements is invalid (the empty tensor is the only
@@ -331,7 +331,7 @@ def test__test_optional_floatlist_rejects_short_addends(length):
         flag_gems._test_optional_floatlist(values, [0.0] * length)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("addends", [["a"] * 4, [None] * 4, "abcd"])
 def test__test_optional_floatlist_rejects_non_numeric_addends(addends):
     values = _cpu_input(torch.float32, (4,), ("-1", "1"))
@@ -339,14 +339,14 @@ def test__test_optional_floatlist_rejects_non_numeric_addends(addends):
         flag_gems._test_optional_floatlist(values, addends)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("values", [[1.0, 2.0], "abc", None])
 def test__test_optional_floatlist_rejects_non_tensor_values(values):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_floatlist(values, None)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("with_addends", [False, True])
 def test__test_optional_floatlist_out_rejects_buffer_dtype(with_addends):
     if with_addends:
@@ -363,7 +363,7 @@ def test__test_optional_floatlist_out_rejects_buffer_dtype(with_addends):
         flag_gems._test_optional_floatlist(values, addends, out=buffer)
 
 
-@pytest.mark.test_optional_floatlist
+@pytest.mark.underscore_test_optional_floatlist
 def test__test_optional_floatlist_rejects_missing_addends():
     # Optional describes the value (None), not whether the argument can be omitted.
     values = torch.zeros(2, dtype=torch.float32, device="cpu")

@@ -130,7 +130,7 @@ def _cudnn_toggle(mechanism, enabled):
             torch._C._set_cudnn_enabled(saved)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("case", _CONTEXT_CASES)
 def test__use_cudnn_rnn_flatten_weight_matches_native(case):
     with _ambient_context(case):
@@ -140,7 +140,7 @@ def test__use_cudnn_rnn_flatten_weight_matches_native(case):
     assert res == ref
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("mechanism", ("attribute", "flags", "c_api"))
 @pytest.mark.parametrize("enabled", (True, False))
 def test__use_cudnn_rnn_flatten_weight_with_cudnn_toggle(mechanism, enabled):
@@ -153,7 +153,7 @@ def test__use_cudnn_rnn_flatten_weight_with_cudnn_toggle(mechanism, enabled):
     assert res == ref
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("repeats", (2, 4, 8))
 def test__use_cudnn_rnn_flatten_weight_is_repeatable(repeats):
     # Consecutive calls, each made under a different ambient configuration, must
@@ -168,7 +168,7 @@ def test__use_cudnn_rnn_flatten_weight_is_repeatable(repeats):
     assert all(value is ref for value in results), results
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("case", _QUICK_CONTEXTS)
 def test__use_cudnn_rnn_flatten_weight_has_no_side_effect(case):
     # A capability query must not perturb any switch it reports on, including the
@@ -180,7 +180,7 @@ def test__use_cudnn_rnn_flatten_weight_has_no_side_effect(case):
     assert after == before
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
 def test__use_cudnn_rnn_flatten_weight_rejects_tensor_argument(dtype):
     # ``() -> bool`` takes no operand, so every dtype the spec lists is an
@@ -190,7 +190,7 @@ def test__use_cudnn_rnn_flatten_weight_rejects_tensor_argument(dtype):
         flag_gems._use_cudnn_rnn_flatten_weight(inp)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("value", (0.0, float("nan"), float("inf")))
 def test__use_cudnn_rnn_flatten_weight_rejects_special_argument(value):
     # There is no numeric operand, so nan/inf cannot appear as an input value;
@@ -200,14 +200,14 @@ def test__use_cudnn_rnn_flatten_weight_rejects_special_argument(value):
         flag_gems._use_cudnn_rnn_flatten_weight(inp)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("value", _REJECTED_SCALARS)
 def test__use_cudnn_rnn_flatten_weight_rejects_scalar_argument(value):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._use_cudnn_rnn_flatten_weight(value)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("arity", (1, 2, 3, 4))
 def test__use_cudnn_rnn_flatten_weight_rejects_extra_positional(arity):
     args = [torch.empty(0, device=flag_gems.device) for _ in range(arity)]
@@ -215,7 +215,7 @@ def test__use_cudnn_rnn_flatten_weight_rejects_extra_positional(arity):
         flag_gems._use_cudnn_rnn_flatten_weight(*args)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("name", _REJECTED_KEYWORDS)
 def test__use_cudnn_rnn_flatten_weight_rejects_keyword_argument(name):
     with pytest.raises((RuntimeError, TypeError)):

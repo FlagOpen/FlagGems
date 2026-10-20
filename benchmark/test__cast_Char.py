@@ -169,7 +169,7 @@ class CastCharViewBenchmark(base.UnaryPointwiseBenchmark):
         return _build_view_input(shape, layout, case.dtype, self.device)
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 def test__cast_Char():
     bench = CastCharBenchmark(
         op_name="_cast_Char",
@@ -180,7 +180,7 @@ def test__cast_Char():
     bench.run()
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 def test__cast_Char_views():
     bench = CastCharViewBenchmark(
         op_name="_cast_Char",

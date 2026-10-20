@@ -382,7 +382,7 @@ def _base_operands():
     )
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _VALUES_DTYPES)
@@ -407,7 +407,7 @@ def test__validate_sparse_bsr_tensor_args_shapes_and_ranges(shape, value_range, 
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("descriptor", _STRUCTURE_DECKS)
 def test__validate_sparse_bsr_tensor_args_structures(descriptor):
     crow, col, values, size = _build_bsr(descriptor, torch.float32, ["-1", "1"])
@@ -424,7 +424,7 @@ def test__validate_sparse_bsr_tensor_args_structures(descriptor):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test__validate_sparse_bsr_tensor_args_special_values(dtype, scenario):
     # The validator never reads the payload, so NaN and Inf blocks must be accepted
@@ -445,7 +445,7 @@ def test__validate_sparse_bsr_tensor_args_special_values(dtype, scenario):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("layout", _LAYOUT_CASES)
 def test__validate_sparse_bsr_tensor_args_accepts_offset_and_strided_inputs(layout):
     # crow_indices may be a contiguous view with a leading storage offset, and the
@@ -497,7 +497,7 @@ def test__validate_sparse_bsr_tensor_args_accepts_offset_and_strided_inputs(layo
     assert (values.storage_offset(), values.stride()) == values_view
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("container", _SIZE_CONTAINERS)
 def test__validate_sparse_bsr_tensor_args_accepts_size_container(container):
     crow, col, values, size = _base_operands()
@@ -518,7 +518,7 @@ def test__validate_sparse_bsr_tensor_args_accepts_size_container(container):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("names", _KEYWORD_NAMES)
 def test__validate_sparse_bsr_tensor_args_accepts_keyword_arguments(names):
     crow, col, values, size = _base_operands()
@@ -539,21 +539,21 @@ def test__validate_sparse_bsr_tensor_args_accepts_keyword_arguments(names):
     tu.assert_result_equal(values, ref_values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_short_crow_indices():
     crow, col, values, _ = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
         flag_gems._validate_sparse_bsr_tensor_args(crow[:-1], col, values, [4, 4])
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_short_col_indices():
     crow, col, values, _ = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
         flag_gems._validate_sparse_bsr_tensor_args(crow, col[:-1], values, [4, 4])
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("index_pair", _INDEX_DTYPE_MISMATCHES)
 def test__validate_sparse_bsr_tensor_args_rejects_index_dtype_mismatch(index_pair):
     crow, col, values, size = _base_operands()
@@ -564,7 +564,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_index_dtype_mismatch(index_pai
         )
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize("index_dtype", _NON_INDEX_DTYPES)
 def test__validate_sparse_bsr_tensor_args_rejects_non_index_dtype(index_dtype):
     crow, col, values, size = _base_operands()
@@ -574,7 +574,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_non_index_dtype(index_dtype):
         )
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_non_contiguous_crow_indices():
     crow, col, values, size = _base_operands()
     storage = torch.zeros(2 * crow.numel(), dtype=crow.dtype, device=flag_gems.device)
@@ -583,7 +583,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_non_contiguous_crow_indices():
         flag_gems._validate_sparse_bsr_tensor_args(storage[::2], col, values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_non_contiguous_col_indices():
     crow, col, values, size = _base_operands()
     storage = torch.zeros(2 * col.numel(), dtype=col.dtype, device=flag_gems.device)
@@ -592,7 +592,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_non_contiguous_col_indices():
         flag_gems._validate_sparse_bsr_tensor_args(crow, storage[::2], values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_index_batch_mismatch():
     crow, col, values, size = _base_operands()
     batched_crow = crow.expand(2, crow.numel()).contiguous()
@@ -600,7 +600,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_index_batch_mismatch():
         flag_gems._validate_sparse_bsr_tensor_args(batched_crow, col, values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_index_rank_mismatch():
     crow, col, values, size = _base_operands()
     batched_col = col.expand(2, col.numel()).contiguous()
@@ -608,7 +608,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_index_rank_mismatch():
         flag_gems._validate_sparse_bsr_tensor_args(crow, batched_col, values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_values_batch_mismatch():
     # The indices describe a batch extent that 'values' does not have.
     crow, col, _, size = _build_bsr(
@@ -621,7 +621,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_values_batch_mismatch():
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, unbatched_values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_scalar_crow_indices():
     crow, col, values, size = _base_operands()
     scalar = torch.tensor(0, dtype=crow.dtype, device=flag_gems.device)
@@ -629,14 +629,14 @@ def test__validate_sparse_bsr_tensor_args_rejects_scalar_crow_indices():
         flag_gems._validate_sparse_bsr_tensor_args(scalar, col, values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_size_rank_below_two():
     crow, col, values, size = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, values, size[:1])
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_values_rank_too_low():
     crow, col, values, size = _base_operands()
     flat_values = torch.zeros(values.numel(), dtype=values.dtype, device=values.device)
@@ -644,7 +644,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_values_rank_too_low():
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, flat_values, size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_size_dense_rank_mismatch():
     # 'size' declares a trailing dense extent that 'values' does not have.
     crow, col, values, size = _base_operands()
@@ -652,7 +652,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_size_dense_rank_mismatch():
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, values, size + [2])
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_size_not_divisible_by_block():
     crow, col, values, size = _build_bsr(
         {"row_blocks": 3, "col_blocks": 4, "blocks_per_row": 1, "block": (2, 3)},
@@ -665,7 +665,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_size_not_divisible_by_block():
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, values, [7, size[1]])
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_negative_extent():
     crow, col, values, size = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
@@ -674,7 +674,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_negative_extent():
         )
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 @pytest.mark.parametrize(
     "bad_size",
     [
@@ -689,14 +689,14 @@ def test__validate_sparse_bsr_tensor_args_rejects_invalid_size(bad_size):
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, values, bad_size)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_missing_size():
     crow, col, values, _ = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
         flag_gems._validate_sparse_bsr_tensor_args(crow, col, values)
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_unexpected_keyword():
     crow, col, values, size = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):
@@ -705,7 +705,7 @@ def test__validate_sparse_bsr_tensor_args_rejects_unexpected_keyword():
         )
 
 
-@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
 def test__validate_sparse_bsr_tensor_args_rejects_non_tensor_indices():
     crow, col, values, size = _base_operands()
     with pytest.raises(_NEGATIVE_EXC):

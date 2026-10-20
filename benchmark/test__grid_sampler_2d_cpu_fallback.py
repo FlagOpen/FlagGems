@@ -100,7 +100,7 @@ class GridSampler2dCpuFallbackBenchmark(base.GenericBenchmark):
         )
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback
 def test__grid_sampler_2d_cpu_fallback():
     bench = GridSampler2dCpuFallbackBenchmark(
         op_name="_grid_sampler_2d_cpu_fallback",

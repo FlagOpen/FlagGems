@@ -94,7 +94,7 @@ class PlanCacheMaxSizeBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.cufft_set_plan_cache_max_size
+@pytest.mark.underscore_cufft_set_plan_cache_max_size
 def test_cufft_set_plan_cache_max_size():
     # A metadata-only listing or query must not touch the runtime, so the
     # ambient capacity is read and restored only for an actual run.

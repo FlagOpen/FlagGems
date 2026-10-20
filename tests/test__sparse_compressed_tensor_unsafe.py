@@ -199,7 +199,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("layout,batch,base,dense,blocks,nnz", _DESCRIPTORS)
 @pytest.mark.parametrize("values_dtype, value_range", _DTYPE_RANGE_CASES)
 def test__sparse_compressed_tensor_unsafe(
@@ -265,7 +265,7 @@ _INDEX_DTYPE_DESCRIPTORS = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("layout,batch,base,dense,blocks,nnz", _INDEX_DTYPE_DESCRIPTORS)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -334,7 +334,7 @@ _UNCHECKED_ROWS = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize(
     "case_id,compressed_data,plain_data,num_values,size",
     _UNCHECKED_ROWS,
@@ -392,7 +392,7 @@ _ALIAS_DESCRIPTORS = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("layout,base,blocks,nnz", _ALIAS_DESCRIPTORS)
 def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
     layout, base, blocks, nnz
@@ -464,7 +464,7 @@ _OPTIONAL_ARGUMENT_CASES = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize(
     "case_id,dtype_arg,pin_memory_arg",
     _OPTIONAL_ARGUMENT_CASES,
@@ -520,7 +520,7 @@ _CPU_CASES = [
 ]
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize(
     "case_id,kwargs", _CPU_CASES, ids=[row[0] for row in _CPU_CASES]
 )
@@ -560,7 +560,7 @@ if not _IS_CPU_BACKEND:
     _VIOLATIONS.append("pin_memory_true")
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("violation", _VIOLATIONS)
 def test__sparse_compressed_tensor_unsafe_invalid_arguments(violation):
     compressed = torch.tensor(
@@ -624,7 +624,7 @@ _SPECIAL_DESCRIPTORS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("values_dtype,scenario", _SPECIAL_CASES)
 @pytest.mark.parametrize("layout,base,blocks", _SPECIAL_DESCRIPTORS)
 def test__sparse_compressed_tensor_unsafe_special_values(
@@ -664,7 +664,7 @@ def test__sparse_compressed_tensor_unsafe_special_values(
     tu.assert_result_equal(res_out.values(), ref_out.values())
 
 
-@pytest.mark.sparse_compressed_tensor_unsafe
+@pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype",
     [dtype for dtype in _VALUES_DTYPES if dtype.is_floating_point or dtype.is_complex],

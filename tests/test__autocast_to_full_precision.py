@@ -98,7 +98,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__autocast_to_full_precision(shape, value_range, dtype):
@@ -149,7 +149,7 @@ FLAG_PAIRS = tu.selected_cases(
 FLAG_DTYPES = _gated([torch.float16, torch.bfloat16, torch.float32])
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype", FLAG_DTYPES)
 @pytest.mark.parametrize("cuda_enabled,cpu_enabled", FLAG_PAIRS)
 @pytest.mark.parametrize("shape", PARAM_SHAPES)
@@ -166,7 +166,7 @@ def test__autocast_to_full_precision_flags(shape, dtype, cuda_enabled, cpu_enabl
     _assert_alias_matches(inp, ref_inp, res_out, ref_out)
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype", FLAG_DTYPES)
 @pytest.mark.parametrize("shape", PARAM_SHAPES)
 def test__autocast_to_full_precision_keyword_flags(shape, dtype):
@@ -197,7 +197,7 @@ EMPTY_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("shape,dtype", EMPTY_CASES)
 def test__autocast_to_full_precision_empty(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -229,7 +229,7 @@ def _views(dtype):
 _LAYOUTS = ["contiguous", "transposed", "column_slice", "offset_view", "expanded"]
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize(
     "dtype", _gated([torch.float16, torch.bfloat16, torch.float32])
 )
@@ -258,7 +258,7 @@ def test__autocast_to_full_precision_layout(layout, dtype):
 CONJ_CASES = tu.selected_cases([(torch.complex64, (4, 8))], quick=[])
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype,shape", CONJ_CASES)
 def test__autocast_to_full_precision_conj_view(dtype, shape):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).conj()
@@ -281,7 +281,7 @@ def test__autocast_to_full_precision_conj_view(dtype, shape):
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(DTYPES), quick=[])
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test__autocast_to_full_precision_special_values(dtype, scenario):
     # The widening cast preserves nan and infinity exactly, so the shared exact
@@ -307,7 +307,7 @@ BACKWARD_FLAG_CASES = tu.selected_cases(
 BACKWARD_DTYPES = _gated([torch.float16, torch.bfloat16, torch.float32, torch.float64])
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 @pytest.mark.parametrize("cuda_enabled,cpu_enabled", BACKWARD_FLAG_CASES)
 def test__autocast_to_full_precision_backward(dtype, cuda_enabled, cpu_enabled):
@@ -334,7 +334,7 @@ def test__autocast_to_full_precision_backward(dtype, cuda_enabled, cpu_enabled):
     tu.assert_result_equal(res_grad, ref_grad)
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("flags", [(), (True,)], ids=["no-flags", "one-flag"])
 def test__autocast_to_full_precision_rejects_missing_flags(flags):
     # Both booleans are required by the schema and have no default.
@@ -343,14 +343,14 @@ def test__autocast_to_full_precision_rejects_missing_flags(flags):
         flag_gems._autocast_to_full_precision(inp, *flags)
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 def test__autocast_to_full_precision_rejects_extra_positional():
     inp = tu.make_input(torch.float16, (4, 4), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._autocast_to_full_precision(inp, True, True, True)
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("bad_self", [1.0, "tensor"], ids=["float", "str"])
 def test__autocast_to_full_precision_rejects_non_tensor(bad_self):
     # ``self`` is declared as a Tensor, so a non-tensor argument is rejected
@@ -370,7 +370,7 @@ _BAD_FLAG_FACTORIES = {
 }
 
 
-@pytest.mark.autocast_to_full_precision
+@pytest.mark.underscore_autocast_to_full_precision
 @pytest.mark.parametrize("bad_flag_kind", ["string", "tensor"])
 def test__autocast_to_full_precision_rejects_non_bool_flags(bad_flag_kind):
     inp = tu.make_input(torch.float16, (4, 4), ["-1", "1"])

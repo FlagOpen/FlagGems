@@ -55,7 +55,7 @@ def _assert_primal_view(res_primal, ref_primal, dual):
     assert res_primal.data_ptr() == dual.data_ptr()
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__unpack_dual_dual_tensor(shape, dtype):
@@ -79,7 +79,7 @@ def test__unpack_dual_dual_tensor(shape, dtype):
         _assert_primal_view(res_primal_out, ref_primal_out, dual)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
@@ -102,7 +102,7 @@ def test__unpack_dual_dual_tensor_value_ranges(shape, value_range, dtype):
         _assert_primal_view(res_primal_out, ref_primal_out, dual)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("level", UNPACK_DUAL_LEVELS)
 @pytest.mark.parametrize("dtype", PLAIN_DTYPES)
@@ -131,7 +131,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__unpack_dual_plain_tensor_value_ranges(shape, value_range, dtype):
@@ -146,7 +146,7 @@ def test__unpack_dual_plain_tensor_value_ranges(shape, value_range, dtype):
     _assert_primal_view(res_primal_out, ref_primal_out, inp)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", _NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__unpack_dual_non_contiguous(shape, dtype):
@@ -173,7 +173,7 @@ def test__unpack_dual_non_contiguous(shape, dtype):
         tu.assert_result_equal(res_tangent_out, ref_tangent_out)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", _MUTATION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__unpack_dual_mutation(shape, dtype):
@@ -197,7 +197,7 @@ def test__unpack_dual_mutation(shape, dtype):
         utils.gems_assert_equal(primal, ref_primal)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test__unpack_dual_special_values(dtype):
     values = torch.tensor(
@@ -226,7 +226,7 @@ def test__unpack_dual_special_values(dtype):
         )
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__unpack_dual_empty(shape, dtype):
@@ -247,7 +247,7 @@ def test__unpack_dual_empty(shape, dtype):
         _assert_primal_view(res_primal_out, ref_primal_out, dual)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 def test__unpack_dual_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._unpack_dual(3.14, 0)
@@ -259,7 +259,7 @@ def test__unpack_dual_rejects_non_tensor():
         flag_gems._unpack_dual(3.14, 0)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 def test__unpack_dual_rejects_non_int_level():
     inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -270,7 +270,7 @@ def test__unpack_dual_rejects_non_int_level():
         flag_gems._unpack_dual(inp, 1.5)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize("bad_level", [-1, 1])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__unpack_dual_rejects_inactive_level(dtype, bad_level):
@@ -290,7 +290,7 @@ def test__unpack_dual_rejects_inactive_level(dtype, bad_level):
             flag_gems._unpack_dual(dual, inactive)
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(DUAL_DTYPES))
 )

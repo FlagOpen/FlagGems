@@ -79,7 +79,7 @@ class Int4PackCpuBenchmark(base.GenericBenchmark):
         return list(super().set_more_shapes()) + _EXTRA_SHAPES
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 def test__convert_weight_to_int4pack_for_cpu():
     # torch_op is the perf comparison reference and gems_op the candidate; both
     # are called with the same (CPU int32 tensor, int) signature. The candidate

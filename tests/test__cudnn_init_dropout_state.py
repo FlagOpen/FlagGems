@@ -157,7 +157,7 @@ def _assert_out_state(res, ref, buffer):
     tu.assert_result_close(_cudnn_rnn_output(res), _cudnn_rnn_output(ref))
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", POSITIVE_CASES)
 def test__cudnn_init_dropout_state(dropout, train, seed):
     ref_out = _native_state(dropout, train, seed)
@@ -171,7 +171,7 @@ def test__cudnn_init_dropout_state(dropout, train, seed):
     assert not res_out._is_view()
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", POSITIVE_CASES)
 def test__cudnn_init_dropout_state_consumable_by_cudnn_rnn(dropout, train, seed):
     # Contents oracle: the candidate's state must drive the native consumer like
@@ -185,7 +185,7 @@ def test__cudnn_init_dropout_state_consumable_by_cudnn_rnn(dropout, train, seed)
     tu.assert_result_close(_cudnn_rnn_output(res_out), _cudnn_rnn_output(ref_out))
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", POSITIVE_CASES)
 def test__cudnn_init_dropout_state_out_resizes_empty_buffer(dropout, train, seed):
     ref_buf = torch.empty(0, dtype=torch.uint8, device=flag_gems.device)
@@ -200,7 +200,7 @@ def test__cudnn_init_dropout_state_out_resizes_empty_buffer(dropout, train, seed
     _assert_out_state(res_out, ref_out, act_buf)
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", _OUT_CALL_CASES)
 def test__cudnn_init_dropout_state_out_reuses_sized_buffer(dropout, train, seed):
     # A buffer that already has the state size is not resized; its old contents
@@ -219,7 +219,7 @@ def test__cudnn_init_dropout_state_out_reuses_sized_buffer(dropout, train, seed)
     assert act_buf.shape == size_before
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", _OUT_CALL_CASES)
 def test__cudnn_init_dropout_state_out_resizes_populated_buffer(dropout, train, seed):
     # Native also replaces a non-empty buffer and only warns that the resize is
@@ -238,7 +238,7 @@ def test__cudnn_init_dropout_state_out_resizes_populated_buffer(dropout, train, 
     _assert_out_state(res_out, ref_out, act_buf)
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout", _UNUSABLE_DROPOUTS)
 def test__cudnn_init_dropout_state_rejects_unusable_dropout(dropout):
     with pytest.raises(_REJECTS):
@@ -247,7 +247,7 @@ def test__cudnn_init_dropout_state_rejects_unusable_dropout(dropout):
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dropout,train,seed", _TRAIN_DISABLED_CASES)
 def test__cudnn_init_dropout_state_rejects_train_disabled(dropout, train, seed):
     with pytest.raises(_REJECTS):
@@ -256,7 +256,7 @@ def test__cudnn_init_dropout_state_rejects_train_disabled(dropout, train, seed):
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__cudnn_init_dropout_state_rejects_non_byte_dtype(dtype):
     with pytest.raises(_REJECTS):
@@ -265,7 +265,7 @@ def test__cudnn_init_dropout_state_rejects_non_byte_dtype(dtype):
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_rejects_cpu_device():
     # There is no CPU dispatch, so a CPU request must fail rather than hand back
     # a tensor cuDNN could never consume.
@@ -275,7 +275,7 @@ def test__cudnn_init_dropout_state_rejects_cpu_device():
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_rejects_sparse_layout():
     with pytest.raises(_REJECTS):
         flag_gems._cudnn_init_dropout_state(
@@ -288,7 +288,7 @@ def test__cudnn_init_dropout_state_rejects_sparse_layout():
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_rejects_pinned_memory():
     # pin_memory applies to CPU tensors only, while this factory always builds a
     # CUDA buffer, so native rejects the request.
@@ -303,14 +303,14 @@ def test__cudnn_init_dropout_state_rejects_pinned_memory():
         )
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_out_rejects_non_byte_buffer():
     buf = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(_REJECTS):
         flag_gems._cudnn_init_dropout_state(0.5, True, 42, out=buf)
 
 
-@pytest.mark.cudnn_init_dropout_state
+@pytest.mark.underscore_cudnn_init_dropout_state
 def test__cudnn_init_dropout_state_out_rejects_cpu_buffer():
     buf = torch.empty(0, dtype=torch.uint8, device="cpu")
     with pytest.raises(_REJECTS):

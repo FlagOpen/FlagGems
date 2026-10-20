@@ -116,7 +116,7 @@ class NestedViewFromBufferBenchmark(OperatorBenchmark):
                 self.shapes.append(descriptor)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 def test__nested_view_from_buffer():
     bench = NestedViewFromBufferBenchmark(
         op_name="_nested_view_from_buffer",

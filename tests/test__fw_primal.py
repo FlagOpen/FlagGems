@@ -70,7 +70,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__fw_primal(shape, value_range, dtype):
@@ -84,7 +84,7 @@ def test__fw_primal(shape, value_range, dtype):
     _assert_view_semantics(res_out, ref_out, inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", _FW_PRIMAL_LEVEL_SHAPES)
 @pytest.mark.parametrize("level", _FW_PRIMAL_LEVELS)
 @pytest.mark.parametrize("dtype", _FW_PRIMAL_DTYPES)
@@ -99,7 +99,7 @@ def test__fw_primal_level(shape, level, dtype):
     _assert_view_semantics(res_out, ref_out, inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", _FW_PRIMAL_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("level", [0, 1])
 @pytest.mark.parametrize("dtype", _FW_PRIMAL_DTYPES)
@@ -117,7 +117,7 @@ def test__fw_primal_non_contiguous(shape, level, dtype):
     _assert_view_semantics(res_out, ref_out, inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", _FW_PRIMAL_MUTATION_SHAPES)
 @pytest.mark.parametrize(
     "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
@@ -144,7 +144,7 @@ def test__fw_primal_mutation(shape, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test__fw_primal_special_values(dtype):
     values = torch.tensor(
@@ -161,7 +161,7 @@ def test__fw_primal_special_values(dtype):
     assert torch.signbit(res_out[1]).item() == torch.signbit(values[1]).item()
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", _FW_PRIMAL_EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", _FW_PRIMAL_DTYPES)
 def test__fw_primal_empty(shape, dtype):
@@ -175,7 +175,7 @@ def test__fw_primal_empty(shape, dtype):
     _assert_view_semantics(res_out, ref_out, inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("shape", _FW_PRIMAL_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(_FW_PRIMAL_BACKWARD_DTYPES))
 def test__fw_primal_backward(shape, dtype):
@@ -193,7 +193,7 @@ def test__fw_primal_backward(shape, dtype):
     tu.assert_result_equal(res_in_grad, ref_in_grad)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 def test__fw_primal_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._fw_primal(3.14, 0)
@@ -201,7 +201,7 @@ def test__fw_primal_rejects_non_tensor():
         flag_gems._fw_primal(3.14, 0)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 def test__fw_primal_rejects_non_int_level():
     inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -212,7 +212,7 @@ def test__fw_primal_rejects_non_int_level():
         flag_gems._fw_primal(inp, 1.5)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 def test__fw_primal_rejects_missing_level():
     inp = tu.make_input(torch.float32, (8,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -223,7 +223,7 @@ def test__fw_primal_rejects_missing_level():
         flag_gems._fw_primal(inp)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(_FW_PRIMAL_DTYPES))
 )
@@ -235,7 +235,7 @@ def test__fw_primal_special_scenarios(dtype, scenario):
     tu.assert_result_equal(actual, expected)
 
 
-@pytest.mark.fw_primal
+@pytest.mark.underscore_fw_primal
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", [(), (7,), (3, 5)])
 def test__fw_primal_dual(shape, dtype):

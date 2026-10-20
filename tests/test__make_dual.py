@@ -65,7 +65,7 @@ def _assert_dual_semantics(res_out, ref_out):
     tu.assert_result_equal(res_tangent, ref_tangent_out)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__make_dual(shape, dtype):
@@ -82,7 +82,7 @@ def test__make_dual(shape, dtype):
         _assert_dual_semantics(res_out, ref_out)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
@@ -103,7 +103,7 @@ def test__make_dual_value_ranges(shape, value_range, dtype):
         tu.assert_result_equal(res_tangent, ref_tangent_out)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("shape", _MAKE_DUAL_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__make_dual_non_contiguous(shape, dtype):
@@ -123,7 +123,7 @@ def test__make_dual_non_contiguous(shape, dtype):
         _assert_dual_semantics(res_out, ref_out)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("shape", _MAKE_DUAL_EMPTY_SHAPES)
 @pytest.mark.parametrize("dtype", DUAL_DTYPES)
 def test__make_dual_empty(shape, dtype):
@@ -140,7 +140,7 @@ def test__make_dual_empty(shape, dtype):
         _assert_dual_semantics(res_out, ref_out)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("shape", _MAKE_DUAL_MUTATION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__make_dual_mutation(shape, dtype):
@@ -162,7 +162,7 @@ def test__make_dual_mutation(shape, dtype):
         tu.assert_result_equal(tangent, ref_tangent)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("dtype", tu.selected_cases(_SPECIAL_DTYPES))
 def test__make_dual_special_values(dtype):
     values = torch.tensor(
@@ -186,7 +186,7 @@ def test__make_dual_special_values(dtype):
         assert torch.signbit(res_f[1]).item() == torch.signbit(values_f[1]).item()
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("dtype", _NON_FLOAT_PRIMAL_DTYPES)
 def test__make_dual_rejects_non_float_primal(dtype):
     with dual_level() as level:
@@ -206,7 +206,7 @@ def test__make_dual_rejects_non_float_primal(dtype):
             flag_gems._make_dual(inp, tangent, level)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 def test__make_dual_rejects_non_tensor_primal():
     with dual_level() as level:
         tangent = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
@@ -216,7 +216,7 @@ def test__make_dual_rejects_non_tensor_primal():
             flag_gems._make_dual(3.14, tangent, level)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("primal_shape,tangent_shape", _MISMATCHED_SHAPES)
 def test__make_dual_rejects_tangent_size_mismatch(primal_shape, tangent_shape):
     with dual_level() as level:
@@ -232,7 +232,7 @@ def test__make_dual_rejects_tangent_size_mismatch(primal_shape, tangent_shape):
             flag_gems._make_dual(inp, tangent, level)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize("level", _INACTIVE_LEVELS)
 def test__make_dual_rejects_inactive_level(level):
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
@@ -247,7 +247,7 @@ def test__make_dual_rejects_inactive_level(level):
         flag_gems._make_dual(inp, tangent, level)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 def test__make_dual_rejects_non_int_level():
     with dual_level():
         inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
@@ -262,7 +262,7 @@ def test__make_dual_rejects_non_int_level():
             flag_gems._make_dual(inp, tangent, 1.5)
 
 
-@pytest.mark.make_dual
+@pytest.mark.underscore_make_dual
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(DUAL_DTYPES))
 )

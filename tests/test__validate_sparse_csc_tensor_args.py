@@ -380,7 +380,7 @@ def _schema_defect_args(defect, ccol, row, values, call_size):
     raise AssertionError("unhandled defect " + defect)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "dtype",
     [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in VALUE_DTYPES],
@@ -413,7 +413,7 @@ def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
     _assert_untouched(snapshot)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize(
     "size,nnz,dense_ndim,index_dtype,layout",
@@ -446,7 +446,7 @@ def test__validate_sparse_csc_tensor_args_structure(
     _assert_untouched(snapshot)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
@@ -470,7 +470,7 @@ def test__validate_sparse_csc_tensor_args_special_values(dtype, scenario):
     _assert_untouched(snapshot)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "defect,size,nnz",
     [
@@ -491,7 +491,7 @@ def test__validate_sparse_csc_tensor_args_invalid(defect, size, nnz):
         flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, call_size)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize("defect", SCHEMA_DEFECTS)
 def test__validate_sparse_csc_tensor_args_schema_defects(defect):
     ccol, row, values, call_size, _ = _make_csc_inputs(
@@ -502,7 +502,7 @@ def test__validate_sparse_csc_tensor_args_schema_defects(defect):
         flag_gems._validate_sparse_csc_tensor_args(*args)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "index_dtype", tu.selected_cases([torch.int64] if HAS_INT64_INDEX else [], quick=[])
 )
@@ -519,7 +519,7 @@ def test__validate_sparse_csc_tensor_args_large_row_coordinate(index_dtype):
     _assert_untouched(snapshot)
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 def test__validate_sparse_csc_tensor_args_row_dimension_overflow():
     # int32 indices cannot describe the 2**31+5 row dimension, so the native
     # operator rejects the call on the host, before any kernel is launched.

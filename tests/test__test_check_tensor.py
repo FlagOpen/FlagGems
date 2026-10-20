@@ -253,7 +253,7 @@ _FALSE_ROWS = [
 ]
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("shape,layout,hole_false", _TRUE_ROWS)
 def test__test_check_tensor(shape, layout, hole_false):
     inp, parent = _make_input(shape, layout, hole_false)
@@ -275,7 +275,7 @@ def test__test_check_tensor(shape, layout, hole_false):
         tu.assert_result_equal(parent, parent_before)
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("shape,position", _FALSE_ROWS)
 def test__test_check_tensor_rejects_false_element(shape, position):
     inp = torch.ones(shape, dtype=torch.bool, device=flag_gems.device)
@@ -285,7 +285,7 @@ def test__test_check_tensor_rejects_false_element(shape, position):
         flag_gems._test_check_tensor(inp)
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("shape,layout", _STORED_FALSE_ROWS)
 def test__test_check_tensor_rejects_false_inside_view(shape, layout):
     inp = _make_visible_false_input(shape, layout)
@@ -294,7 +294,7 @@ def test__test_check_tensor_rejects_false_inside_view(shape, layout):
         flag_gems._test_check_tensor(inp)
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("shape", _DTYPE_SHAPES)
 @pytest.mark.parametrize("dtype", _NON_BOOL_DTYPES)
 def test__test_check_tensor_rejects_non_bool_dtype(shape, dtype):
@@ -305,14 +305,14 @@ def test__test_check_tensor_rejects_non_bool_dtype(shape, dtype):
         flag_gems._test_check_tensor(inp)
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("key", _NON_TENSOR_KEYS)
 def test__test_check_tensor_rejects_non_tensor(key):
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._test_check_tensor(_invalid_args(key))
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 @pytest.mark.parametrize("shape", _COPY_SHAPES)
 def test__test_check_tensor_returns_independent_copy(shape):
     inp = torch.ones(shape, dtype=torch.bool, device=flag_gems.device)

@@ -82,7 +82,7 @@ class GridSampler2dCpuFallbackBackwardBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(requested + _SHAPES))
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward():
     bench = GridSampler2dCpuFallbackBackwardBenchmark(
         op_name="_grid_sampler_2d_cpu_fallback_backward",

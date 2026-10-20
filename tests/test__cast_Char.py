@@ -168,7 +168,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Char(dtype, shape, value_range):
@@ -195,7 +195,7 @@ def _layout_input(layout, dtype):
     return _fixture(dtype, (8, 5)).reshape(-1)[4:36]
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("layout", _LAYOUT_WORKLOADS)
 @pytest.mark.parametrize("dtype", _FIXTURE_DTYPES)
 def test__cast_Char_view_layouts(dtype, layout):
@@ -237,7 +237,7 @@ def _identity_input(form):
     return _fixture(torch.int8, ()).reshape(())
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("form", _IDENTITY_WORKLOADS)
 def test__cast_Char_int8_identity(form):
     inp = _identity_input(form)
@@ -255,7 +255,7 @@ def test__cast_Char_int8_identity(form):
 _EMPTY_EXTENT_SHAPES = tu.selected_cases(((0,), (0, 3), (3, 0), (2, 0, 5)), quick=[])
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("shape", _EMPTY_EXTENT_SHAPES)
 @pytest.mark.parametrize("dtype", _GRID_DTYPES)
 def test__cast_Char_empty_extent(dtype, shape):
@@ -282,7 +282,7 @@ def _empty_view_input(kind, dtype):
     return _fixture(dtype, (0, 8)).transpose(0, 1)
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("kind", _EMPTY_VIEW_WORKLOADS)
 @pytest.mark.parametrize("dtype", _FIXTURE_DTYPES)
 def test__cast_Char_empty_view(dtype, kind):
@@ -347,7 +347,7 @@ def _boundary_rows():
 _BOUNDARY_WORKLOADS = tu.selected_cases(_boundary_rows(), quick=[])
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("dtype,payload", _BOUNDARY_WORKLOADS)
 def test__cast_Char_boundaries(dtype, payload):
     inp = torch.tensor(payload, dtype=dtype, device=flag_gems.device)
@@ -377,7 +377,7 @@ _NON_BLOCKING_FORMS = ("false", "true")
 _NON_BLOCKING_WORKLOADS = tu.selected_cases(_NON_BLOCKING_FORMS, quick=[])
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("form", _NON_BLOCKING_WORKLOADS)
 @pytest.mark.parametrize("dtype", _PARAM_DTYPES)
 def test__cast_Char_non_blocking(dtype, form):
@@ -404,7 +404,7 @@ _SPECIAL_WORKLOADS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_WORKLOADS)
 def test__cast_Char_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -430,7 +430,7 @@ _GRAD_WORKLOADS = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("dtype", _GRAD_WORKLOADS)
 def test__cast_Char_grad_enabled_input(dtype):
     inp = _fixture(dtype, (8, 8)).requires_grad_(True)
@@ -442,7 +442,7 @@ def test__cast_Char_grad_enabled_input(dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 def test__cast_Char_rejects_out_keyword():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
     out = torch.empty((4, 4), dtype=torch.int8, device=flag_gems.device)
@@ -451,7 +451,7 @@ def test__cast_Char_rejects_out_keyword():
         flag_gems._cast_Char(inp, out=out)
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 def test__cast_Char_rejects_non_bool_non_blocking():
     inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
 
@@ -459,7 +459,7 @@ def test__cast_Char_rejects_non_bool_non_blocking():
         flag_gems._cast_Char(inp, non_blocking="yes")
 
 
-@pytest.mark.cast_Char
+@pytest.mark.underscore_cast_Char
 def test__cast_Char_requires_operand():
     # The native wrapper reports the missing operand as a RuntimeError, so both
     # error types are accepted here.

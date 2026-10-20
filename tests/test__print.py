@@ -166,7 +166,7 @@ def _capture(op, message, form, capfdbinary):
     return result, capfdbinary.readouterr().out
 
 
-@pytest.mark.print
+@pytest.mark.underscore_print
 @pytest.mark.parametrize("form", CALL_FORMS)
 @pytest.mark.parametrize("message", MESSAGE_CASES)
 def test__print_writes_payload_to_stdout(message, form, capfdbinary):
@@ -181,7 +181,7 @@ def test__print_writes_payload_to_stdout(message, form, capfdbinary):
     assert res_bytes == ref_bytes
 
 
-@pytest.mark.print
+@pytest.mark.underscore_print
 @pytest.mark.parametrize("form", CALL_FORMS)
 @pytest.mark.parametrize("kind", INVALID_VALUE_KINDS)
 def test__print_rejects_non_string(kind, form):
@@ -189,7 +189,7 @@ def test__print_rejects_non_string(kind, form):
         _invoke(flag_gems._print, _invalid_value(kind), form)
 
 
-@pytest.mark.print
+@pytest.mark.underscore_print
 @pytest.mark.parametrize("args,kwargs", INVALID_CALL_FORMS)
 def test__print_rejects_invalid_call_form(args, kwargs):
     with pytest.raises((RuntimeError, TypeError)):

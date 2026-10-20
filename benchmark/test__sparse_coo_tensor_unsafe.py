@@ -96,7 +96,7 @@ class SparseCooTensorUnsafeBenchmark(OperatorBenchmark):
                 self.shapes.append(descriptor)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe():
     bench = SparseCooTensorUnsafeBenchmark(
         op_name="_sparse_coo_tensor_unsafe",

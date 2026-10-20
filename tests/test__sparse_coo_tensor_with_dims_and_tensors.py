@@ -91,7 +91,7 @@ def _make_inputs(size, sparse_dim, nnz, dtype, value_range):
     return indices, values
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize(
     "size_row", tu.selected_cases(_SIZE_ROWS, quick=_QUICK_SIZE_ROWS)
 )
@@ -140,7 +140,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors(size_row, value_range, dtype):
     tu.assert_result_equal(res_out._values(), ref_out._values())
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("nnz", [0, 4])
 @pytest.mark.parametrize("is_coalesced", [None, True, False])
 def test__sparse_coo_tensor_with_dims_and_tensors_is_coalesced(nnz, is_coalesced):
@@ -187,7 +187,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_is_coalesced(nnz, is_coalesced
     tu.assert_result_equal(res_out._values(), ref_out._values())
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_omits_optional_arguments():
     # `dtype`, `pin_memory` and `is_coalesced` have schema defaults. Omitting
     # `dtype` means the result takes the default dtype and the values must
@@ -217,7 +217,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_omits_optional_arguments():
     tu.assert_result_equal(res_out._values(), ref_out._values())
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test__sparse_coo_tensor_with_dims_and_tensors_keeps_input_storage(dtype):
     # The result shares the members' untyped storage and keeps their strides and
@@ -262,7 +262,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_keeps_input_storage(dtype):
     assert bool((values == 0).all())
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test__sparse_coo_tensor_with_dims_and_tensors_special_values(dtype, scenario):
     # Stored FP8 payloads are compared through the shared helper, which widens
@@ -299,7 +299,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_special_values(dtype, scenario
     tu.assert_result_equal(res_out._indices(), ref_out._indices())
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_coo_tensor_with_dims_and_tensors_out(dtype):
     # `.out` writes the members into an existing COO tensor and returns it, so
@@ -369,70 +369,70 @@ def _invalid_call(
     )
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_int64_indices():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices.int(), values)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_2d_indices():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices.reshape(-1), values)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_nnz_mismatch():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values[:-1])
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_size_rank_mismatch():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values, size=(4, 5, 6))
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_indices_row_mismatch():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values, sparse_dim=1)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_negative_sparse_dim():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values, sparse_dim=-1)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_negative_dense_dim():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values, dense_dim=-1)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_dtype_mismatch():
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
         _invalid_call(indices, values, dtype=torch.float64)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_tensor_indices():
     _, values = _coo_members()
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         _invalid_call([[0, 1, 2], [0, 1, 2]], values)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("layout", [None, torch.strided])
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_sparse_layout(layout):
     indices, values = _coo_members()
@@ -440,7 +440,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_sparse_layout(layo
         _invalid_call(indices, values, layout=layout)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_pin_memory():
     # CUDA members cannot be pinned, so pin_memory=True is invalid here.
     indices, values = _coo_members()
@@ -448,7 +448,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_pin_memory():
         _invalid_call(indices, values, pin_memory=True)
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_dense_out():
     indices, values = _coo_members()
     dense = torch.zeros(4, 5, device=flag_gems.device, dtype=values.dtype)
@@ -458,7 +458,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_dense_out():
         )
 
 
-@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+@pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 @pytest.mark.parametrize("dense_shape", [(), (2,)])
 @pytest.mark.parametrize("duplicate", [False, True])
 @pytest.mark.parametrize(

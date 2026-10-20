@@ -73,7 +73,7 @@ class BackwardBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys([*map(tuple, self.shapes), *_BACKWARD_SHAPES]))
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward():
     bench = BackwardBenchmark(
         op_name="_backward",

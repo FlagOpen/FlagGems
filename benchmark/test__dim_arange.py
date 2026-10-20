@@ -59,7 +59,7 @@ class DimArangeBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DIM_ARANGE_SHAPES)
 
 
-@pytest.mark.dim_arange
+@pytest.mark.underscore_dim_arange
 def test__dim_arange():
     bench = DimArangeBenchmark(
         op_name="_dim_arange",

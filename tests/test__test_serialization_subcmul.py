@@ -70,7 +70,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__test_serialization_subcmul(shape, value_range, dtype):
@@ -109,7 +109,7 @@ _BROADCAST_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,inp_shape,other_shape", _BROADCAST_CASES)
 def test__test_serialization_subcmul_broadcast(dtype, inp_shape, other_shape):
     inp = tu.make_input(dtype, inp_shape, _UNIT_RANGE)
@@ -168,7 +168,7 @@ _ALPHA_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,alpha,shape", _ALPHA_CASES)
 def test__test_serialization_subcmul_alpha(dtype, alpha, shape):
     inp = tu.make_input(dtype, shape, _UNIT_RANGE)
@@ -206,7 +206,7 @@ _MIXED_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("inp_dtype,other_dtype,alpha,shape", _MIXED_CASES)
 def test__test_serialization_subcmul_mixed_dtypes(inp_dtype, other_dtype, alpha, shape):
     inp = tu.make_input(inp_dtype, shape, _UNIT_RANGE)
@@ -241,7 +241,7 @@ def _layout_operands(dtype, kind):
     return base, other[:1].expand(8, 16)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,kind", _LAYOUT_CASES)
 def test__test_serialization_subcmul_layouts(dtype, kind):
     inp, other = _layout_operands(dtype, kind)
@@ -267,7 +267,7 @@ _EMPTY_ROWS = [
 _EMPTY_CASES = tu.selected_cases(_EMPTY_ROWS, quick=_EMPTY_ROWS)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,inp_shape,other_shape", _EMPTY_CASES)
 def test__test_serialization_subcmul_empty(dtype, inp_shape, other_shape):
     inp = tu.make_input(dtype, inp_shape, _UNIT_RANGE)
@@ -296,7 +296,7 @@ if utils.fp64_is_supported:
 _BACKWARD_CASES = tu.selected_cases(_BACKWARD_ROWS, quick=[])
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,inp_shape,other_shape", _BACKWARD_CASES)
 def test__test_serialization_subcmul_backward(dtype, inp_shape, other_shape):
     alpha = 2.5
@@ -322,7 +322,7 @@ def test__test_serialization_subcmul_backward(dtype, inp_shape, other_shape):
         tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype", tu.selected_cases(_COMPLEX_DTYPES, quick=[]))
 @pytest.mark.parametrize("alpha", [2.5, 1 + 2j])
 @pytest.mark.parametrize("other_shape", [(2, 3), (3,)])
@@ -357,7 +357,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("dtype,scenario,slot", _SPECIAL_CASES)
 def test__test_serialization_subcmul_special_values(dtype, scenario, slot):
     special = tu.make_special_input(dtype, scenario)
@@ -376,7 +376,7 @@ def test__test_serialization_subcmul_special_values(dtype, scenario, slot):
 # raise as well. Only the candidate's own exception is asserted, every row stays
 # collected in the default and the --quick suite, and the parameter rows are plain
 # metadata so the invalid argument is built inside the test body.
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize(
     "shape,other_shape", [((2, 3), (4,)), ((20, 320, 15), (20, 320, 14))]
 )
@@ -388,7 +388,7 @@ def test__test_serialization_subcmul_rejects_shape_mismatch(shape, other_shape):
         flag_gems._test_serialization_subcmul(inp, other)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 def test__test_serialization_subcmul_rejects_bool_self():
     # bool is rejected only in the `self` position; a bool `other` promotes natively
     # and is covered by the mixed-dtype rows instead.
@@ -399,7 +399,7 @@ def test__test_serialization_subcmul_rejects_bool_self():
         flag_gems._test_serialization_subcmul(inp, other)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("alpha_kind", ["tensor", "string", "none", "list"])
 def test__test_serialization_subcmul_rejects_non_numeric_alpha(alpha_kind):
     # The schema wants a number, so all of these raise natively.
@@ -416,7 +416,7 @@ def test__test_serialization_subcmul_rejects_non_numeric_alpha(alpha_kind):
         flag_gems._test_serialization_subcmul(inp, other, alpha)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 @pytest.mark.parametrize("other_kind", ["scalar", "list"])
 def test__test_serialization_subcmul_rejects_non_tensor_other(other_kind):
     other = 2.0 if other_kind == "scalar" else [1.0, 2.0]
@@ -426,7 +426,7 @@ def test__test_serialization_subcmul_rejects_non_tensor_other(other_kind):
         flag_gems._test_serialization_subcmul(inp, other)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 def test__test_serialization_subcmul_rejects_non_tensor_self():
     other = tu.make_input(torch.float32, (2, 19, 7), _UNIT_RANGE)
 
@@ -434,7 +434,7 @@ def test__test_serialization_subcmul_rejects_non_tensor_self():
         flag_gems._test_serialization_subcmul(2.0, other)
 
 
-@pytest.mark.test_serialization_subcmul
+@pytest.mark.underscore_test_serialization_subcmul
 def test__test_serialization_subcmul_rejects_missing_operand():
     inp = tu.make_input(torch.float32, (2, 19, 7), _UNIT_RANGE)
 

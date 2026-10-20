@@ -93,7 +93,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__reshape_copy_value_ranges(shape, value_range, dtype):
@@ -129,7 +129,7 @@ _SIZE_ARG_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape,size", _SIZE_ARG_CASES)
 @pytest.mark.parametrize(
     "dtype", _supported([torch.bfloat16, torch.float8_e4m3fn, torch.int8])
@@ -153,7 +153,7 @@ _KEYWORD_SIZE_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape,size", _KEYWORD_SIZE_CASES)
 def test__reshape_copy_keyword_size(shape, size):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -168,7 +168,7 @@ def test__reshape_copy_keyword_size(shape, size):
 _NONCONTIG_LAYOUTS = tu.selected_cases(["transpose", "slice", "offset"], quick=[])
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("layout", _NONCONTIG_LAYOUTS)
 @pytest.mark.parametrize("dtype", _supported([torch.float32, torch.int32]))
 def test__reshape_copy_non_contiguous_input(layout, dtype):
@@ -195,7 +195,7 @@ _LAZY_VIEW_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("dtype,lazy_bit", _LAZY_VIEW_CASES)
 def test__reshape_copy_drops_lazy_view_bit(dtype, lazy_bit):
     base = tu.make_input(dtype, (4, 8, 16), ["-1", "1"])
@@ -227,7 +227,7 @@ _EMPTY_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape,size", _EMPTY_CASES)
 @pytest.mark.parametrize(
     "dtype", _supported([torch.float32, torch.int8, torch.float8_e4m3fn])
@@ -262,7 +262,7 @@ def _special_input(dtype, scenario):
     return tu.make_special_input(dtype, scenario)
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test__reshape_copy_special_values(dtype, scenario):
     inp = _special_input(dtype, scenario)
@@ -278,7 +278,7 @@ def test__reshape_copy_special_values(dtype, scenario):
 _BACKWARD_SHAPES = tu.selected_cases([(16, 64), (7, 13, 29)], quick=[])
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", _supported(utils.ALL_FLOAT_DTYPES))
 def test__reshape_copy_backward(shape, dtype):
@@ -314,7 +314,7 @@ _INVALID_SIZES = [
 ]
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("size,error", _INVALID_SIZES)
 def test__reshape_copy_rejects_invalid_size(size, error):
     inp = tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"])
@@ -322,7 +322,7 @@ def test__reshape_copy_rejects_invalid_size(size, error):
         flag_gems._reshape_copy(inp, size)
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 def test__reshape_copy_rejects_ambiguous_empty_inference():
     # Two inferred (-1) extents stay ambiguous even when the input is empty.
     inp = tu.make_input(torch.float32, (0,), ["-1", "1"])
@@ -330,7 +330,7 @@ def test__reshape_copy_rejects_ambiguous_empty_inference():
         flag_gems._reshape_copy(inp, [-1, -1])
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("size", [6, 6.0])
 def test__reshape_copy_rejects_non_list_size(size):
     inp = tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"])
@@ -338,14 +338,14 @@ def test__reshape_copy_rejects_non_list_size(size):
         flag_gems._reshape_copy(inp, size)
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 def test__reshape_copy_rejects_missing_size():
     inp = tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._reshape_copy(inp)
 
 
-@pytest.mark.reshape_copy
+@pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("source", [[1, 2, 3], 1.5])
 def test__reshape_copy_rejects_non_tensor_source(source):
     # The native schema requires a Tensor for ``self``: "Expected a value of

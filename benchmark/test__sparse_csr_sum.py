@@ -132,7 +132,7 @@ class SparseCsrSumBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_CSR_BENCH_SHAPES)
 
 
-@pytest.mark.sparse_csr_sum
+@pytest.mark.underscore_sparse_csr_sum
 def test__sparse_csr_sum():
     bench = SparseCsrSumBenchmark(
         op_name="_sparse_csr_sum",

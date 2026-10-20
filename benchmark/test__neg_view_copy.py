@@ -53,7 +53,7 @@ class NegViewCopyOutBenchmark(base.UnaryPointwiseOutBenchmark):
         ]
 
 
-@pytest.mark.neg_view_copy
+@pytest.mark.underscore_neg_view_copy
 def test__neg_view_copy():
     bench = NegViewCopyBenchmark(
         op_name="_neg_view_copy",

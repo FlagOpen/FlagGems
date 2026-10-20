@@ -108,7 +108,7 @@ class CheckTensorBenchmark(OperatorBenchmark):
         self.shapes = _dedup(list(self.shapes) + LOCAL_SHAPES)
 
 
-@pytest.mark.test_check_tensor
+@pytest.mark.underscore_test_check_tensor
 def test__test_check_tensor():
     bench = CheckTensorBenchmark(
         op_name="_test_check_tensor",

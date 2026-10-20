@@ -175,7 +175,7 @@ class UseCudnnCtcLossBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.use_cudnn_ctc_loss
+@pytest.mark.underscore_use_cudnn_ctc_loss
 def test__use_cudnn_ctc_loss():
     bench = UseCudnnCtcLossBenchmark(
         op_name="_use_cudnn_ctc_loss",

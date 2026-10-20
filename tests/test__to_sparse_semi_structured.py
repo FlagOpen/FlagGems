@@ -384,7 +384,7 @@ UNSUPPORTED_DTYPE_ROWS = _unsupported_dtype_rows()
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape,value_range", SHAPE_ROWS)
 def test__to_sparse_semi_structured_shape_grid(dtype, shape, value_range):
     inp = _masked_input(dtype, shape, value_range)
@@ -399,7 +399,7 @@ def test__to_sparse_semi_structured_shape_grid(dtype, shape, value_range):
     _assert_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape", EMPTY_ROWS)
 def test__to_sparse_semi_structured_empty(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
@@ -414,7 +414,7 @@ def test__to_sparse_semi_structured_empty(dtype, shape):
     _assert_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("kind,dtype", PATTERN_ROWS)
 def test__to_sparse_semi_structured_pattern(kind, dtype):
     inp = _pattern_fixture(kind, dtype, _PATTERN_SHAPE)
@@ -439,7 +439,7 @@ def _layout_view(kind, parent):
     return parent[::2, :]
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("kind,dtype", LAYOUT_ROWS)
 def test__to_sparse_semi_structured_layout(kind, dtype):
     shape = _LAYOUT_BASES[dtype][kind]
@@ -479,7 +479,7 @@ def test__to_sparse_semi_structured_layout(kind, dtype):
     _assert_equal(parent, ref_parent)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_ROWS)
 def test__to_sparse_semi_structured_special_values(dtype, scenario):
     inp = _special_input(scenario, dtype, _PATTERN_SHAPE)
@@ -494,7 +494,7 @@ def test__to_sparse_semi_structured_special_values(dtype, scenario):
     _assert_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("shape", _INVALID_RANK_SHAPES)
 def test__to_sparse_semi_structured_invalid_rank(shape):
     inp = tu.make_input(torch.float16, shape, ["-1", "1"])
@@ -503,7 +503,7 @@ def test__to_sparse_semi_structured_invalid_rank(shape):
         flag_gems._to_sparse_semi_structured(inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape", [(torch.float16, s) for s in _INVALID_GEOMETRY])
 def test__to_sparse_semi_structured_invalid_geometry(dtype, shape):
     # A legal 2:4 payload, so the only remaining violation is row alignment and the
@@ -514,7 +514,7 @@ def test__to_sparse_semi_structured_invalid_geometry(dtype, shape):
         flag_gems._to_sparse_semi_structured(inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape,mode", INVALID_PATTERN_ROWS)
 def test__to_sparse_semi_structured_invalid_pattern(dtype, shape, mode):
     device = flag_gems.device
@@ -527,7 +527,7 @@ def test__to_sparse_semi_structured_invalid_pattern(dtype, shape, mode):
         flag_gems._to_sparse_semi_structured(inp)
 
 
-@pytest.mark.to_sparse_semi_structured
+@pytest.mark.underscore_to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape", UNSUPPORTED_DTYPE_ROWS)
 def test__to_sparse_semi_structured_unsupported_dtype(dtype, shape):
     # Unsupported dtypes are rejected before any payload is read.

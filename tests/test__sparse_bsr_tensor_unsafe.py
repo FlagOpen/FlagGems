@@ -155,7 +155,7 @@ def _assert_bsr_matches(res, ref):
     tu.assert_result_equal(res.values(), ref.values())
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("size", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
@@ -177,7 +177,7 @@ def test_sparse_bsr_tensor_unsafe(size, value_range, dtype):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("size,block", BLOCK_CASES)
 def test_sparse_bsr_tensor_unsafe_block_shapes(size, block):
     crow, col, values = _bsparse_components(
@@ -204,7 +204,7 @@ def test_sparse_bsr_tensor_unsafe_block_shapes(size, block):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_sparse_bsr_tensor_unsafe_index_dtypes(index_dtype):
     crow, col, values = _bsparse_components(
@@ -232,7 +232,7 @@ def test_sparse_bsr_tensor_unsafe_index_dtypes(index_dtype):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe_values_view_metadata():
     # The constructor wraps the caller's tensor as-is, so a strided values view
     # must keep its storage, offset and strides in the result.
@@ -265,7 +265,7 @@ def test_sparse_bsr_tensor_unsafe_values_view_metadata():
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("size,dense_shape", DENSE_DIM_CASES)
 def test_sparse_bsr_tensor_unsafe_dense_dims(size, dense_shape):
     crow, col, values = _bsparse_components(
@@ -294,7 +294,7 @@ def test_sparse_bsr_tensor_unsafe_dense_dims(size, dense_shape):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize(
     "size",
     SIZE_VERBATIM_CASES,
@@ -324,7 +324,7 @@ def test_sparse_bsr_tensor_unsafe_stores_size_verbatim(size):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe_zero_nnz():
     crow = torch.zeros(5, dtype=torch.int32, device=flag_gems.device)
     col = torch.zeros(0, dtype=torch.int32, device=flag_gems.device)
@@ -349,7 +349,7 @@ def test_sparse_bsr_tensor_unsafe_zero_nnz():
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe_wraps_components_without_copying():
     crow, col, values = _bsparse_components((8, 8), torch.float32, ["-1", "1"])
     crow_before = crow.clone()
@@ -388,7 +388,7 @@ def test_sparse_bsr_tensor_unsafe_wraps_components_without_copying():
     tu.assert_result_equal(values, values_before)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("kwargs", OPTIONAL_KWARG_CASES)
 def test_sparse_bsr_tensor_unsafe_optional_arguments(kwargs):
     # The native default device is CPU and pin_memory only applies to dense CPU
@@ -418,7 +418,7 @@ SPECIAL_CASES = [
 ]
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype,scenario,size", tu.selected_cases(SPECIAL_CASES, quick=[])
 )
@@ -440,7 +440,7 @@ def test_sparse_bsr_tensor_unsafe_special_values(dtype, scenario, size):
     _assert_bsr_matches(res_out, ref_out)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("position", ["crow_indices", "col_indices", "values"])
 def test_sparse_bsr_tensor_unsafe_rejects_non_tensor_components(position):
     crow, col, values = _bsparse_components((4, 4), torch.float32, ["-1", "1"])
@@ -458,7 +458,7 @@ def test_sparse_bsr_tensor_unsafe_rejects_non_tensor_components(position):
         )
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize("size", [[4.0, 4.0], ["4", "4"]], ids=["float", "str"])
 def test_sparse_bsr_tensor_unsafe_rejects_non_int_size(size):
     crow, col, values = _bsparse_components((4, 4), torch.float32, ["-1", "1"])
@@ -469,7 +469,7 @@ def test_sparse_bsr_tensor_unsafe_rejects_non_int_size(size):
         )
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -489,7 +489,7 @@ def test_sparse_bsr_tensor_unsafe_rejects_invalid_kwargs(kwargs):
         flag_gems._sparse_bsr_tensor_unsafe(crow, col, values, [4, 4], **call_kwargs)
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe_requires_size():
     crow, col, values = _bsparse_components((4, 4), torch.float32, ["-1", "1"])
 
@@ -499,7 +499,7 @@ def test_sparse_bsr_tensor_unsafe_requires_size():
         )
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe_rejects_device_mismatch():
     # The components and the requested output device must agree; "meta" is a
     # real, backend-independent second device, so this row does not depend on a
@@ -517,7 +517,7 @@ def test_sparse_bsr_tensor_unsafe_rejects_device_mismatch():
         )
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.skipif(
     torch.device(flag_gems.device).type == "cpu",
     reason="pinning is only rejected when the component allocation is not on the CPU",
@@ -537,7 +537,7 @@ def test_sparse_bsr_tensor_unsafe_rejects_pin_memory_for_accelerator_components(
         )
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype",
     [

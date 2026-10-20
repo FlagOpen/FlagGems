@@ -103,7 +103,7 @@ class ScaledDotProductFlashAttentionForCpuBenchmark(OperatorBenchmark):
         self.shapes = loaded + ATTENTION_ROWS
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu
 def test__scaled_dot_product_flash_attention_for_cpu():
     bench = ScaledDotProductFlashAttentionForCpuBenchmark(
         op_name="_scaled_dot_product_flash_attention_for_cpu",

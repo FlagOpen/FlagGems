@@ -192,7 +192,7 @@ def _make_noncontiguous_input(layout, contains_true):
     return base[5:8, 0:3]
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__is_any_true_value_ranges(shape, value_range):
@@ -208,7 +208,7 @@ def test__is_any_true_value_ranges(shape, value_range):
     tu.assert_result_equal(inp, before)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("shape,pattern", _PATTERN_CASES)
 def test__is_any_true_patterns(shape, pattern):
     inp = _make_bool_input(shape, pattern)
@@ -222,7 +222,7 @@ def test__is_any_true_patterns(shape, pattern):
     tu.assert_result_equal(inp, before)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("shape,pattern", _BOUNDARY_CASES)
 def test__is_any_true_scan_boundaries(shape, pattern):
     inp = _make_bool_input(shape, pattern)
@@ -236,7 +236,7 @@ def test__is_any_true_scan_boundaries(shape, pattern):
     tu.assert_result_equal(inp, before)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
 def test__is_any_true_empty(shape):
     inp = torch.zeros(shape, dtype=_BOOL, device=flag_gems.device)
@@ -250,7 +250,7 @@ def test__is_any_true_empty(shape):
     tu.assert_result_equal(inp, before)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("layout,contains_true", _NONCONTIG_LAYOUTS)
 def test__is_any_true_non_contiguous(layout, contains_true):
     inp = _make_noncontiguous_input(layout, contains_true)
@@ -264,7 +264,7 @@ def test__is_any_true_non_contiguous(layout, contains_true):
     tu.assert_result_equal(inp, before)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("dtype", _NON_BOOL_DTYPES)
 def test__is_any_true_rejects_non_bool_dtype(dtype):
     # Non-bool input: the native kernel rejects it, so the candidate must fail
@@ -274,7 +274,7 @@ def test__is_any_true_rejects_non_bool_dtype(dtype):
         flag_gems._is_any_true(inp)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("value", [3.14, "x"])
 def test__is_any_true_rejects_non_tensor(value):
     # Schema negative: a non-tensor argument is rejected by the typed dispatcher
@@ -285,7 +285,7 @@ def test__is_any_true_rejects_non_tensor(value):
         flag_gems._is_any_true(value)
 
 
-@pytest.mark.is_any_true
+@pytest.mark.underscore_is_any_true
 @pytest.mark.parametrize("num_args", [0, 2])
 def test__is_any_true_rejects_wrong_arity(num_args):
     # Schema negative: aten::_is_any_true takes exactly one tensor argument, and

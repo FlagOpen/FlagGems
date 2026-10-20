@@ -54,7 +54,7 @@ def _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level):
     assert torch._C._is_alias_of(res_mat, inp)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 @pytest.mark.parametrize("shape, batch_dim", _ADD_BATCH_DIM_CASES)
 @pytest.mark.parametrize("level", [0, 1, 3])
 @pytest.mark.parametrize("dtype", _ADD_BATCH_DIM_DTYPES)
@@ -81,7 +81,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 @pytest.mark.parametrize("shape", _ADD_BATCH_DIM_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__add_batch_dim_value_ranges(shape, dtype, value_range):
@@ -96,7 +96,7 @@ def test__add_batch_dim_value_ranges(shape, dtype, value_range):
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 @pytest.mark.parametrize("shape, batch_dim", [((8, 16, 32), 1), ((4, 8, 16, 32), 2)])
 @pytest.mark.parametrize("level", [0, 1])
 @pytest.mark.parametrize("dtype", _ADD_BATCH_DIM_DTYPES)
@@ -113,7 +113,7 @@ def test__add_batch_dim_non_contiguous(shape, batch_dim, level, dtype):
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(_ADD_BATCH_DIM_DTYPES))
 )
@@ -128,7 +128,7 @@ def test__add_batch_dim_nan_inf(dtype, scenario):
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 def test__add_batch_dim_rejects_0dim_input():
     inp = tu.make_input(torch.float32, (), ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -137,7 +137,7 @@ def test__add_batch_dim_rejects_0dim_input():
         flag_gems._add_batch_dim(inp, 0, 0)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 def test__add_batch_dim_rejects_negative_level():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -146,7 +146,7 @@ def test__add_batch_dim_rejects_negative_level():
         flag_gems._add_batch_dim(inp, 1, -1)
 
 
-@pytest.mark.add_batch_dim
+@pytest.mark.underscore_add_batch_dim
 def test__add_batch_dim_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._add_batch_dim(3.14, 0, 0)

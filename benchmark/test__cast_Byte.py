@@ -104,7 +104,7 @@ class CastByteBenchmark(base.GenericBenchmark):
         return base.UnaryPointwiseBenchmark.set_more_shapes(self)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 def test_cast_byte():
     bench = CastByteBenchmark(
         op_name="_cast_Byte",

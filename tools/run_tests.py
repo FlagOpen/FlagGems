@@ -126,6 +126,10 @@ import consts
 import distro
 import yaml
 
+# Support direct script execution as well as module imports.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.operator_markers import operator_marker  # noqa: E402
+
 import flag_gems
 
 getcontext().prec = 18
@@ -723,27 +727,8 @@ def parse_perf_data(op, result_file):
 
 
 def op_marker(op):
-    """Return the pytest marker name for an operator id.
-
-    Operators whose id starts with an underscore (e.g. ``_stack``) cannot use
-    that id verbatim as a pytest marker, because ``pytest.mark._stack`` is
-    rejected by ``pytest.mark``'s attribute access. The convention is:
-
-      1. Strip the leading underscore(s): ``_stack`` -> ``stack``.
-      2. If the stripped name collides with an existing operator id (e.g. the
-         distinct ``stack`` operator), prefix it with ``underscore_`` instead:
-         ``_stack`` -> ``underscore_stack``.
-
-    Non-underscore operator ids are returned unchanged. This mirrors the markers
-    declared in the test files and enforced by
-    ``tools/ci_checks/check_operator_markers.py``.
-    """
-    if not op.startswith("_"):
-        return op
-    stripped = op.lstrip("_")
-    if stripped in CFG.all_op_ids:
-        return f"underscore_{stripped}"
-    return stripped
+    """Resolve the shared override/legacy pytest marker convention."""
+    return operator_marker(op, CFG.all_op_ids)
 
 
 def run_accuracy_q(gpu_id, op):

@@ -82,7 +82,7 @@ class _IsZeroTensorBenchmark(base.GenericBenchmark):
         return super().set_more_shapes() + _MORE_SHAPES
 
 
-@pytest.mark.is_zerotensor
+@pytest.mark.underscore_is_zerotensor
 def test__is_zerotensor():
     bench = _IsZeroTensorBenchmark(
         op_name="_is_zerotensor",

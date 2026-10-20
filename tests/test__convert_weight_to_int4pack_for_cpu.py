@@ -108,7 +108,7 @@ _QUICK_GRID_ROWS = [
 _GRID_CASES = tu.selected_cases(_GRID_ROWS, quick=_QUICK_GRID_ROWS)
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("shape,value_range", _GRID_CASES)
 def test__convert_weight_to_int4pack_for_cpu(shape, value_range):
     inp = _cpu_input(shape, value_range)
@@ -141,7 +141,7 @@ _TILE_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("inner_k_tiles,value_range", _TILE_CASES)
 def test__convert_weight_to_int4pack_for_cpu_inner_k_tiles(inner_k_tiles, value_range):
     inp = _cpu_input(_PARAM_SHAPE, value_range)
@@ -175,7 +175,7 @@ _STRIDED_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("label,shape,strides,offset,value_range", _STRIDED_CASES)
 def test__convert_weight_to_int4pack_for_cpu_strided_input(
     label, shape, strides, offset, value_range
@@ -228,7 +228,7 @@ _PATTERN_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("label,shape,pattern", _PATTERN_CASES)
 def test__convert_weight_to_int4pack_for_cpu_patterns(label, shape, pattern):
     del label
@@ -260,7 +260,7 @@ _REJECTED_SHAPES = [
 ]
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("label,shape", _REJECTED_SHAPES)
 def test__convert_weight_to_int4pack_for_cpu_rejects_invalid_shape(label, shape):
     del label
@@ -288,7 +288,7 @@ _REJECTED_DTYPE_ROWS = [
 ]
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize("label,dtype", _REJECTED_DTYPE_ROWS)
 def test__convert_weight_to_int4pack_for_cpu_rejects_unsupported_dtype(label, dtype):
     del label
@@ -297,7 +297,7 @@ def test__convert_weight_to_int4pack_for_cpu_rejects_unsupported_dtype(label, dt
         flag_gems._convert_weight_to_int4pack_for_cpu(inp, 2)
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize(
     "label,inner_k_tiles",
     [("float_tiles", 2.5), ("string_tiles", "2"), ("none_tiles", None)],
@@ -311,7 +311,7 @@ def test__convert_weight_to_int4pack_for_cpu_rejects_invalid_tiles(
         flag_gems._convert_weight_to_int4pack_for_cpu(inp, inner_k_tiles)
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 @pytest.mark.parametrize(
     "label,weight", [("weight_is_list", [0] * 32), ("weight_is_int", 16)]
 )
@@ -321,7 +321,7 @@ def test__convert_weight_to_int4pack_for_cpu_rejects_non_tensor_weight(label, we
         flag_gems._convert_weight_to_int4pack_for_cpu(weight, 2)
 
 
-@pytest.mark.convert_weight_to_int4pack_for_cpu
+@pytest.mark.underscore_convert_weight_to_int4pack_for_cpu
 def test__convert_weight_to_int4pack_for_cpu_rejects_missing_tiles_argument():
     # innerKTiles has no schema default, so omitting it is not a valid call.
     inp = torch.zeros((16, 2), dtype=_DTYPE)

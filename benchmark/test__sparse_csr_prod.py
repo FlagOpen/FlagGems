@@ -68,7 +68,7 @@ class SparseCsrProdBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_PROD_SHAPES)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod():
     bench = SparseCsrProdBenchmark(
         op_name="_sparse_csr_prod",

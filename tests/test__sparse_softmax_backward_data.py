@@ -201,7 +201,7 @@ SPECIAL_ROW = Row(
 )
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize("case", CASE_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_softmax_backward_data(case, dtype):
@@ -220,7 +220,7 @@ def test__sparse_softmax_backward_data(case, dtype):
     tu.assert_result_close(res, ref)
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize("shape", tu.selected_cases([(5, 7)], quick=[]))
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_softmax_backward_data_out(shape, dtype):
@@ -258,7 +258,7 @@ def _make_special_inputs(dtype, scenario):
     return grad, output, self_tensor
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES), quick=[]),
@@ -294,7 +294,7 @@ def test__sparse_softmax_backward_data_special_values(dtype, scenario):
 # aten::_sparse_softmax_backward_data is not implemented".
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test__sparse_softmax_backward_data_unsupported_dtype(dtype):
     grad, output, self_tensor = _make_inputs(Row((5, 7), -1, 2, ["-1", "1"]), dtype)
@@ -303,7 +303,7 @@ def test__sparse_softmax_backward_data_unsupported_dtype(dtype):
         flag_gems._sparse_softmax_backward_data(grad, output, -1, self_tensor)
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize(
     "shape,dim,sparse_dim",
     [
@@ -343,7 +343,7 @@ def _incompatible_output(kind):
     )
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 @pytest.mark.parametrize("kind", ["size", "sparse_dim"])
 def test__sparse_softmax_backward_data_incompatible_output(kind):
     grad, _, self_tensor = _make_inputs(Row((5, 7), -1, 2, ["-1", "1"]), torch.float32)
@@ -354,7 +354,7 @@ def test__sparse_softmax_backward_data_incompatible_output(kind):
         )
 
 
-@pytest.mark.sparse_softmax_backward_data
+@pytest.mark.underscore_sparse_softmax_backward_data
 def test__sparse_softmax_backward_data_dense_inputs_rejected():
     # Only SparseCPU / SparseCUDA kernels are registered, so dense operands raise
     # NotImplementedError (a RuntimeError subclass).

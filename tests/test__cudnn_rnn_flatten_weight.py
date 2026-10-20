@@ -284,7 +284,7 @@ def _assert_rebound(candidate, reference):
         tu.assert_result_equal(weight, ref_weight)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize(
     "config", tu.selected_cases(_CONFIG_ROWS + _EXTRA_ROWS, quick=[_QUICK_CONFIG])
 )
@@ -307,7 +307,7 @@ def test__cudnn_rnn_flatten_weight_value(config, value_range, bias, dtype):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("batch_first", tu.selected_cases([False, True], quick=[]))
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_batch_first(batch_first, dtype):
@@ -327,7 +327,7 @@ def test__cudnn_rnn_flatten_weight_batch_first(batch_first, dtype):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("config", _LARGE_ROWS)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_size(config, dtype):
@@ -348,7 +348,7 @@ def test__cudnn_rnn_flatten_weight_size(config, dtype):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("config,variant", _OUT_CASES)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_out(config, variant, dtype):
@@ -380,7 +380,7 @@ def test__cudnn_rnn_flatten_weight_out(config, variant, dtype):
     _assert_rebound((weights, ids, res), (ref_weights, ref_ids, ref_res))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("layout", _BIAS_LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_bias_layout(layout, dtype):
@@ -418,7 +418,7 @@ def test__cudnn_rnn_flatten_weight_bias_layout(layout, dtype):
         tu.assert_result_equal(parent, ref_parents[index])
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("layout", _MATRIX_LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_matrix_layout(layout, dtype):
@@ -445,7 +445,7 @@ def test__cudnn_rnn_flatten_weight_matrix_layout(layout, dtype):
     tu.assert_result_equal(parent, ref_parent)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("config", _SIDE_EFFECT_ROWS)
 @pytest.mark.parametrize("dtype", _VALUE_DTYPES)
 def test__cudnn_rnn_flatten_weight_list_side_effects(config, dtype):
@@ -464,7 +464,7 @@ def test__cudnn_rnn_flatten_weight_list_side_effects(config, dtype):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cudnn_rnn_flatten_weight_special_values(dtype, scenario):
     config = _SMALL_CONFIG
@@ -483,7 +483,7 @@ def test__cudnn_rnn_flatten_weight_special_values(dtype, scenario):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", tu.selected_cases(_VALUE_DTYPES, quick=[]))
 def test__cudnn_rnn_flatten_weight_no_autograd(dtype):
     """Autograd exemption: the operator has no autograd formula.
@@ -519,7 +519,7 @@ def test__cudnn_rnn_flatten_weight_no_autograd(dtype):
     _assert_rebound((weights, ids, res_out), (ref_weights, ref_ids, ref_out))
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test__cudnn_rnn_flatten_weight_rejects_dtype(dtype):
     config = _SMALL_CONFIG
@@ -530,7 +530,7 @@ def test__cudnn_rnn_flatten_weight_rejects_dtype(dtype):
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("weight_stride0", _MISMATCH_STRIDES)
 def test__cudnn_rnn_flatten_weight_rejects_weight_stride0(weight_stride0):
     config = _SMALL_CONFIG
@@ -542,7 +542,7 @@ def test__cudnn_rnn_flatten_weight_rejects_weight_stride0(weight_stride0):
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("mode", [4, -1, 99])
 def test__cudnn_rnn_flatten_weight_rejects_mode(mode):
     config = (0, 6, 8, 1, 0, False)
@@ -554,7 +554,7 @@ def test__cudnn_rnn_flatten_weight_rejects_mode(mode):
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("num_layers", [0, -1])
 def test__cudnn_rnn_flatten_weight_rejects_num_layers(num_layers):
     config = (0, 6, 8, 1, 0, False)
@@ -566,7 +566,7 @@ def test__cudnn_rnn_flatten_weight_rejects_num_layers(num_layers):
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("config", _OVERSIZED_PROJ_ROWS)
 def test__cudnn_rnn_flatten_weight_rejects_oversized_proj_size(config):
     weight_stride0 = _weight_stride0(config, True)
@@ -576,14 +576,14 @@ def test__cudnn_rnn_flatten_weight_rejects_oversized_proj_size(config):
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_empty_weight_list():
     # The dispatcher rejects an empty Tensor[] before any kernel is reached.
     with pytest.raises(RuntimeError):
         flag_gems._cudnn_rnn_flatten_weight([], 4, 6, 0, 8, 0, 1, False, False)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_non_tensor_element():
     config = _SMALL_CONFIG
     weight_stride0 = _weight_stride0(config, True)
@@ -594,7 +594,7 @@ def test__cudnn_rnn_flatten_weight_rejects_non_tensor_element():
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_mismatch():
     config = _SMALL_CONFIG
     weight_stride0 = _weight_stride0(config, True)
@@ -605,7 +605,7 @@ def test__cudnn_rnn_flatten_weight_rejects_mismatch():
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_projection_for_gru():
     # Projection exists for LSTM only, so a GRU list carrying a projection
     # weight is refused by the native geometry check.
@@ -617,7 +617,7 @@ def test__cudnn_rnn_flatten_weight_rejects_projection_for_gru():
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_rank0_weight():
     config = _SMALL_CONFIG
     weight_stride0 = _weight_stride0(config, True)
@@ -628,7 +628,7 @@ def test__cudnn_rnn_flatten_weight_rejects_rank0_weight():
         flag_gems._cudnn_rnn_flatten_weight(weights, weight_stride0, *args)
 
 
-@pytest.mark.cudnn_rnn_flatten_weight
+@pytest.mark.underscore_cudnn_rnn_flatten_weight
 def test__cudnn_rnn_flatten_weight_rejects_transposed_matrix():
     config = _SMALL_CONFIG
     weight_stride0 = _weight_stride0(config, True)

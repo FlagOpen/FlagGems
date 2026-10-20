@@ -131,7 +131,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_cast_byte(shape, value_range, dtype):
@@ -144,7 +144,7 @@ def test_cast_byte(shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("shape", PARAM_SHAPES)
 @pytest.mark.parametrize("non_blocking", NON_BLOCKING_CASES)
 def test_cast_byte_non_blocking(shape, non_blocking):
@@ -159,7 +159,7 @@ def test_cast_byte_non_blocking(shape, non_blocking):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("layout", LAYOUT_CASES)
 def test_cast_byte_input_layout(layout):
     base = _cast_view_base(16, 8)
@@ -182,7 +182,7 @@ def test_cast_byte_input_layout(layout):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("shape", BOUNDARY_CASES)
 @pytest.mark.parametrize("dtype", BOUNDARY_DTYPES)
 def test_cast_byte_cast_boundaries(shape, dtype):
@@ -201,7 +201,7 @@ def test_cast_byte_cast_boundaries(shape, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("dtype", IDENTITY_CASES)
 def test_cast_byte_uint8_identity_alias(dtype):
     # The index sequence is built in int32, so this fixture does not depend on
@@ -221,7 +221,7 @@ def test_cast_byte_uint8_identity_alias(dtype):
     assert res_out.data_ptr() == inp.data_ptr()
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("shape", EMPTY_SHAPES)
 def test_cast_byte_empty(shape):
     inp = _cast_view_base(2, 3)[:0].reshape(shape)
@@ -233,7 +233,7 @@ def test_cast_byte_empty(shape):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_cast_byte_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -245,7 +245,7 @@ def test_cast_byte_special_values(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 def test_cast_byte_missing_argument():
     # The native parser reports the absent operand as RuntimeError; an explicit
     # Python candidate signature reports the same invalid call as TypeError.
@@ -253,13 +253,13 @@ def test_cast_byte_missing_argument():
         flag_gems._cast_Byte()
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 def test_cast_byte_rejects_non_tensor_input():
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Byte(1.0)
 
 
-@pytest.mark.cast_Byte
+@pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("non_blocking", ["x", [], {}])
 def test_cast_byte_rejects_invalid_non_blocking(non_blocking):
     # The native parser accepts None/0/1/1.5 for the declared bool parameter but

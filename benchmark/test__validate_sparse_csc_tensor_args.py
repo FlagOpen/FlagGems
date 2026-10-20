@@ -249,7 +249,7 @@ class ValidateSparseCscTensorArgsBenchmark(OperatorBenchmark):
                 pytest.skip("No CSC workloads in this values-rank group")
 
 
-@pytest.mark.validate_sparse_csc_tensor_args
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "high_dimensional",
     [

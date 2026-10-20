@@ -79,7 +79,7 @@ _DTYPE_RANGE_PAIRS = [
 ]
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape, out_dim, batch_size", _REMOVE_BATCH_DIM_CASES)
 @pytest.mark.parametrize("level", [0, 1, 3])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
@@ -93,7 +93,7 @@ def test__remove_batch_dim(shape, out_dim, batch_size, level, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_PAIRS)
 def test__remove_batch_dim_value_ranges(shape, dtype, value_range):
@@ -107,7 +107,7 @@ def test__remove_batch_dim_value_ranges(shape, dtype, value_range):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype, value_range", tu.selected_cases(_DTYPE_RANGE_PAIRS))
 def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):
     shape, out_dim, batch_size = (2, 19, 7), 1, 2
@@ -120,7 +120,7 @@ def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape, out_dim, batch_size", _NON_CONTIGUOUS_CASES)
 @pytest.mark.parametrize("level", [0, 1])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
@@ -137,7 +137,7 @@ def test__remove_batch_dim_non_contiguous(shape, out_dim, batch_size, level, dty
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.FLOAT_DTYPES))
 def test__remove_batch_dim_nan_inf(dtype):
     vals = [
@@ -160,7 +160,7 @@ def test__remove_batch_dim_nan_inf(dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape, out_dim, batch_size", _BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test__remove_batch_dim_backward(shape, out_dim, batch_size, dtype):
@@ -186,7 +186,7 @@ def test__remove_batch_dim_backward(shape, out_dim, batch_size, dtype):
     tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_non_broadcastable_batch_size():
     inp = tu.make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -195,7 +195,7 @@ def test__remove_batch_dim_rejects_non_broadcastable_batch_size():
         flag_gems._remove_batch_dim(inp, 0, 3, 1)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_negative_batch_size():
     inp = tu.make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -204,7 +204,7 @@ def test__remove_batch_dim_rejects_negative_batch_size():
         flag_gems._remove_batch_dim(inp, 0, -1, 0)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(3.14, 0, 1, 0)
@@ -212,7 +212,7 @@ def test__remove_batch_dim_rejects_non_tensor():
         flag_gems._remove_batch_dim(3.14, 0, 1, 0)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize(
     "dtype, scenario",
     tu.selected_cases(tu.special_value_cases(_REMOVE_BATCH_DIM_DTYPES)),
@@ -225,7 +225,7 @@ def test__remove_batch_dim_special_scenarios(dtype, scenario):
     tu.assert_result_equal(actual, expected)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("batch_dim, out_dim", [(0, 0), (0, 2), (1, 0), (1, 2), (2, 1)])
 @pytest.mark.parametrize("level", [0, 3])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
@@ -245,7 +245,7 @@ def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
     assert torch._C._is_alias_of(res_out, inp)
 
 
-@pytest.mark.remove_batch_dim
+@pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim_other_level(dtype):
     inp = tu.make_input(dtype, (3, 5), ["-1", "1"])

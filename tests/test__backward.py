@@ -118,7 +118,7 @@ def _real(grad):
     return grad.real if grad.is_complex() else grad
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
@@ -134,7 +134,7 @@ def test__backward_leaf_grad(shape, value_range, dtype):
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("shape", [(2, 3, 5), (16, 32)])
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__backward_explicit_gradient(shape, dtype):
@@ -154,7 +154,7 @@ def test__backward_explicit_gradient(shape, dtype):
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__backward_keyword_arguments(dtype):
     inp, ref_inp = _leaf(dtype, (256,), ["-1", "1"])
@@ -179,7 +179,7 @@ def test__backward_keyword_arguments(dtype):
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("shape", [(256,), (16, 32)])
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__backward_multiple_inputs(shape, dtype):
@@ -195,7 +195,7 @@ def test__backward_multiple_inputs(shape, dtype):
     tu.assert_result_close(inp_b.grad, ref_b.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("shape", [(256,), (16, 32)])
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__backward_non_leaf_input(shape, dtype):
@@ -213,7 +213,7 @@ def test__backward_non_leaf_input(shape, dtype):
     assert inp.grad is None
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize(
     "shape, broadcast_shape",
     tu.selected_cases(_BROADCAST_CASES, quick=[_BROADCAST_CASES[0]]),
@@ -234,7 +234,7 @@ def test__backward_broadcast_gradients(shape, broadcast_shape, dtype):
     tu.assert_result_close(other.grad, ref_other.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("dtype", _GRAD_DTYPES)
 def test__backward_create_graph_grad_state(dtype):
     # create_graph=True must leave a differentiable `.grad`; executing the
@@ -250,7 +250,7 @@ def test__backward_create_graph_grad_state(dtype):
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("dtype", _SECOND_ORDER_DTYPES)
 def test__backward_second_order_execution(dtype):
     inp, ref_inp = _leaf(dtype, (256,), ["-1", "1"])
@@ -266,7 +266,7 @@ def test__backward_second_order_execution(dtype):
     tu.assert_result_close(res_second, ref_second)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("dtype", _ACCUM_DTYPES)
 def test__backward_accumulates_on_repeat(dtype):
     # retain_graph replays the same graph; every pass adds to `.grad` again.
@@ -282,7 +282,7 @@ def test__backward_accumulates_on_repeat(dtype):
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize(
     "dtype, scenario", tu.selected_cases(tu.special_value_cases(_GRAD_DTYPES), quick=[])
 )
@@ -299,7 +299,7 @@ def test__backward_special_values(dtype, scenario):
     tu.assert_result_close(values.grad, ref_values.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_empty_inputs_runs_full_pass():
     # Native probe: an empty `inputs` list still runs the whole pass and
     # accumulates on the graph leaf; the list only names the intermediates that
@@ -315,7 +315,7 @@ def test__backward_empty_inputs_runs_full_pass():
     tu.assert_result_close(inp.grad, ref_inp.grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_unrelated_inputs_leave_leaf_untouched():
     # Native probe: naming a tensor that is not part of the graph populates no
     # gradient, not even on the graph's own leaf.
@@ -331,7 +331,7 @@ def test__backward_unrelated_inputs_leave_leaf_untouched():
     assert other.grad is None
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 @pytest.mark.parametrize("dtype", _NON_GRAD_DTYPES)
 def test__backward_rejects_input_without_grad(dtype):
     inp = tu.make_input(torch.float32, (256,), ["-1", "1"]).requires_grad_(True)
@@ -342,7 +342,7 @@ def test__backward_rejects_input_without_grad(dtype):
         flag_gems._backward(root, [other])
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_root_without_graph():
     inp = tu.make_input(torch.float32, (256,), ["-1", "1"]).requires_grad_(True)
     root = tu.make_input(torch.float32, (256,), ["-1", "1"])
@@ -351,7 +351,7 @@ def test__backward_rejects_root_without_graph():
         flag_gems._backward(root, [inp])
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_non_scalar_root_without_gradient():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"]).requires_grad_(True)
     root = torch.sin(inp) * 2.0
@@ -360,7 +360,7 @@ def test__backward_rejects_non_scalar_root_without_gradient():
         flag_gems._backward(root, [inp])
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_mismatched_gradient_shape():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"]).requires_grad_(True)
     root = torch.sin(inp) * 2.0
@@ -370,7 +370,7 @@ def test__backward_rejects_mismatched_gradient_shape():
         flag_gems._backward(root, [inp], grad)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_non_tensor_gradient():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"]).requires_grad_(True)
     root = (torch.sin(inp) * 2.0).sum()
@@ -379,7 +379,7 @@ def test__backward_rejects_non_tensor_gradient():
         flag_gems._backward(root, [inp], [1.0])
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_plain_tensor_inputs():
     inp = tu.make_input(torch.float32, (4,), ["-1", "1"]).requires_grad_(True)
     root = (torch.sin(inp) * 2.0).sum()
@@ -388,7 +388,7 @@ def test__backward_rejects_plain_tensor_inputs():
         flag_gems._backward(root, inp)
 
 
-@pytest.mark.backward
+@pytest.mark.underscore_backward
 def test__backward_rejects_freed_graph_reuse():
     inp = tu.make_input(torch.float32, (256,), ["-1", "1"]).requires_grad_(True)
     root = (torch.sin(inp) * 2.0).sum()

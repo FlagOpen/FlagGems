@@ -109,7 +109,7 @@ class CopyLayoutBenchmark(base.GenericBenchmark):
 # the candidate is resolved through that one name (the out form passes `out=` to
 # the same callable), so `op_name` must stay the operator name for the override
 # lookup and the case-list identity to resolve.
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd():
     bench = base.UnaryPointwiseBenchmark(
         op_name="_test_warn_in_autograd",
@@ -120,7 +120,7 @@ def test__test_warn_in_autograd():
     bench.run()
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd_out():
     bench = base.UnaryPointwiseOutBenchmark(
         op_name="_test_warn_in_autograd",
@@ -131,7 +131,7 @@ def test__test_warn_in_autograd_out():
     bench.run()
 
 
-@pytest.mark.test_warn_in_autograd
+@pytest.mark.underscore_test_warn_in_autograd
 def test__test_warn_in_autograd_layout():
     bench = CopyLayoutBenchmark(
         op_name="_test_warn_in_autograd",

@@ -201,7 +201,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_autograd_multiple_dispatch_view(shape, value_range, dtype):
@@ -215,7 +215,7 @@ def test_autograd_multiple_dispatch_view(shape, value_range, dtype):
     _assert_view_contract(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize(
     "dtype,shape,layout", tu.selected_cases(_LAYOUT_ROWS, quick=_LAYOUT_QUICK)
 )
@@ -234,7 +234,7 @@ def test_autograd_multiple_dispatch_view_strided_views(dtype, shape, layout):
     _assert_view_contract(res_out, ref_out, view)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize(
     "dtype,shape,layout", tu.selected_cases(_MUTATION_ROWS, quick=_MUTATION_QUICK)
 )
@@ -255,7 +255,7 @@ def test_autograd_multiple_dispatch_view_mutation(dtype, shape, layout):
     tu.assert_result_equal(base_inp, ref_base_inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize(
     "dtype,shape,layout", tu.selected_cases(_BACKWARD_ROWS, quick=[])
 )
@@ -288,7 +288,7 @@ def test_autograd_multiple_dispatch_view_backward(dtype, shape, layout):
     tu.assert_result_close(res_grad, tu.to_reference(ref_grad))
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
@@ -304,7 +304,7 @@ def test_autograd_multiple_dispatch_view_special_values(dtype, scenario):
     _assert_view_contract(res_out, ref_out, inp)
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 @pytest.mark.parametrize("kind", _NON_VIEW_KINDS)
 def test_autograd_multiple_dispatch_view_invalid_layout(kind):
     with pytest.raises(RuntimeError):

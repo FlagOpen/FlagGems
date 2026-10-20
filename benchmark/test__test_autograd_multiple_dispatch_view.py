@@ -103,7 +103,7 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, {}
 
 
-@pytest.mark.test_autograd_multiple_dispatch_view
+@pytest.mark.underscore_test_autograd_multiple_dispatch_view
 def test_autograd_multiple_dispatch_view():
     bench = ViewDispatchBenchmark(
         op_name="_test_autograd_multiple_dispatch_view",

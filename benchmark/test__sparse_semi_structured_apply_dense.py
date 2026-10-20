@@ -113,7 +113,7 @@ class SparseSemiStructuredApplyDenseBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
-@pytest.mark.sparse_semi_structured_apply_dense
+@pytest.mark.underscore_sparse_semi_structured_apply_dense
 def test__sparse_semi_structured_apply_dense():
     # The operator accepts Half/BFloat16 only; bfloat16 is kept out on a device
     # that does not support it, using the static capability flag rather than a

@@ -145,7 +145,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_nested_view_from_buffer(shape, value_range, dtype):
@@ -169,7 +169,7 @@ def test_nested_view_from_buffer(shape, value_range, dtype):
     _assert_components(res_out, ref_out, sizes, strides)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize(
     "layout",
     tu.selected_cases(LAYOUTS, quick=LAYOUTS),
@@ -193,7 +193,7 @@ def test_nested_view_from_buffer_layout(layout):
     _assert_components(res_out, ref_out, sizes, strides)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 def test_nested_view_from_buffer_buffer_view():
     # The metadata indexes the buffer's storage: a buffer view's own
     # storage_offset and stride do not shift the components (probed natively),
@@ -216,7 +216,7 @@ def test_nested_view_from_buffer_buffer_view():
     _assert_components(res_out, ref_out, sizes, strides)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize("dtype,scenario", tu.selected_cases(SPECIAL_CASES, quick=[]))
 def test_nested_view_from_buffer_special_values(dtype, scenario):
     # Re-indexing storage must preserve NaN/Inf payloads bit for bit; the shared
@@ -234,7 +234,7 @@ def test_nested_view_from_buffer_special_values(dtype, scenario):
     _assert_components(res_out, ref_out, sizes, strides)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize("dtype", tu.selected_cases(BACKWARD_DTYPES, quick=[]))
 def test_nested_view_from_buffer_backward(dtype):
     # Offsets [0, 4] tile the whole buffer: with gapped metadata the native
@@ -256,7 +256,7 @@ def test_nested_view_from_buffer_backward(dtype):
     tu.assert_result_equal(res_grad, ref_grad)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 def test_nested_view_from_buffer_aliases():
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
     buffer = tu.make_input(torch.float32, (8,), ["-1", "1"])
@@ -294,7 +294,7 @@ def test_nested_view_from_buffer_aliases():
         assert component.storage_offset() == offset
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 def test_nested_view_from_buffer_mutation():
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
     buffer = tu.make_input(torch.float32, (8,), ["-1", "1"])
@@ -408,7 +408,7 @@ def _invalid_inputs(row):
     return buffer, as_metadata(sizes), as_metadata(strides), as_metadata(offsets)
 
 
-@pytest.mark.nested_view_from_buffer
+@pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize("row", NEGATIVE_ROWS, ids=[row[0] for row in NEGATIVE_ROWS])
 def test_nested_view_from_buffer_invalid_input(row):
     buffer, sizes, strides, offsets = _invalid_inputs(row)

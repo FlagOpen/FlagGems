@@ -146,7 +146,7 @@ class SparseBsrTensorUnsafeBenchmark(OperatorBenchmark):
         self.shapes = list(dict.fromkeys(entries + list(_BENCH_SHAPES)))
 
 
-@pytest.mark.sparse_bsr_tensor_unsafe
+@pytest.mark.underscore_sparse_bsr_tensor_unsafe
 def test_sparse_bsr_tensor_unsafe():
     bench = SparseBsrTensorUnsafeBenchmark(
         op_name="_sparse_bsr_tensor_unsafe",

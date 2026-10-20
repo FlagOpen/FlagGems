@@ -143,7 +143,7 @@ class SparseCsrTensorUnsafeBenchmark(base.GenericBenchmark):
         return list(super().set_more_shapes()) + [tuple(row) for row in MORE_CASES]
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 def test__sparse_csr_tensor_unsafe():
     bench = SparseCsrTensorUnsafeBenchmark(
         op_name=OP_NAME,

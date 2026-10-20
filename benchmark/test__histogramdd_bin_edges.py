@@ -79,7 +79,7 @@ class HistogramDDBinEdgesBenchmark(OperatorBenchmark):
                 self.shapes.append(shape)
 
 
-@pytest.mark.histogramdd_bin_edges
+@pytest.mark.underscore_histogramdd_bin_edges
 def test__histogramdd_bin_edges():
     bench = HistogramDDBinEdgesBenchmark(
         op_name="_histogramdd_bin_edges",

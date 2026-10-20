@@ -102,7 +102,7 @@ class FunctionalAssertScalarBenchmark(OperatorBenchmark):
         self.shapes = [_check_dep_token_shape(shape) for shape in self.shapes]
 
 
-@pytest.mark.functional_assert_scalar
+@pytest.mark.underscore_functional_assert_scalar
 def test__functional_assert_scalar():
     bench = FunctionalAssertScalarBenchmark(
         op_name="_functional_assert_scalar",

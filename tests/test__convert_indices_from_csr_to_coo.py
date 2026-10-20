@@ -132,7 +132,7 @@ _QUICK_GRID_ROWS = [
 _GRID_CASES = tu.selected_cases(_GRID_ROWS, quick=_QUICK_GRID_ROWS)
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("shape,dtype,value_range", _GRID_CASES)
 def test__convert_indices_from_csr_to_coo(shape, dtype, value_range):
     crow = _csr_offsets(shape, dtype)
@@ -175,7 +175,7 @@ _FLAG_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("shape,label,flags,value_range", _FLAG_CASES)
 def test__convert_indices_from_csr_to_coo_flags(shape, label, flags, value_range):
     del label
@@ -216,7 +216,7 @@ _OUT_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("shape,dtype,out_int32,transpose,value_range", _OUT_CASES)
 def test__convert_indices_from_csr_to_coo_out(
     shape, dtype, out_int32, transpose, value_range
@@ -266,7 +266,7 @@ _CROW_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("name,crow_spec,value_range", _CROW_CASES)
 def test__convert_indices_from_csr_to_coo_crow_distribution(
     name, crow_spec, value_range
@@ -311,7 +311,7 @@ _STRIDED_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize(
     "label,crow_stride,crow_offset,col_stride,col_offset,value_range", _STRIDED_CASES
 )
@@ -351,7 +351,7 @@ _ZERO_DIM_CASES = [
 ]
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("label,crow_spec,col_spec", _ZERO_DIM_CASES)
 def test__convert_indices_from_csr_to_coo_rejects_zero_dim_operand(
     label, crow_spec, col_spec
@@ -379,7 +379,7 @@ _SHAPE_MISMATCH_CASES = [
 ]
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("label,crow_spec,col_shape", _SHAPE_MISMATCH_CASES)
 def test__convert_indices_from_csr_to_coo_rejects_shape_mismatch(
     label, crow_spec, col_shape
@@ -430,7 +430,7 @@ if flag_gems.runtime.device.vendor_name == "nvidia":
 _UNSUPPORTED_DTYPE_CASES = _UNSUPPORTED_DTYPE_ROWS
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("label,dtype", _UNSUPPORTED_DTYPE_CASES)
 def test__convert_indices_from_csr_to_coo_rejects_unsupported_dtype(label, dtype):
     del label
@@ -439,7 +439,7 @@ def test__convert_indices_from_csr_to_coo_rejects_unsupported_dtype(label, dtype
         flag_gems._convert_indices_from_csr_to_coo(crow, col)
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 def test__convert_indices_from_csr_to_coo_rejects_positional_flags():
     crow = _csr_offsets((4,), _CROW_DTYPE)
     col = torch.zeros(4, dtype=_CROW_DTYPE, device=flag_gems.device)
@@ -447,7 +447,7 @@ def test__convert_indices_from_csr_to_coo_rejects_positional_flags():
         flag_gems._convert_indices_from_csr_to_coo(crow, col, True)
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 def test__convert_indices_from_csr_to_coo_rejects_invalid_flag_type():
     crow = _csr_offsets((4,), _CROW_DTYPE)
     col = torch.zeros(4, dtype=_CROW_DTYPE, device=flag_gems.device)
@@ -462,7 +462,7 @@ if utils.int64_is_supported:
     )
 
 
-@pytest.mark.convert_indices_from_csr_to_coo
+@pytest.mark.underscore_convert_indices_from_csr_to_coo
 @pytest.mark.parametrize("label,buf_dtype,flags", _OUT_MISMATCH_ROWS)
 def test__convert_indices_from_csr_to_coo_rejects_out_dtype_mismatch(
     label, buf_dtype, flags

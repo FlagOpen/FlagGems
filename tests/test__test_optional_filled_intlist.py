@@ -125,7 +125,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__test_optional_filled_intlist_none_addends(shape, value_range, dtype):
@@ -139,7 +139,7 @@ def test__test_optional_filled_intlist_none_addends(shape, value_range, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _FILLED_INT_SHAPES)
 def test__test_optional_filled_intlist_filled_int_addends(shape, value_range):
@@ -153,7 +153,7 @@ def test__test_optional_filled_intlist_filled_int_addends(shape, value_range):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _LIST_SHAPES)
 def test__test_optional_filled_intlist_list_addends(shape, value_range):
@@ -169,7 +169,7 @@ def test__test_optional_filled_intlist_list_addends(shape, value_range):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("addends,value_range", _ADDEND_ROWS)
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
 def test__test_optional_filled_intlist_addends_values(shape, value_range, addends):
@@ -182,7 +182,7 @@ def test__test_optional_filled_intlist_addends_values(shape, value_range, addend
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("out_form", _OUT_FORMS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
@@ -211,7 +211,7 @@ def test__test_optional_filled_intlist_out(shape, value_range, out_form):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("label,out_numel,kind", _OUT_BUFFER_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__test_optional_filled_intlist_out_buffer(label, out_numel, kind, value_range):
@@ -239,7 +239,7 @@ def test__test_optional_filled_intlist_out_buffer(label, out_numel, kind, value_
     tu.assert_result_equal(inp, inp_before)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__test_optional_filled_intlist_list_addends_non_contiguous(
@@ -258,7 +258,7 @@ def test__test_optional_filled_intlist_list_addends_non_contiguous(
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize(
     "dtype", [torch.int32, torch.float32, torch.uint8, torch.complex64]
 )
@@ -285,7 +285,7 @@ def test__test_optional_filled_intlist_none_returns_input(shape, dtype):
     tu.assert_result_equal(res_out, ref_inp)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 def test__test_optional_filled_intlist_none_keeps_view_metadata(view_case):
     _, view_fn = view_case
@@ -303,7 +303,7 @@ def test__test_optional_filled_intlist_none_keeps_view_metadata(view_case):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("dtype", [torch.int32, torch.float32])
 @pytest.mark.parametrize(
     "shape",
@@ -320,7 +320,7 @@ def test__test_optional_filled_intlist_none_addends_keyword(shape, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(
@@ -339,7 +339,7 @@ def test__test_optional_filled_intlist_none_addends_nan_inf(dtype, scenario):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 def test_test_optional_filled_intlist_rejects_backward(dtype):
     # A non-leaf view reaches the operator's missing derivative; a leaf identity
@@ -368,7 +368,7 @@ def test_test_optional_filled_intlist_rejects_backward(dtype):
 _SHORT_ADDENDS_CASES = [((3,), 7), ((2,), [1]), ((4,), [1, 2]), ((256,), 10)]
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("shape,addends", _SHORT_ADDENDS_CASES)
 def test__test_optional_filled_intlist_rejects_short_addends(shape, addends):
     inp = _cpu(tu.make_input(torch.int32, shape, ["-1", "1"]))
@@ -377,7 +377,7 @@ def test__test_optional_filled_intlist_rejects_short_addends(shape, addends):
         flag_gems._test_optional_filled_intlist(inp, addends)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize(
     "shape,addends",
     [((2, 3), [1, 2]), ((2, 3, 4), [1, 2]), ((2, 3), 7), ((2, 19, 7), [1, 2])],
@@ -389,7 +389,7 @@ def test__test_optional_filled_intlist_rejects_non_1d_values(shape, addends):
         flag_gems._test_optional_filled_intlist(inp, addends)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -411,7 +411,7 @@ def test__test_optional_filled_intlist_rejects_non_int32_values(dtype):
         flag_gems._test_optional_filled_intlist(inp, 7)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("addends", [3.5, "abc", {"a": 1}])
 def test__test_optional_filled_intlist_rejects_invalid_addends_type(addends):
     inp = _cpu(tu.make_input(torch.int32, (2,), ["-1", "1"]))
@@ -420,14 +420,14 @@ def test__test_optional_filled_intlist_rejects_invalid_addends_type(addends):
         flag_gems._test_optional_filled_intlist(inp, addends)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("values", [[1, 2], 5, "abc"])
 def test__test_optional_filled_intlist_rejects_non_tensor_values(values):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(values, None)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize(
     "out_dtype", [torch.float32, torch.float64, torch.int64, torch.int16]
 )
@@ -439,7 +439,7 @@ def test__test_optional_filled_intlist_out_rejects_wrong_dtype(out_dtype):
         flag_gems._test_optional_filled_intlist(inp, 7, out=out)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 def test__test_optional_filled_intlist_rejects_missing_addends():
     # Optional describes the value (None), not whether the argument can be omitted.
     values = torch.zeros(2, dtype=torch.int32, device="cpu")

@@ -156,7 +156,7 @@ class UseCudnnRnnFlattenWeightBenchmark(OperatorBenchmark):
             return super().get_latency(op, *args, **kwargs)
 
 
-@pytest.mark.use_cudnn_rnn_flatten_weight
+@pytest.mark.underscore_use_cudnn_rnn_flatten_weight
 def test__use_cudnn_rnn_flatten_weight():
     bench = UseCudnnRnnFlattenWeightBenchmark(
         op_name="_use_cudnn_rnn_flatten_weight",

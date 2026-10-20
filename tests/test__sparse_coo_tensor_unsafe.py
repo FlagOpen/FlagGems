@@ -90,7 +90,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_sparse_coo_tensor_unsafe(shape, value_range, dtype):
@@ -123,7 +123,7 @@ _STRUCTURE_ROWS = [
 ]
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize(
     "size,sparse_dim,dense_shape,nnz,is_coalesced", _STRUCTURE_ROWS
 )
@@ -146,7 +146,7 @@ def test_sparse_coo_tensor_unsafe_structure(
     assert res_out.is_coalesced() is is_coalesced
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("is_coalesced", [True, False])
 def test_sparse_coo_tensor_unsafe_explicit_coalesced(is_coalesced):
     # is_coalesced overrides the measured default; both values must be honoured
@@ -169,7 +169,7 @@ def test_sparse_coo_tensor_unsafe_explicit_coalesced(is_coalesced):
     assert res_out.is_coalesced() is is_coalesced
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize(
     "size", [[20, 320, 15], (20, 320, 15), torch.Size([20, 320, 15])]
 )
@@ -185,7 +185,7 @@ def test_sparse_coo_tensor_unsafe_size_container(size):
     _assert_sparse_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe_size_keyword():
     size = [20, 320, 15]
     indices = _coo_indices(size, _NNZ)
@@ -199,7 +199,7 @@ def test_sparse_coo_tensor_unsafe_size_keyword():
     _assert_sparse_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe_keeps_caller_storage():
     size = [20, 320, 15]
     # Non-contiguous coordinates and an offset slice of a larger buffer: the
@@ -230,7 +230,7 @@ def test_sparse_coo_tensor_unsafe_keeps_caller_storage():
     assert torch.equal(values, torch.full_like(values, 2.5))
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe_accepts_out_of_range_indices():
     # "unsafe" means no coordinate bounds checking: rows past the logical size
     # are stored unchanged instead of being rejected.
@@ -248,7 +248,7 @@ def test_sparse_coo_tensor_unsafe_accepts_out_of_range_indices():
     assert torch.equal(res_out._indices(), indices)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[]),
@@ -266,7 +266,7 @@ def test_sparse_coo_tensor_unsafe_special_values(dtype, scenario):
     _assert_sparse_equal(res_out, ref_out)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("dtype", tu.selected_cases(_BACKWARD_DTYPES, quick=[]))
 def test_sparse_coo_tensor_unsafe_backward(dtype):
     size = [20, 320, 15]
@@ -287,7 +287,7 @@ def test_sparse_coo_tensor_unsafe_backward(dtype):
     tu.assert_result_close(res_grad, ref_grad)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize(
     "indices_dtype,indices_shape",
     [(torch.int32, (2, 4)), (torch.int64, (2, 4, 1))],
@@ -301,7 +301,7 @@ def test_sparse_coo_tensor_unsafe_rejects_invalid_indices(indices_dtype, indices
         flag_gems._sparse_coo_tensor_unsafe(indices, values, [5, 6])
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("size", [[5], [-5, 6], [5.5, 6]])
 def test_sparse_coo_tensor_unsafe_rejects_invalid_size(size):
     # Native contract: the size list must hold one int per sparse + dense dim.
@@ -312,7 +312,7 @@ def test_sparse_coo_tensor_unsafe_rejects_invalid_size(size):
         flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
 
 
-@pytest.mark.sparse_coo_tensor_unsafe
+@pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe_rejects_nnz_mismatch():
     indices = torch.zeros((2, 1), dtype=torch.int64, device=flag_gems.device)
     values = tu.make_input(torch.float32, (3,), ["-1", "1"])

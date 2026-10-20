@@ -343,7 +343,7 @@ class ValidateSparseCompressedTensorArgsBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_DESCRIPTIONS)
 
 
-@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
 def test_validate_sparse_compressed_tensor_args():
     bench = ValidateSparseCompressedTensorArgsBenchmark(
         op_name="_validate_sparse_compressed_tensor_args",

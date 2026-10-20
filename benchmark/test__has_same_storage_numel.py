@@ -63,7 +63,7 @@ class _HasSameStorageNumelBenchmark(OperatorBenchmark):
         )
 
 
-@pytest.mark.has_same_storage_numel
+@pytest.mark.underscore_has_same_storage_numel
 def test__has_same_storage_numel():
     bench = _HasSameStorageNumelBenchmark(
         op_name="_has_same_storage_numel",

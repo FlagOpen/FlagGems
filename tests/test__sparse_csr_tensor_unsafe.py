@@ -291,7 +291,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("size", _CSR_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__sparse_csr_tensor_unsafe_values(size, value_range, dtype):
@@ -321,7 +321,7 @@ def test__sparse_csr_tensor_unsafe_values(size, value_range, dtype):
     _assert_matches_reference(res, ref)
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "case", tu.selected_cases(_STRUCTURE_CASES, quick=_STRUCTURE_QUICK)
 )
@@ -351,7 +351,7 @@ def test__sparse_csr_tensor_unsafe_structure(case, index_dtype, dtype):
     assert res.col_indices().dtype == index_dtype
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "case", tu.selected_cases(_BATCHED_CASES, quick=_BATCHED_QUICK)
 )
@@ -378,7 +378,7 @@ def test__sparse_csr_tensor_unsafe_batched(case, dtype):
     assert res.sparse_dim() == ref.sparse_dim()
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "case", tu.selected_cases(_UNCHECKED_CASES, quick=_UNCHECKED_QUICK)
 )
@@ -408,7 +408,7 @@ def test__sparse_csr_tensor_unsafe_unchecked_metadata(case):
     _assert_matches_reference(res, ref)
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype,scenario",
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
@@ -435,7 +435,7 @@ def test__sparse_csr_tensor_unsafe_special_values(dtype, scenario):
     _assert_matches_reference(res, ref)
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("kwargs", _OPTIONAL_KEYWORD_CASES)
 def test__sparse_csr_tensor_unsafe_optional_keywords(kwargs):
     crow_indices, col_indices, values = _components(
@@ -460,7 +460,7 @@ def test__sparse_csr_tensor_unsafe_optional_keywords(kwargs):
     assert res.dtype == torch.float32
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 def test__sparse_csr_tensor_unsafe_keeps_component_dtypes(index_dtype):
     crow_indices, col_indices, values = _components(
@@ -488,7 +488,7 @@ def test__sparse_csr_tensor_unsafe_keeps_component_dtypes(index_dtype):
     _assert_matches_reference(res, ref)
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 def test__sparse_csr_tensor_unsafe_stores_component_views():
     # Components that are views of a larger buffer keep their offset and strides:
     # the factory compacts nothing and copies nothing.
@@ -516,7 +516,7 @@ def test__sparse_csr_tensor_unsafe_stores_component_views():
     _assert_matches_reference(res, ref)
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 def test__sparse_csr_tensor_unsafe_aliases_component_storage():
     crow_indices, col_indices, values = _components(
         [0, 2, 4, 4, 4], [0, 1, 0, 1], [1.0, 2.0, 3.0, 4.0], torch.float32
@@ -561,7 +561,7 @@ def test__sparse_csr_tensor_unsafe_aliases_component_storage():
     assert len(pointers) == 3
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("layout", [torch.sparse_bsr, torch.sparse_csc, torch.strided])
 def test__sparse_csr_tensor_unsafe_rejects_non_csr_layout(layout):
     # Only the CSR compressed layout is accepted (bsr/csc/strided are not).
@@ -579,7 +579,7 @@ def test__sparse_csr_tensor_unsafe_rejects_non_csr_layout(layout):
         )
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype",
     [
@@ -608,7 +608,7 @@ def test__sparse_csr_tensor_unsafe_rejects_mismatched_dtype(dtype):
         )
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "values_dtype",
     [torch.float16, torch.bfloat16, torch.int16, torch.int64, torch.int8, torch.bool],
@@ -625,7 +625,7 @@ def test__sparse_csr_tensor_unsafe_rejects_values_without_matching_dtype(values_
         )
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("size", [[2, -1], [-1, 2], [2, -4]])
 def test__sparse_csr_tensor_unsafe_rejects_negative_size(size):
     crow_indices, col_indices, values = _components(
@@ -637,7 +637,7 @@ def test__sparse_csr_tensor_unsafe_rejects_negative_size(size):
         )
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("position", [0, 1, 2])
 def test__sparse_csr_tensor_unsafe_rejects_non_tensor_component(position):
     components = [
@@ -658,7 +658,7 @@ def test__sparse_csr_tensor_unsafe_rejects_non_tensor_component(position):
 
 if _ACCELERATOR:
 
-    @pytest.mark.sparse_csr_tensor_unsafe
+    @pytest.mark.underscore_sparse_csr_tensor_unsafe
     def test__sparse_csr_tensor_unsafe_requires_matching_component_device():
         # With accelerator components and no `device=`, the factory would have to
         # place the tensor on a device it cannot derive, so it refuses instead.
@@ -670,7 +670,7 @@ if _ACCELERATOR:
                 crow_indices, col_indices, values, [2, 2]
             )
 
-    @pytest.mark.sparse_csr_tensor_unsafe
+    @pytest.mark.underscore_sparse_csr_tensor_unsafe
     @pytest.mark.parametrize("position", [0, 1, 2])
     def test__sparse_csr_tensor_unsafe_rejects_cross_device_components(position):
         crow_indices, col_indices, values = _components(
@@ -688,7 +688,7 @@ if _ACCELERATOR:
                 device=flag_gems.device,
             )
 
-    @pytest.mark.sparse_csr_tensor_unsafe
+    @pytest.mark.underscore_sparse_csr_tensor_unsafe
     def test__sparse_csr_tensor_unsafe_rejects_pinned_accelerator_values():
         # pin_memory only applies to dense CPU tensors.
         crow_indices, col_indices, values = _components(
@@ -705,7 +705,7 @@ if _ACCELERATOR:
             )
 
 
-@pytest.mark.sparse_csr_tensor_unsafe
+@pytest.mark.underscore_sparse_csr_tensor_unsafe
 @pytest.mark.parametrize(
     "dtype",
     [dtype for dtype in _VALUE_DTYPES if dtype.is_floating_point or dtype.is_complex],

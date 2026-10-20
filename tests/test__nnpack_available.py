@@ -111,7 +111,7 @@ _AMBIENT_ROWS = [
 AMBIENT_CASES = _AMBIENT_ROWS
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available():
     ref = torch.ops.aten._nnpack_available()
     res = flag_gems._nnpack_available()
@@ -120,7 +120,7 @@ def test__nnpack_available():
     assert res == ref
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available_is_stable_across_calls():
     # The answer describes the build, so repeated queries in one process must not
     # drift and must not be served from a stale cached value.
@@ -132,7 +132,7 @@ def test__nnpack_available_is_stable_across_calls():
         assert res == ref
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 @pytest.mark.parametrize("state,value", AMBIENT_CASES)
 def test__nnpack_available_ignores_ambient_state(state, value):
     with _ambient(state, value):
@@ -143,7 +143,7 @@ def test__nnpack_available_ignores_ambient_state(state, value):
         assert res == ref
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available_from_worker_thread():
     # A build capability must not be reported from main-thread-only state.
     ref = torch.ops.aten._nnpack_available()
@@ -167,7 +167,7 @@ def test__nnpack_available_from_worker_thread():
     assert res == ref
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available_has_no_global_side_effects():
     # A capability query must not perturb the ambient state it observes, nor
     # consume global RNG state.
@@ -198,14 +198,14 @@ REJECTED_CALLS = [
 ]
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 @pytest.mark.parametrize("args,kwargs", REJECTED_CALLS)
 def test__nnpack_available_rejects_arguments(args, kwargs):
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems._nnpack_available(*args, **kwargs)
 
 
-@pytest.mark.nnpack_available
+@pytest.mark.underscore_nnpack_available
 def test__nnpack_available_rejects_tensor_operand():
     # A tensor operand is the realistic mistake for a pointwise-style operator.
     operand = torch.zeros(4, device=flag_gems.device)

@@ -168,7 +168,7 @@ def _compare_grads(res_grads, ref_grads):
     tu.assert_result_close(res_grads[2], ref_grads[2])
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("shape,kv_shape,value_range", _GRID)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward(
@@ -188,7 +188,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward(
     _compare_grads(res_grads, ref_grads)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("dropout_p,is_causal,scale", _PARAM_CASES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_with_params(
@@ -226,7 +226,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_with_params(
     _compare_grads(res_grads, ref_grads)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("mask_shape", _MASK_CASES)
 @pytest.mark.parametrize(
     "dtype,mask_dtype",
@@ -270,7 +270,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_with_attn_mask(
     _compare_grads(res_grads, ref_grads)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_special_values(
     dtype, scenario
@@ -289,7 +289,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_special_values(
     _compare_grads(res_grads, ref_grads)
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("query_shape", _BAD_QUERY_SHAPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_query_rank(
     query_shape,
@@ -302,7 +302,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_query_r
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("mask_shape", _BAD_MASK_SHAPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_mask(
     mask_shape,
@@ -323,7 +323,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_mask(
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_unsupported_dtype(
     dtype,
@@ -341,7 +341,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_unsupported
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_mixed_dtypes():
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -357,7 +357,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_mixed_dtype
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_head_mismatch():
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
     key = tu.make_input(_NEG_DTYPE, (1, 2, 4, 16), ["-1", "1"]).cpu()
@@ -368,7 +368,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_head_mismat
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_string_scale():
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
     with pytest.raises(RuntimeError):
@@ -385,7 +385,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_string_scal
         )
 
 
-@pytest.mark.scaled_dot_product_flash_attention_for_cpu_backward
+@pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_tensor_scale():
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
     # A 0-dim or single-element tensor is accepted natively; a multi-element

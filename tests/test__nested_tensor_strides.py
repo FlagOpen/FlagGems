@@ -87,7 +87,7 @@ def _assert_strides(res_out, ref_out):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("num_tensors", _NUM_TENSORS)
 @pytest.mark.parametrize("num_dims", _COMPONENT_RANKS)
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
@@ -101,7 +101,7 @@ def test__nested_tensor_strides(num_tensors, num_dims, dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("case", _SHAPE_LEVEL_CASES)
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_strides_shape_levels(case, dtype):
@@ -121,7 +121,7 @@ def test__nested_tensor_strides_shape_levels(case, dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("case", _VALUE_RANGE_LAYOUTS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
@@ -136,7 +136,7 @@ def test__nested_tensor_strides_value_ranges(case, value_range, dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_strides_uniform(dtype):
     num_tensors = 6
@@ -153,7 +153,7 @@ def test__nested_tensor_strides_uniform(dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_strides_with_empty_components(dtype):
     num_tensors = 4
@@ -174,7 +174,7 @@ def test__nested_tensor_strides_with_empty_components(dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("dtype", _COMPONENT_DTYPES)
 def test__nested_tensor_strides_transposed(dtype):
     num_tensors, num_dims = 5, 2
@@ -196,7 +196,7 @@ def test__nested_tensor_strides_transposed(dtype):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize(
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_COMPONENT_DTYPES))
 )
@@ -220,7 +220,7 @@ def test__nested_tensor_strides_nan_inf_values(dtype, scenario):
     _assert_strides(res_out, ref_out)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__nested_tensor_strides_dense_raises(dtype):
     inp = tu.make_input(dtype, (4, 4), _VALUE_RANGE)
@@ -230,7 +230,7 @@ def test__nested_tensor_strides_dense_raises(dtype):
         flag_gems._nested_tensor_strides(inp)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test__nested_tensor_strides_jagged_raises(dtype):
     ref_device = torch.device("cpu") if utils.TO_CPU else flag_gems.device
@@ -247,7 +247,7 @@ def test__nested_tensor_strides_jagged_raises(dtype):
         flag_gems._nested_tensor_strides(inp)
 
 
-@pytest.mark.nested_tensor_strides
+@pytest.mark.underscore_nested_tensor_strides
 def test__nested_tensor_strides_rejects_non_tensor():
     with pytest.raises(RuntimeError):
         torch.ops.aten._nested_tensor_strides(3.14)

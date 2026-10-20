@@ -217,7 +217,7 @@ class ValidateSparseCooTensorArgsBenchmark(OperatorBenchmark):
         self.shapes = _int64_gated(self.shapes)
 
 
-@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
 def test__validate_sparse_coo_tensor_args():
     bench = ValidateSparseCooTensorArgsBenchmark(
         op_name="_validate_sparse_coo_tensor_args",

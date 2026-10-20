@@ -122,7 +122,7 @@ _MUTABLE_DTYPE_CASES = [
 ]
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_fresh(shape, dtype):
@@ -135,7 +135,7 @@ def test__version_fresh(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize(
@@ -163,7 +163,7 @@ def test__version_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
     "dtype,scenario",
@@ -193,7 +193,7 @@ def test__version_nan_inf(shape, dtype, scenario):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("shape", _VERSION_SHAPES)
 @pytest.mark.parametrize("bumps", [1, 2, 3, 5])
 @pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
@@ -212,7 +212,7 @@ def test__version_after_inplace(shape, bumps, dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_readonly(dtype):
     inp = torch.zeros((8, 16), dtype=dtype, device=flag_gems.device)
@@ -235,7 +235,7 @@ def test__version_readonly(dtype):
         assert torch.equal(inp, data_before)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_view(dtype):
     inp = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
@@ -249,7 +249,7 @@ def test__version_view(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_view_inplace(dtype):
     inp = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
@@ -267,7 +267,7 @@ def test__version_view_inplace(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_detach_shares_counter(dtype):
     inp = torch.zeros((4,), dtype=dtype, device=flag_gems.device)
@@ -285,7 +285,7 @@ def test__version_detach_shares_counter(dtype):
     _assert_result(res_out, ref_out)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_independent_counters(dtype):
     first = torch.zeros((4,), dtype=dtype, device=flag_gems.device)
@@ -305,7 +305,7 @@ def test__version_independent_counters(dtype):
     _assert_result(flag_gems._version(second), torch.ops.aten._version(ref_second))
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 @pytest.mark.parametrize("bad_arg", _INVALID_ARG_CASES)
 def test__version_rejects_non_tensor(bad_arg):
     with pytest.raises(RuntimeError):
@@ -318,7 +318,7 @@ def test__version_rejects_non_tensor(bad_arg):
         flag_gems._version(bad_arg)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 def test__version_rejects_wrong_arity():
     with pytest.raises((TypeError, RuntimeError)):
         torch.ops.aten._version()

@@ -127,7 +127,7 @@ def _make_inputs(shape, value_range, grid_span=1.0):
     return grad_output, inp, grid
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 @pytest.mark.parametrize("shape", _IMAGE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("mode", _MAIN_MODES, ids=_mode_id)
@@ -162,7 +162,7 @@ def test__grid_sampler_2d_cpu_fallback_backward(shape, value_range, mode):
     tu.assert_result_close(res_grad_grid, ref_grad_grid)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 @pytest.mark.parametrize(
     "grid_span", _GRID_SPAN_ROWS, ids=[row[0] for row in _GRID_SPAN_ROWS]
 )
@@ -195,7 +195,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_modes(grid_span, mode):
     tu.assert_result_close(res_grad_grid, ref_grad_grid)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 @pytest.mark.parametrize("slot", _SPECIAL_SLOTS)
 @pytest.mark.parametrize(
     "dtype,scenario", _SPECIAL_SCENARIOS, ids=[row[1] for row in _SPECIAL_SCENARIOS]
@@ -229,7 +229,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_special_values(slot, dtype, scen
     tu.assert_result_close(res_grad_grid, ref_grad_grid)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 @pytest.mark.parametrize("slot", [0, 1, 2], ids=["grad_output", "input", "grid"])
 @pytest.mark.parametrize(
     "dtype",
@@ -253,7 +253,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_rejects_unsupported_dtype(slot, 
         flag_gems._grid_sampler_2d_cpu_fallback_backward(*operands, 0, 0, False)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward_rejects_grid_rank():
     # Native: "expected 4D input and grid with same number of dimensions".
     grad_output, inp, grid = _make_inputs(_SMALL_SHAPE, ["-1", "1"])
@@ -263,7 +263,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_rejects_grid_rank():
         )
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward_rejects_grid_coordinate_size():
     # Native: "expected grid to have size 2 in last dimension".
     grad_output, inp, grid = _make_inputs(_SMALL_SHAPE, ["-1", "1"])
@@ -274,7 +274,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_rejects_grid_coordinate_size():
         )
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward_rejects_batch_size_mismatch():
     # Native: "expected grid and input to have same batch size".
     grad_output, inp, grid = _make_inputs(_SMALL_SHAPE, ["-1", "1"])
@@ -286,7 +286,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_rejects_batch_size_mismatch():
         )
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward_rejects_missing_argument():
     # align_corners is a required positional of the only overload; the missing
     # value surfaces either as a Python TypeError or as ATen's RuntimeError
@@ -296,7 +296,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_rejects_missing_argument():
         flag_gems._grid_sampler_2d_cpu_fallback_backward(grad_output, inp, grid, 0, 0)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 @pytest.mark.parametrize(
     "layout", ["input_step", "grad_transpose", "grid_offset", "grid_expand"]
 )
@@ -322,7 +322,7 @@ def test__grid_sampler_2d_cpu_fallback_backward_layout(layout, mode):
         tu.assert_result_equal(operand, reference)
 
 
-@pytest.mark.grid_sampler_2d_cpu_fallback_backward
+@pytest.mark.underscore_grid_sampler_2d_cpu_fallback_backward
 def test__grid_sampler_2d_cpu_fallback_backward_no_autograd_graph():
     operands = [t.requires_grad_() for t in _make_inputs(_SMALL_SHAPE, ["-1", "1"])]
     refs = [t.detach().clone().requires_grad_() for t in operands]

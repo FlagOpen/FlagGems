@@ -103,7 +103,7 @@ _DIM_ROWS = [
 _PROD_ROWS = _GRID_ROWS + tu.selected_cases(_DIM_ROWS, quick=[])
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("shape,dtype,value_range,dim", _PROD_ROWS)
 def test__sparse_csr_prod(shape, dtype, value_range, dim):
     inp = tu.make_input(dtype, shape, value_range).to_sparse_csr()
@@ -151,7 +151,7 @@ _PATTERN_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("pattern,dim,dtype,index_dtype", _PATTERN_ROWS)
 def test__sparse_csr_prod_sparse_pattern(pattern, dim, dtype, index_dtype):
     crow, col, size, values = _CSR_PATTERNS[pattern]
@@ -192,7 +192,7 @@ _DTYPE_CONVERSION_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("shape,in_dtype,out_dtype,dim", _DTYPE_CONVERSION_ROWS)
 def test__sparse_csr_prod_result_dtype(shape, in_dtype, out_dtype, dim):
     inp = tu.make_input(in_dtype, shape, ["-1", "1"]).to_sparse_csr()
@@ -227,7 +227,7 @@ _SPECIAL_CASES = tu.selected_cases(
 _SPECIAL_DIMS = tu.selected_cases([[0], [1]], quick=[])
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("dim", _SPECIAL_DIMS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__sparse_csr_prod_special_values(dtype, scenario, dim):
@@ -292,7 +292,7 @@ _OUT_ROWS = tu.selected_cases(
 )
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("shape,dtype,dim", _OUT_ROWS)
 def test__sparse_csr_prod_out(shape, dtype, dim):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).to_sparse_csr()
@@ -319,7 +319,7 @@ _REJECTED_DTYPES = (
 )
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize(
     "dtype", tu.selected_cases(_REJECTED_DTYPES, quick=_REJECTED_DTYPES)
 )
@@ -329,14 +329,14 @@ def test__sparse_csr_prod_rejects_unsupported_dtype(dtype):
         flag_gems._sparse_csr_prod(inp, [0], True)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_keepdim_false():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._sparse_csr_prod(inp, [0], False)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("dim", ([0, 0], [1, 1]))
 def test__sparse_csr_prod_rejects_duplicate_dim(dim):
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
@@ -344,7 +344,7 @@ def test__sparse_csr_prod_rejects_duplicate_dim(dim):
         flag_gems._sparse_csr_prod(inp, dim, True)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("dim", ([2], [-3]))
 def test__sparse_csr_prod_rejects_dim_out_of_range(dim):
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
@@ -352,21 +352,21 @@ def test__sparse_csr_prod_rejects_dim_out_of_range(dim):
         flag_gems._sparse_csr_prod(inp, dim, True)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_batched_csr_input():
     inp = tu.make_input(torch.float32, (2, 3, 4), ["-1", "1"]).to_sparse_csr()
     with pytest.raises((RuntimeError, ValueError, TypeError)):
         flag_gems._sparse_csr_prod(inp, [0], True)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_strided_input():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
     with pytest.raises((RuntimeError, NotImplementedError, TypeError)):
         flag_gems._sparse_csr_prod(inp, [0], True)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_strided_out_buffer():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
     out = torch.empty(4, 1, dtype=torch.float32, device=flag_gems.device)
@@ -374,7 +374,7 @@ def test__sparse_csr_prod_rejects_strided_out_buffer():
         flag_gems._sparse_csr_prod(inp, [1], True, out=out)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_mismatched_out_dtype():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
     # Placed on the input device so the tested rejection is the dtype, not a
@@ -387,7 +387,7 @@ def test__sparse_csr_prod_rejects_mismatched_out_dtype():
         flag_gems._sparse_csr_prod(inp, [0], True, out=out)
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 def test__sparse_csr_prod_rejects_out_buffer_with_other_nnz():
     # A constant input stores one entry per column for dim=0 and one per row for
     # dim=1, so the dim=1 result has a different nnz than the dim=0 out call
@@ -404,7 +404,7 @@ def test__sparse_csr_prod_rejects_out_buffer_with_other_nnz():
 _OTHER_SUPPORT_DIMS = tu.selected_cases([[1]], quick=[])
 
 
-@pytest.mark.sparse_csr_prod
+@pytest.mark.underscore_sparse_csr_prod
 @pytest.mark.parametrize("dim", _OTHER_SUPPORT_DIMS)
 def test__sparse_csr_prod_out_overwrites_other_valid_support(dim):
     # Row 1 is empty, so this dim=1 result stores two entries for three rows and

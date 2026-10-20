@@ -110,7 +110,7 @@ class EmptyPerChannelAffineQuantizedBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=EMPTY_Q_SHAPES)
 
 
-@pytest.mark.empty_per_channel_affine_quantized
+@pytest.mark.underscore_empty_per_channel_affine_quantized
 def test__empty_per_channel_affine_quantized():
     bench = EmptyPerChannelAffineQuantizedBenchmark(
         op_name="_empty_per_channel_affine_quantized",

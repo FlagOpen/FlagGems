@@ -238,7 +238,7 @@ def _check_descriptor(is_crow, compressed, plain, cdim, dim, nnz):
     tu.assert_result_equal(plain, ref_plain)
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("shape", _SHAPE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
@@ -296,7 +296,7 @@ def _boundary_cases():
     return rows
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize(
     "shape, counts_row, first_row, dim, index_dtype", _boundary_cases()
 )
@@ -310,7 +310,7 @@ def test_validate_compressed_sparse_indices_boundary(
     _check_descriptor(is_crow, compressed, plain, cdim, dim, nnz)
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("field", ["cdim", "nnz"])
 @pytest.mark.parametrize("is_crow", [True, False])
 def test_validate_compressed_sparse_indices_negative_extent(field, is_crow):
@@ -327,7 +327,7 @@ def test_validate_compressed_sparse_indices_negative_extent(field, is_crow):
         )
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("delta", [1, -1])
 @pytest.mark.parametrize("field", ["cdim", "nnz"])
 @pytest.mark.parametrize("is_crow", [True, False])
@@ -345,7 +345,7 @@ def test_validate_compressed_sparse_indices_length_mismatch(field, delta, is_cro
         )
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("is_crow", [True, False])
 def test_validate_compressed_sparse_indices_rank_negative(is_crow):
     device = flag_gems.device
@@ -355,7 +355,7 @@ def test_validate_compressed_sparse_indices_rank_negative(is_crow):
         flag_gems._validate_compressed_sparse_indices(is_crow, scalar, empty, 0, 8, 0)
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("is_crow", [True, False])
 def test_validate_compressed_sparse_indices_int32_overflow_negative(is_crow):
     compressed, plain, cdim, nnz = _descriptor_for_range(
@@ -391,7 +391,7 @@ if flag_gems.vendor_name == "nvidia":
         _UNSUPPORTED_INDEX_DTYPES.extend([torch.float8_e4m3fn, torch.float8_e5m2])
 
 
-@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
 @pytest.mark.parametrize("index_dtype", _UNSUPPORTED_INDEX_DTYPES)
 def test_validate_compressed_sparse_indices_unsupported_dtype_negative(index_dtype):
     compressed, plain, cdim, nnz = _descriptor_for_range(

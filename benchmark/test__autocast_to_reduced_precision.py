@@ -130,7 +130,7 @@ class AutocastToReducedPrecisionBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=ACTRP_SHAPES)
 
 
-@pytest.mark.autocast_to_reduced_precision
+@pytest.mark.underscore_autocast_to_reduced_precision
 def test__autocast_to_reduced_precision():
     bench = AutocastToReducedPrecisionBenchmark(
         op_name="_autocast_to_reduced_precision",

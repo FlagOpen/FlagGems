@@ -68,7 +68,7 @@ class ChooseQParamsPerTensorBenchmark(OperatorBenchmark):
         return []
 
 
-@pytest.mark.choose_qparams_per_tensor
+@pytest.mark.underscore_choose_qparams_per_tensor
 def test__choose_qparams_per_tensor():
     bench = ChooseQParamsPerTensorBenchmark(
         op_name="_choose_qparams_per_tensor",

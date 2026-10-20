@@ -92,7 +92,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("shape", tu.selected_shapes() + [(0,), (2, 0, 3)])
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_test_functorch_fallback(shape, value_range, dtype):
@@ -115,7 +115,7 @@ def test_test_functorch_fallback(shape, value_range, dtype):
         assert res_out.data_ptr() != inp.data_ptr()
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("shape", _TFF_OUT_SHAPES)
 @pytest.mark.parametrize("dtype", _TFF_OUT_DTYPES)
 def test_test_functorch_fallback_out(shape, dtype):
@@ -150,7 +150,7 @@ def _out_buffer(kind, shape, dtype):
     return torch.empty(shape[0] // 2, dtype=dtype), None
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("buffer_kind", _TFF_OUT_BUFFERS)
 def test_test_functorch_fallback_out_buffer(buffer_kind):
     shape = _TFF_OUT_BUFFER_SHAPE
@@ -191,7 +191,7 @@ def _strided_view(base, layout):
     return base.conj()  # lazy conjugate bit on a complex input
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("layout", _TFF_LAYOUTS)
 def test_test_functorch_fallback_layout(layout):
     dtype = torch.complex64 if layout == "conj" else torch.float32
@@ -214,7 +214,7 @@ def test_test_functorch_fallback_layout(layout):
     assert res_out.data_ptr() != source.data_ptr()
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("other_dtype,other_shape", _TFF_OTHER_CASES)
 def test_test_functorch_fallback_ignores_other(other_dtype, other_shape):
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
@@ -232,7 +232,7 @@ def test_test_functorch_fallback_ignores_other(other_dtype, other_shape):
     tu.assert_result_equal(other, ref_other)
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 def test_test_functorch_fallback_returns_fresh_copy():
     inp = tu.make_input(torch.float32, (8, 4), ["-1", "1"]).cpu()
     other = tu.make_input(torch.float32, (8, 4), ["-1", "1"]).cpu()
@@ -253,7 +253,7 @@ def test_test_functorch_fallback_returns_fresh_copy():
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("dtype,form", _TFF_BACKWARD_ROWS)
 def test_test_functorch_fallback_backward_unsupported(form, dtype):
     leaf = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu().requires_grad_(True)
@@ -278,7 +278,7 @@ def test_test_functorch_fallback_backward_unsupported(form, dtype):
         torch.autograd.grad(res_out, leaf, grad_outputs=upstream)
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 def test_test_functorch_fallback_undefined_other():
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
     ref_inp = tu.to_reference(inp)
@@ -291,7 +291,7 @@ def test_test_functorch_fallback_undefined_other():
     assert not torch._C._is_alias_of(res_out, inp)
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("dtype,scenario", _TFF_SPECIAL_CASES)
 def test_test_functorch_fallback_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).cpu()
@@ -316,7 +316,7 @@ def _invalid_call_args(case, inp, other):
     return (inp, 3.5)
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 @pytest.mark.parametrize("case", _TFF_INVALID_CALLS)
 def test_test_functorch_fallback_invalid_input(case):
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
@@ -326,7 +326,7 @@ def test_test_functorch_fallback_invalid_input(case):
         flag_gems._test_functorch_fallback(*_invalid_call_args(case, inp, other))
 
 
-@pytest.mark.test_functorch_fallback
+@pytest.mark.underscore_test_functorch_fallback
 def test_test_functorch_fallback_out_dtype_mismatch():
     inp = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()
     other = tu.make_input(torch.float32, (4, 8), ["-1", "1"]).cpu()

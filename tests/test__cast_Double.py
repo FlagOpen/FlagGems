@@ -88,7 +88,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Double(shape, value_range, dtype):
@@ -123,7 +123,7 @@ _IDENTITY_LAYOUTS = (
 )
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("layout", _IDENTITY_LAYOUTS)
 def test__cast_Double_float64_is_a_pass_through(layout):
     inp = _layout_input(layout, torch.float64)
@@ -153,7 +153,7 @@ def _strided_cases():
     return tu.selected_cases(cases, quick=[])
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("layout,dtype", _strided_cases())
 def test__cast_Double_non_contiguous(layout, dtype):
     inp = _layout_input(layout, dtype)
@@ -210,7 +210,7 @@ def _backward_cases():
     return tu.selected_cases(cases, quick=[])
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("layout,dtype", _backward_cases())
 def test__cast_Double_backward(layout, dtype):
     inp = _backward_input(layout, dtype)
@@ -309,7 +309,7 @@ def _boundary_cases():
     return tu.selected_cases(dtypes, quick=[])
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("dtype", _boundary_cases())
 def test__cast_Double_boundary_values(dtype):
     values = _BOUNDARY_VALUES[dtype]
@@ -333,7 +333,7 @@ _INT64_BOUNDARY_CASES = (
 )
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("dtype", _INT64_BOUNDARY_CASES)
 def test__cast_Double_int64_precision_boundaries(dtype):
     inp = torch.tensor(_INT64_BOUNDARY_VALUES, dtype=dtype, device=flag_gems.device)
@@ -350,7 +350,7 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cast_Double_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -376,7 +376,7 @@ _NON_BLOCKING_CASES = (
 )
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("non_blocking,dtype,shape,value_range", _NON_BLOCKING_CASES)
 def test__cast_Double_non_blocking_positional(non_blocking, dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
@@ -388,7 +388,7 @@ def test__cast_Double_non_blocking_positional(non_blocking, dtype, shape, value_
     tu.assert_result_equal(res_out, ref_out)
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("non_blocking,dtype,shape,value_range", _NON_BLOCKING_CASES)
 def test__cast_Double_non_blocking_keyword(non_blocking, dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
@@ -408,7 +408,7 @@ _INTEGER_CASES = tu.selected_cases(
 )
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("dtype", _INTEGER_CASES)
 def test__cast_Double_integer_input_is_not_differentiable(dtype):
     inp = torch.ones(4, dtype=dtype, device=flag_gems.device)
@@ -424,19 +424,19 @@ def test__cast_Double_integer_input_is_not_differentiable(dtype):
     assert res_out.requires_grad is False
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 def test__cast_Double_rejects_non_tensor():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._cast_Double(1.5)
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 def test__cast_Double_rejects_missing_argument():
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._cast_Double()
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("non_blocking", ["yes", ["a"], {"a": 1}])
 def test__cast_Double_rejects_invalid_non_blocking(non_blocking):
     inp = torch.zeros(4, dtype=torch.int32, device=flag_gems.device)
@@ -444,7 +444,7 @@ def test__cast_Double_rejects_invalid_non_blocking(non_blocking):
         flag_gems._cast_Double(inp, non_blocking)
 
 
-@pytest.mark.cast_Double
+@pytest.mark.underscore_cast_Double
 @pytest.mark.parametrize("keyword", ["dtype", "out", "unknown_flag"])
 def test__cast_Double_rejects_unknown_keyword(keyword):
     inp = torch.zeros(4, dtype=torch.int32, device=flag_gems.device)

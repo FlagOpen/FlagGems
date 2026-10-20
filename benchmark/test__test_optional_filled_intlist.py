@@ -142,7 +142,7 @@ class OptionalFilledIntlistBenchmark(OperatorBenchmark):
         self.shapes = _dedup_shapes(list(self.shapes) + _BENCH_EXTRA_SHAPES)
 
 
-@pytest.mark.test_optional_filled_intlist
+@pytest.mark.underscore_test_optional_filled_intlist
 def test__test_optional_filled_intlist():
     bench = OptionalFilledIntlistBenchmark(
         op_name="_test_optional_filled_intlist",

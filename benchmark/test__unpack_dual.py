@@ -86,7 +86,7 @@ class _UnpackDualBenchmark(OperatorBenchmark):
         self.shapes = [shape for shape in self.shapes if math.prod(shape) <= MAX_NUMEL]
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 def test__unpack_dual():
     # The level must stay live for the entire benchmark run, so dual_level() is
     # entered here and the input builder closes over the exact level index it
@@ -104,7 +104,7 @@ def test__unpack_dual():
         bench.run()
 
 
-@pytest.mark.unpack_dual
+@pytest.mark.underscore_unpack_dual
 def test__unpack_dual_plain():
     # The tangent-None path: a plain tensor has no forward tangent at level 0,
     # so unpacking only produces the aliasing primal view. It is timed outside

@@ -122,7 +122,7 @@ def _build_inputs_fn(plan, dtype, device):
     return (device_index, {})
 
 
-@pytest.mark.cufft_get_plan_cache_size
+@pytest.mark.underscore_cufft_get_plan_cache_size
 @pytest.mark.skipif(
     not _NATIVE_AVAILABLE,
     reason=(

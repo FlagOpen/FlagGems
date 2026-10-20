@@ -57,7 +57,7 @@ class VersionBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_VERSION_SHAPES)
 
 
-@pytest.mark.version
+@pytest.mark.underscore_version
 def test__version():
     bench = VersionBenchmark(
         op_name="_version",

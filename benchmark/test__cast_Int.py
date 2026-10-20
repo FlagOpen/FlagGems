@@ -86,7 +86,7 @@ class CastIntBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_CAST_INT_SHAPES)
 
 
-@pytest.mark.cast_Int
+@pytest.mark.underscore_cast_Int
 def test__cast_Int():
     bench = CastIntBenchmark(
         op_name="_cast_Int",
