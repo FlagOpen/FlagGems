@@ -112,7 +112,10 @@ def test_values_alias_mutation():
     res = flag_gems.values(inp)
     res.add_(1.0)
     assert torch.equal(inp._values(), res)
-    utils.gems_assert_equal(inp.values(), res)
+    # Both sides live on the flag_gems device, so compare in place instead of
+    # routing through gems_assert_equal, whose quick-cpu mode requires a
+    # CPU-resident reference.
+    assert torch.equal(inp.values(), res)
 
 
 @pytest.mark.values
@@ -179,11 +182,11 @@ def test_values_autograd():
     assert res_out.requires_grad == ref_out.requires_grad
     assert type(res_out.grad_fn) is type(ref_out.grad_fn)
     assert res_out.data_ptr() == inp._values().data_ptr()
-    utils.gems_assert_equal(res_out, ref_out)
+    assert torch.equal(res_out, ref_out)
 
     (grad,) = torch.autograd.grad(res_out.sum(), values, retain_graph=True)
     (ref_grad,) = torch.autograd.grad(ref_out.sum(), ref_values, retain_graph=True)
-    utils.gems_assert_equal(grad, ref_grad)
+    assert torch.equal(grad, ref_grad)
 
 
 @pytest.mark.values
@@ -203,9 +206,9 @@ def test_values_compressed_layouts_native():
         res = flag_gems.values(inp)
         first = inp.values()
         assert res.data_ptr() == first.data_ptr()
-        utils.gems_assert_equal(res, first)
+        assert torch.equal(res, first)
 
     bsr = dense.to_sparse_bsr((1, 2))
     res = flag_gems.values(bsr)
     assert res.data_ptr() == bsr.values().data_ptr()
-    utils.gems_assert_equal(res, bsr.values())
+    assert torch.equal(res, bsr.values())
