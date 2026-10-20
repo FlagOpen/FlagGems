@@ -26,19 +26,95 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate nonempty FP8 test payloads",
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+        if low == high:
+            value = torch.full(shape, low, dtype=torch.float32, device="cpu")
+        else:
+            value = torch.testing.make_tensor(
+                shape, dtype=torch.float32, device="cpu", low=low, high=high
+            )
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    cpu_encoding = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    cpu_encoding = cpu_encoding or (
+        flag_gems.vendor_name == "ascend" and dtype == torch.float64
+    )
+    if cpu_encoding:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+_KUNLUN_FP64_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Kunlunxin narrows float64 storage to float32",
 )
 
 
 def _input_marks(dtype, shape, kind="plain"):
-    marks = []
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and all(shape):
-        marks.append(_ASCEND_FP8_INPUT_SKIP)
-    if kind in ("channels_last", "channels_last_3d"):
-        marks.append(_ASCEND_LAYOUT_SKIP)
-    return marks
+    return (_KUNLUN_FP64_SKIP,) if dtype == torch.float64 else ()
 
 
 def _reference_layout(inp):
@@ -50,11 +126,6 @@ def _reference_layout(inp):
         )
     return inp
 
-
-_ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot construct channels-last input layouts",
-)
 
 SUPPORTED_DTYPES = list(tu.REQUIRED_DTYPES) + [
     torch.float64,
@@ -118,6 +189,8 @@ _SPECIAL_VALUE_CASES = tu.selected_cases(
 
 def _input_state(inp):
     return (
+        inp.dtype,
+        inp.device,
         tuple(inp.shape),
         inp.stride(),
         inp.storage_offset(),
@@ -131,7 +204,7 @@ def _input_state(inp):
 
 def _make_layout_input(kind, shape, dtype):
     # Values are decorative for this predicate; only the layout matters.
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     if kind == "plain":
         return inp
     if kind in ("transposed", "transposed_singleton", "empty_transposed"):
@@ -153,8 +226,20 @@ def _make_layout_input(kind, shape, dtype):
     if kind == "expanded_singleton":
         return inp.expand(1, 1)
     if kind == "channels_last":
+        if flag_gems.vendor_name == "ascend" or (
+            flag_gems.vendor_name == "kunlunxin"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        ):
+            cpu = _copy_to(inp, "cpu").to(memory_format=torch.channels_last)
+            return _copy_to(cpu, inp.device)
         return inp.to(memory_format=torch.channels_last)
     if kind == "channels_last_3d":
+        if flag_gems.vendor_name == "ascend" or (
+            flag_gems.vendor_name == "kunlunxin"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        ):
+            cpu = _copy_to(inp, "cpu").to(memory_format=torch.channels_last_3d)
+            return _copy_to(cpu, inp.device)
         return inp.to(memory_format=torch.channels_last_3d)
     if kind == "transposed_3d":
         return inp.transpose(0, 2)
@@ -195,7 +280,7 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
 )
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_is_contiguous(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
 
     res = flag_gems.is_contiguous(inp)
@@ -266,7 +351,7 @@ def test_is_contiguous_memory_format(kind, shape, memory_format, dtype):
     ],
 )
 def test_is_contiguous_special_values(dtype, scenario, kind):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _make_special_input(dtype, scenario)
     inp = payload if kind == "plain" else payload[::2]
     ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
 
@@ -278,7 +363,7 @@ def test_is_contiguous_special_values(dtype, scenario, kind):
 
 @pytest.mark.is_contiguous
 def test_is_contiguous_keeps_input_state():
-    inp = tu.make_input(torch.float32, (8, 12), ["-1", "1"])[:, ::2]
+    inp = _make_input(torch.float32, (8, 12), ["-1", "1"])[:, ::2]
     ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
     state_before = _input_state(inp)
 
@@ -297,7 +382,7 @@ def test_is_contiguous_rejects_non_tensor():
 
 @pytest.mark.is_contiguous
 def test_is_contiguous_rejects_extra_argument():
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.is_contiguous(inp, torch.contiguous_format, 1)
@@ -308,7 +393,7 @@ def test_is_contiguous_rejects_extra_argument():
 def test_is_contiguous_rejects_invalid_memory_format(memory_format):
     # Unknown integer memory_format codes are accepted natively, so only
     # non-integer values are negative cases.
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.is_contiguous(inp, memory_format)
