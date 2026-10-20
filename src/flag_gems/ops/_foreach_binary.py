@@ -359,9 +359,31 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
     # list times an fp32 scalar tensor stays fp16, while a genuine fp32 tensor
     # list would promote. Expanding first and asking ``result_type`` afterwards
     # would silently widen the result.
-    out_dtypes = [_promote_dtypes(t, other) for t in self_list]
-    if op.out_dtype_fn is not None:
-        out_dtypes = [op.out_dtype_fn(dt) for dt in out_dtypes]
+    #
+    # ``_promote_dtypes`` keys on (dtype, is-zero-dimensional) for each side, so
+    # a list whose entries all share that pair resolves with one lookup rather
+    # than sixteen.  A mixed list falls back to the per-tensor form, which is
+    # the same function and therefore yields the same dtypes.
+    n = len(self_list)
+    homogeneous = False
+    if n:
+        first = self_list[0]
+        first_dtype = first.dtype
+        first_zero_dim = first.dim() == 0
+        homogeneous = True
+        for t in self_list:
+            if t.dtype is not first_dtype or (t.dim() == 0) != first_zero_dim:
+                homogeneous = False
+                break
+    if homogeneous:
+        promoted = _promote_dtypes(first, other)
+        if op.out_dtype_fn is not None:
+            promoted = op.out_dtype_fn(promoted)
+        out_dtypes = [promoted] * n
+    else:
+        out_dtypes = [_promote_dtypes(t, other) for t in self_list]
+        if op.out_dtype_fn is not None:
+            out_dtypes = [op.out_dtype_fn(dt) for dt in out_dtypes]
     res = foreach_binary_list(
         self_list,
         operands,
