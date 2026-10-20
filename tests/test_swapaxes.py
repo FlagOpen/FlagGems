@@ -182,14 +182,18 @@ def test_swapaxes_storage_offset_preserved(dtype):
     inp = base[2:7]
     offset = inp.storage_offset()
     assert offset != 0
-    ref_inp = utils.to_reference(inp)
 
     res_out = flag_gems.swapaxes(inp, 0, 2)
-    ref_out = torch.swapaxes(ref_inp, 0, 2)
+    # Compare metadata against same-device ATen: to_reference may copy across
+    # devices, which resets the offset on the reference operand.
+    aten_out = torch.swapaxes(inp, 0, 2)
 
-    assert res_out.storage_offset() == ref_out.storage_offset() == offset
-    assert res_out.stride() == ref_out.stride()
+    assert res_out.storage_offset() == aten_out.storage_offset() == offset
+    assert res_out.stride() == aten_out.stride()
     assert res_out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.swapaxes(ref_inp, 0, 2)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
