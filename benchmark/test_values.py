@@ -35,9 +35,15 @@ class SparseValuesBenchmark(base.Benchmark):
 
     DEFAULT_METRICS = consts.DEFAULT_METRICS
     # (nnz,) tuples. The accessor is O(1) in nnz (a pure alias return), so a
-    # small sweep of stored-value counts is enough to cover the host path; the
-    # harness may replace these with the configured shape file.
+    # small sweep of stored-value counts is enough to cover the host path.
     DEFAULT_SHAPES = [(1,), (64,), (1024,)]
+
+    def set_shapes(self, shape_file_path=None):
+        # core_shapes.yaml has no `values` entry, so the base `Benchmark`
+        # fallback would pull in its generic dense shapes; shape[0] is nnz
+        # here, and a 2**30-entry COO tensor OOMs on construction. Pin the
+        # sweep to DEFAULT_SHAPES instead.
+        self.shapes = self.DEFAULT_SHAPES
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
