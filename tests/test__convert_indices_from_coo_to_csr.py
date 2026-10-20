@@ -394,7 +394,7 @@ def test__convert_indices_from_coo_to_csr_out(guard, out_int32):
     expected.narrow(0, guard, size + 1).copy_(ref_out)
     assert res_out is res_buf
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(res_parent, expected)
+    tu.assert_result_equal(res_parent, tu.to_reference(expected))
 
 
 # Negative cases. Every form was measured on the native operator first; only the
