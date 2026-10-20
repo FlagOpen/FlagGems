@@ -21,6 +21,88 @@ from . import accuracy_utils as utils
 from . import test_utils as tu
 
 
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # Encode FP8 on CPU; device-side FP32-to-FP8 casts are unavailable.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if low == high:
+        result = torch.full(shape, low, dtype=dtype, device="cpu")
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return result.to(flag_gems.device)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], device="cpu", dtype=torch.float32)
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+
+
+def _comparison_to_cpu(tensor):
+    fp8 = tensor.dtype in tu._FP8_DTYPES
+    if tensor.layout == torch.strided and (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and tensor.device.type != "cpu"
+        or (fp8 and tensor.is_neg())
+    ):
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if fp8:
+            values = values.float()
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+    values = tensor.cpu()
+    return values.float() if fp8 else values
+
+
+def _assert_result_equal(result, reference):
+    # Validate the original device and metadata before CPU value observation.
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
+    assert result.shape == reference.shape
+    if utils.TO_CPU:
+        assert reference.device == torch.device("cpu")
+    else:
+        assert result.device == reference.device
+    if result.dtype in tu._FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()
+    ):
+        result, reference = _comparison_to_cpu(result), _comparison_to_cpu(reference)
+    tu.assert_result_equal(result, reference)
+
+
 def _support_gated(dtypes):
     """Keep only the dtypes the active device declares support for.
 
@@ -108,7 +190,7 @@ MESSAGE_CASES = [
 ]
 
 # tu.special_value_cases() skips non-floating dtypes, so the complex64 rows are appended
-# here and built by the shared tu.make_special_input(). That helper also omits inf/mixed
+# here and built by the shared _make_special_input(). That helper also omits inf/mixed
 # for float8_e4m3fn, which cannot represent infinity; those e4m3fn finite extremes
 # (448 / -448) are therefore covered by the ["0", "max"] and ["min", "0"] rows of the
 # main grid below, not by this family.
@@ -220,9 +302,9 @@ def _assert_token_copy(res_out, token, ref_out, before):
         assert (
             res_out.untyped_storage().data_ptr() != token.untyped_storage().data_ptr()
         )
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # A candidate that copies dep_token and then corrupts the input is still wrong.
-    tu.assert_result_equal(token, before)
+    _assert_result_equal(token, tu.to_reference(before))
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -242,7 +324,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__functional_assert_scalar(dtype, shape, value_range):
-    token = tu.make_input(dtype, shape, value_range)
+    token = _make_input(dtype, shape, value_range)
     ref_token = tu.to_reference(token)
     before = token.clone()
 
@@ -308,7 +390,7 @@ def test__functional_assert_scalar_empty_token(view, dtype):
 )
 @pytest.mark.parametrize("scalar", SCALAR_VALUES)
 def test__functional_assert_scalar_scalar_operand(scalar, dtype):
-    token = tu.make_input(dtype, (4, 8, 6), ["-1", "1"])
+    token = _make_input(dtype, (4, 8, 6), ["-1", "1"])
     ref_token = tu.to_reference(token)
     before = token.clone()
 
@@ -325,7 +407,7 @@ def test__functional_assert_scalar_scalar_operand(scalar, dtype):
 )
 def test__functional_assert_scalar_keyword_arguments(dtype):
     # The schema requires all three arguments; naming them is the second valid call form.
-    token = tu.make_input(dtype, (4, 8, 6), ["-1", "1"])
+    token = _make_input(dtype, (4, 8, 6), ["-1", "1"])
     ref_token = tu.to_reference(token)
     before = token.clone()
 
@@ -343,7 +425,7 @@ def test__functional_assert_scalar_keyword_arguments(dtype):
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_TOKEN_CASES)
 def test__functional_assert_scalar_special_token_values(dtype, scenario):
     # dep_token values are copied verbatim, so nan/inf must survive the copy.
-    token = tu.make_special_input(dtype, scenario)
+    token = _make_special_input(dtype, scenario)
     ref_token = tu.to_reference(token)
     before = token.clone()
 
@@ -356,7 +438,7 @@ def test__functional_assert_scalar_special_token_values(dtype, scenario):
 @pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("scalar", ZERO_SCALARS)
 def test__functional_assert_scalar_zero_scalar_raises(scalar):
-    token = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    token = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError) as excinfo:
         flag_gems._functional_assert_scalar(scalar, MSG, token)
@@ -367,7 +449,7 @@ def test__functional_assert_scalar_zero_scalar_raises(scalar):
 @pytest.mark.underscore_functional_assert_scalar
 @pytest.mark.parametrize("msg,expected", MESSAGE_CASES)
 def test__functional_assert_scalar_assert_message(msg, expected):
-    token = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    token = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError) as excinfo:
         flag_gems._functional_assert_scalar(0.0, msg, token)
@@ -379,7 +461,7 @@ def test__functional_assert_scalar_assert_message(msg, expected):
 def test__functional_assert_scalar_rejects_tensor_self():
     # A 0-dim Tensor is rejected by schema validation ('Expected a value of type
     # number for argument self'), so the Scalar operand is always a Python number.
-    token = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    token = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError):
         flag_gems._functional_assert_scalar(
@@ -389,7 +471,7 @@ def test__functional_assert_scalar_rejects_tensor_self():
 
 @pytest.mark.underscore_functional_assert_scalar
 def test__functional_assert_scalar_rejects_non_number_self():
-    token = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    token = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError):
         flag_gems._functional_assert_scalar("1.0", MSG, token)
@@ -399,7 +481,7 @@ def test__functional_assert_scalar_rejects_non_number_self():
 @pytest.mark.parametrize("msg", [None, 123, 1.5, ["m"]])
 def test__functional_assert_scalar_rejects_non_str_message(msg):
     # bytes are accepted natively as a str argument, so they are not a negative case.
-    token = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    token = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError):
         flag_gems._functional_assert_scalar(1.0, msg, token)
