@@ -96,6 +96,39 @@ def _reduction_chunks(
     return max(1, min(g, triton.cdiv(max_numel, block)))
 
 
+# Redispatching past the Python registration hands the copy to the C++ kernel.
+# ``CompositeExplicitAutograd`` is the same keyset ``ops/to.py`` uses for its
+# own fallbacks: it skips every Python-level implementation the active backend
+# installed without skipping the ATen kernels underneath.
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+_ATEN_COPY = torch.ops.aten.copy_.default
+
+
+def _device_meta(values: List[int], device: torch.device) -> torch.Tensor:
+    """Pack ``values`` into one int64 tensor on ``device`` with two C++ calls.
+
+    ``torch.tensor(values).to(device)`` costs ~19.7us of host time here, ~11.5us
+    of it inside the Python-level ``to_copy`` that FlagGems installs while gems
+    are on.  Allocating the device buffer directly and redispatching
+    ``aten::copy_`` past that registration measured 11.4us for the same transfer
+    and the same device-visible work (``do_bench`` 5.3us either way).
+
+    The source stays pageable on purpose: CUDA stages a pageable source into its
+    own buffer before the copy call returns, so the freshly built CPU tensor may
+    be released with this frame.  A pinned source is not staged, so it would
+    have to outlive the DMA -- and a buffer cached across calls would be
+    overwritten by the next call while the previous transfer was still in
+    flight.
+    """
+    meta = torch.empty(len(values), dtype=torch.int64, device=device)
+    _ATEN_COPY.redispatch(
+        _FALLBACK_KEYSET, meta, torch.tensor(values, dtype=torch.int64), True
+    )
+    return meta
+
+
 # ---------------------------------------------------------------------------
 # max
 # ---------------------------------------------------------------------------
@@ -189,10 +222,7 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
         work_numels = [numels[i] for i in idxs]
         nt = len(work)
         max_numel = max(work_numels)
-        meta = torch.tensor(
-            [w.data_ptr() for w in work] + work_numels,
-            dtype=torch.int64,
-        ).to(device, non_blocking=True)
+        meta = _device_meta([w.data_ptr() for w in work] + work_numels, device)
         neg_inf = (
             float("-inf") if dtype.is_floating_point else float(torch.iinfo(dtype).min)
         )
@@ -407,9 +437,7 @@ def _pow_sum_list(
                 g = 1
             else:
                 g = _reduction_chunks(len(work), max_numel, device, 1024)
-            meta = torch.tensor(
-                [w.data_ptr() for w in work] + numels, dtype=torch.int64
-            ).to(device, non_blocking=True)
+            meta = _device_meta([w.data_ptr() for w in work] + numels, device)
             # fp32 partials keep the accumulation accuracy of the single-stage
             # kernel even though the output dtype may be fp16/bf16.
             partial = torch.empty(len(work) * g, dtype=torch.float32, device=device)
@@ -546,9 +574,7 @@ def _zero_list(tensors: List[torch.Tensor]) -> None:
         # Two dimensions cost nothing for a small list and keep the program
         # count bounded when one tensor is much larger than its neighbours.
         block = _pick_block(numels)
-        meta = torch.tensor(
-            [w.data_ptr() for w in work] + numels, dtype=torch.int64
-        ).to(device, non_blocking=True)
+        meta = _device_meta([w.data_ptr() for w in work] + numels, device)
         _zero_list_kernel[(len(work), triton.cdiv(max_numel, block))](
             meta,
             IN_DT=tl_dtype(dtype),
