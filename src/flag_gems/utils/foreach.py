@@ -1925,7 +1925,9 @@ def _launch_scalar_group(
             device, non_blocking=True
         )
         scalar_value = 0.0
-    grid = (nt, triton.cdiv(max_numel, block))
+    # ``triton.cdiv`` is a decorated helper and is far from free at this size;
+    # plain ints give the same ceiling division.
+    grid = (nt, -(-max_numel // block))
     _launch_scalar_kernel(
         meta,
         scalar_buf,
