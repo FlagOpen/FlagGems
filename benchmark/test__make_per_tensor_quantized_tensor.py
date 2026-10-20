@@ -20,6 +20,9 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_make_per_tensor_quantized_tensor
+
 # aten::_make_per_tensor_quantized_tensor(Tensor self, float scale, int
 # zero_point) -> Tensor wraps an integer tensor into a per-tensor affine
 # quantized tensor: the output dtype is derived from the input dtype via
@@ -122,6 +125,7 @@ def test__make_per_tensor_quantized_tensor():
 
 
 @pytest.mark.make_per_tensor_quantized_tensor_out
+@pytest.mark.underscore_make_per_tensor_quantized_tensor
 def test__make_per_tensor_quantized_tensor_out():
     bench = MakePerTensorQuantizedTensorBenchmark(
         op_name="_make_per_tensor_quantized_tensor",

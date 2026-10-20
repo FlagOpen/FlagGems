@@ -46,6 +46,9 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.chain_matmul
+
 # Large chains from PR #7028 must participate in core optimization, not only
 # comprehensive reporting. Keep the existing core cases below as well.
 CORE_CHAINS = (
@@ -131,8 +134,8 @@ def _build_inputs_fn_out(plan, dtype, device):
     return matrices, {"out": out}
 
 
-@pytest.mark.chain_matmul
 @pytest.mark.chain_matmul_benchmark
+@pytest.mark.chain_matmul
 def test_chain_matmul():
     bench = ChainMatmulBenchmark(
         op_name="chain_matmul",
@@ -151,6 +154,7 @@ def test_chain_matmul():
 
 @pytest.mark.chain_matmul_out
 @pytest.mark.chain_matmul_benchmark
+@pytest.mark.chain_matmul
 def test_chain_matmul_out():
     bench = ChainMatmulOutBenchmark(
         op_name="chain_matmul",

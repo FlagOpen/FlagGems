@@ -21,6 +21,9 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_efficientzerotensor
+
 # Create fresh zeros, or overwrite and return the supplied out buffer.
 _EFFICIENTZEROTENSOR_DTYPES = (
     tu.REQUIRED_DTYPES

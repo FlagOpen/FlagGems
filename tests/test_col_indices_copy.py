@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.col_indices_copy
+
 # col_indices_copy returns an independent, contiguous copy of sparse indices.
 # Prefill out buffers with -1 so missing writes cannot match valid indices.
 _COLS_DTYPES = tu.REQUIRED_DTYPES + [torch.int16, torch.float64, torch.bool]

@@ -21,6 +21,9 @@ import flag_gems
 
 from . import base, consts
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.detach_copy
+
 # detach_copy is a pure memory copy: unary, pointwise in shape space and
 # dtype-agnostic. The public UnaryPointwiseBenchmark family covers the .default
 # overload (single tensor in, fresh tensor out) and UnaryPointwiseOutBenchmark
@@ -68,6 +71,7 @@ def test_detach_copy():
 
 
 @pytest.mark.detach_copy_out
+@pytest.mark.detach_copy
 def test_detach_copy_out():
     bench = DetachCopyOutBenchmark(
         op_name="detach_copy",

@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_3d
+
 
 def _assert_result_equal(result, reference):
     if flag_gems.vendor_name == "ascend" and result.is_complex():

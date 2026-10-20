@@ -22,6 +22,9 @@ import flag_gems
 from . import conftest as cfg
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_make_per_channel_quantized_tensor
+
 # Copy integer storage and attach per-channel scale/zero-point metadata.
 # Integer zero points use affine qparams; floating zero points use float_qparams.
 _STORAGE_DTYPES = [torch.uint8, torch.int8, torch.int32]

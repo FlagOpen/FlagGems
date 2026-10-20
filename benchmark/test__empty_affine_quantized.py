@@ -21,6 +21,9 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_empty_affine_quantized
+
 # aten::_empty_affine_quantized is a factory that returns a fresh per-tensor
 # affine quantized tensor with uninitialized storage, so the benchmark measures
 # dispatch + storage-construction overhead rather than memory bandwidth. The
@@ -116,6 +119,7 @@ def test__empty_affine_quantized():
 
 
 @pytest.mark.empty_affine_quantized_out
+@pytest.mark.underscore_empty_affine_quantized
 def test__empty_affine_quantized_out():
     bench = EmptyAffineQuantizedBenchmark(
         op_name="_empty_affine_quantized",

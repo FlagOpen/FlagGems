@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_neg_view_copy
+
 # Materialize negated values in independent contiguous storage.
 _NEG_VIEW_COPY_DTYPES = (
     [

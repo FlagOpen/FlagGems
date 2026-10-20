@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.slow_conv_transpose2d
+
 # Test transposed conv2d; weight dimensions are (C_in, C_out, kH, kW).
 # Extreme ranges retain their bounds and use the original reference dtype to preserve overflow.
 # Cases: (input shape, weight shape, kernel size, stride, padding, output padding, dilation).

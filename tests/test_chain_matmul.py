@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.chain_matmul
+
 # Match the six large matrix chains added to the core benchmark (PR #7028).
 _LARGE_CHAIN_DIMENSIONS = (
     (1024, 64, 1024),

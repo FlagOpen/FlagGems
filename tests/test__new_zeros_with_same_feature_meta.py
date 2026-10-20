@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_new_zeros_with_same_feature_meta
+
 # Allocate zeros with shape self.shape[:N] + other.shape and other's dtype/device.
 # Cases are (self_shape, other_shape, N), where N is self_num_batch_dims.
 _NEW_ZEROS_WITH_SAME_FEATURE_META_CASES = [

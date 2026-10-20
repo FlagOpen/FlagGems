@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.sparse_bsc_tensor
+
 # Build compressed sparse storage from index and value tensors.
 # Pass dtype explicitly: these ATen factories default to float32.
 # Accelerator inputs also need an explicit device.

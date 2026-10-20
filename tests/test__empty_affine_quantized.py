@@ -24,6 +24,9 @@ import flag_gems
 from . import conftest as cfg
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_empty_affine_quantized
+
 # Allocate uninitialized quantized storage; compare layout and per-tensor qparams.
 QUANT_DTYPES = [torch.quint8, torch.qint8, torch.qint32]
 

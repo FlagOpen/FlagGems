@@ -22,6 +22,9 @@ import flag_gems
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_1d
+
 # aten::atleast_1d is a pure view/identity op (0-dim -> (1,) view, ndim >= 1
 # returned unchanged). No public Benchmark family models a view identity op, so
 # both overloads use a two-phase GenericBenchmark (case_fn + build_inputs_fn).
@@ -93,6 +96,7 @@ def test_atleast_1d():
 
 
 @pytest.mark.atleast_1d_sequence
+@pytest.mark.atleast_1d
 def test_atleast_1d_sequence():
     bench = Atleast1DBenchmark(
         op_name="atleast_1d",

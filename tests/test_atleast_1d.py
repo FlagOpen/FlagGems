@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_1d
+
 # Scalars become (1,) views; tensors with ndim >= 1 are returned unchanged.
 _FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2]
 _SUPPORTED_DTYPES = (
