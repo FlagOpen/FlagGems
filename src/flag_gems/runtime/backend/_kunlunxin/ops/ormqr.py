@@ -956,6 +956,10 @@ def _ormqr_blocked(inp, tau, other):
     N = other.shape[1]
     if tau.shape[0] != k or other.shape[0] != M:
         return None
+    if k > M:
+        # Left-mode reflector i is only defined for i < M; V is allocated (M, k)
+        # and a k > M input would read past the end of the reflector columns.
+        return None
     nb = _BLOCK_NB
     dev = other.device
     V = torch.empty(M, k, dtype=torch.float32, device=dev)
@@ -1007,8 +1011,17 @@ def _ormqr_blocked(inp, tau, other):
         i1 = min(k, i0 + nb)
         m_ = i1 - i0
         Vb = V[:, i0:i1]
-        Gv = G[:m_, :m_]
-        Tv = T[:m_, :m_]
+        if m_ == nb:
+            Gv = G[:m_, :m_]
+            Tv = T[:m_, :m_]
+        else:
+            # Short tail block (k % nb != 0): the larft payload walks G and T
+            # with leading dimension m_, so a [:m_, :m_] view of the nb-wide
+            # buffers (leading dimension nb) would be read/written at the wrong
+            # stride. Give it exact-size contiguous buffers instead -- one
+            # allocation per call, since only the last block can be short.
+            Gv = torch.empty(m_, m_, dtype=torch.float32, device=dev)
+            Tv = torch.empty(m_, m_, dtype=torch.float32, device=dev)
         Wv = W[:m_, :]
         Xv = X[:m_, :]
         gem(Vb, Vb, Gv, m_, m_, M, at=True)  # G = Vb^T Vb
