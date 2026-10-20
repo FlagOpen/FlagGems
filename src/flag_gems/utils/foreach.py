@@ -504,9 +504,10 @@ def launch_stats() -> Dict[str, int]:
 # it can change the result.  The hit rate is high by construction: a benchmark
 # loop launches the same variant thousands of times.
 #
-# Only the *launcher* is cached.  The metadata tensor is rebuilt and uploaded on
-# every call, so no device-visible buffer is shared across calls; see
-# ``_device_meta``.
+# Only the *launcher* is cached.  The metadata tensor is built by
+# ``_device_meta``, which memoises it per exact value list and stream (see the
+# comment there); the kernel only reads it, so a repeat call with the same
+# pointers gets the same bytes.
 #
 # The only thing Triton specializes on here is the metadata pointer's 16-byte
 # alignment, so that bit is part of the key and an unusually aligned allocation
@@ -1030,8 +1031,8 @@ def _common_scalar(vals: Sequence[Any]) -> Optional[Any]:
     return first
 
 
-def _device_meta(values: List[int], device: Any) -> torch.Tensor:
-    """A fresh int64 device tensor holding ``values``.
+def _meta_from_values(values: List[int], device: Any) -> torch.Tensor:
+    """Build an int64 device tensor holding ``values`` (one pageable H2D copy).
 
     ``array.array`` + ``frombuffer`` skips the generic sequence-to-tensor path,
     and going through ``empty`` + ``copy_`` sidesteps the dispatcher's
@@ -1045,10 +1046,6 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     (P1's cProfile: ``copy_`` cumulative 13.5-14.9us, of which the transfer is
     small).  ``redispatch`` is only an optimisation, so a build without it falls
     back to the regular method.
-
-    Both sides are fresh on every call.  The host buffer is pageable, so the
-    runtime stages it before the copy call returns; nothing is reused, which is
-    exactly what made the cached pinned staging pool unsafe.
     """
     host = torch.frombuffer(array.array("q", values), dtype=torch.int64)
     out = torch.empty(len(values), dtype=torch.int64, device=device)
@@ -1058,6 +1055,55 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
         # Skip the Python-level copy_ registration and go straight to the
         # CompositeExplicitAutograd implementation.
         _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
+    return out
+
+
+# A pageable H2D copy blocks the host until the stream reaches it, and it is the
+# single largest exposed cost of a small foreach call: the request is 100-200
+# bytes wide, so the transfer itself is nothing and the wait is everything.
+# In a steady loop the request is byte-identical from call to call -- the same
+# tensor list, and outputs served from the caching allocator's recycled blocks
+# -- so the built tensor can be reused instead of rebuilt.
+#
+# Reuse is exact, not a heuristic about what the metadata "probably" is: the key
+# is the whole value list, so a hit can only return a buffer whose contents are
+# the bytes this call would have written.  The buffer is never written again
+# after it is built and the kernel only reads it, so an in-flight launch from an
+# earlier call cannot observe anything different.  The *stream* is part of the
+# key because that ordering argument is per stream: a buffer built on stream A
+# is only picked up by calls that run on stream A, where the H2D that produced
+# it is ordered before the new launch.  A call on another stream simply misses
+# and builds its own.  Nothing is refilled, so this does not reintroduce the
+# reuse hazard that sank the pinned staging pool (that pool rewrote the bytes a
+# DMA was still reading).
+#
+# The bound keeps a workload whose addresses keep moving from growing the cache
+# without limit; insertion order is the eviction order.
+_META_CACHE: Dict[Tuple[Any, int, Tuple[int, ...]], torch.Tensor] = {}
+_META_CACHE_LIMIT = 32
+
+
+def _device_meta(values: List[int], device: Any) -> torch.Tensor:
+    """A read-only int64 device tensor holding ``values`` (memoised).
+
+    See :func:`_meta_from_values` for how it is built and the cache comment
+    above for why a hit is exact.
+    """
+    # ``device`` is a ``torch.device`` carrying an index at every call site; a
+    # bare ``torch.device("cuda")`` means the current device, which is what
+    # ``torch.empty`` would have used.
+    index = device.index if isinstance(device, torch.device) else None
+    if index is None:
+        index = torch.cuda.current_device()
+    stream = _triton_driver.active.get_current_stream(index)
+    key = (device, stream, tuple(values))
+    cached = _META_CACHE.get(key)
+    if cached is not None:
+        return cached
+    out = _meta_from_values(values, device)
+    if len(_META_CACHE) >= _META_CACHE_LIMIT:
+        _META_CACHE.pop(next(iter(_META_CACHE)))
+    _META_CACHE[key] = out
     return out
 
 
