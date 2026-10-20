@@ -71,10 +71,6 @@ def test_indices_copy(nnd, nnz, size):
     # reference to CPU; this suite is validated on the device path.
     if utils.TO_CPU:
         pytest.skip("reference-device suite; skipped under --ref=cpu")
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     # The native CUDA op has no sparse-COO kernel, so the reference is the
     # plain indices accessor copied on device.
     res_inp = _make_coo(nnd, nnz, size, flag_gems.device, seed=3)
@@ -97,10 +93,6 @@ def test_indices_copy_empty():
     # reference to CPU; this suite is validated on the device path.
     if utils.TO_CPU:
         pytest.skip("reference-device suite; skipped under --ref=cpu")
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     res_inp = torch.sparse_coo_tensor(
         torch.zeros((2, 0), dtype=torch.int64, device=flag_gems.device),
         torch.zeros((0,), device=flag_gems.device),
@@ -113,10 +105,6 @@ def test_indices_copy_empty():
 
 @pytest.mark.indices_copy_out
 def test_indices_copy_out():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     # The op output is device-independent, but --ref=cpu moves the native
     # reference to CPU; this suite is validated on the device path.
     if utils.TO_CPU:
