@@ -527,6 +527,7 @@ def test_index_add_large_source_address():
 @pytest.mark.index_add_
 @pytest.mark.parametrize("inplace", [False, True])
 @pytest.mark.parametrize("suffix", [1, 3, 33])
+@pytest.mark.skipif(not utils.bf16_is_supported, reason="BF16 is not supported")
 def test_index_add_bf16_preserves_fp32_alpha(inplace, suffix):
     # Preserve the existing FP32 scratch multiply. Rounding 0.1 to BF16
     # before multiplying gives 0.25 instead of the exact cancellation 0.
@@ -554,7 +555,9 @@ def test_index_add_fp16_rejects_finite_alpha_overflow(inplace, empty, alpha):
     index = torch.zeros(src.size(1), dtype=torch.int64, device=inp.device)
     original = inp.cpu().clone()
     with pytest.raises(RuntimeError, match="overflow"):
-        torch.index_add(original, 1, index.cpu(), src.cpu(), alpha=alpha)
+        # The GPU checked conversion differs from CPU's multi-dimensional
+        # empty fast return. Compare the actual target backend's Native API.
+        torch.index_add(inp, 1, index, src, alpha=alpha)
     with pytest.raises(RuntimeError, match="overflow"):
         _call_index_add(inp, 1, index, src, inplace, alpha=alpha)
     torch.testing.assert_close(inp.cpu(), original, rtol=0, atol=0)
