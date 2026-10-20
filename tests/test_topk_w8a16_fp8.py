@@ -567,5 +567,17 @@ def test_topk_fp8_output_dtype_and_strides_ascend():
     raw = raw_cpu.npu()
     q = raw.reshape(4, 256)[::2, ::2].view(torch.float8_e4m3fn)
     s = torch.ones((4, 4), device="npu", dtype=torch.float16)[::2, ::2]
-    result = flag_gems.topk_w8a16_fp8(q, s, 17, out_dtype=torch.float16, sorted=False)
-    _check_topk(q_cpu, s_cpu, 17, out_dtype=torch.float16, sorted=False, result=result)
+    # n=128 columns with two scale groups -> group_size=64 (ng=2) matches the
+    # (2, 2) scale; the default group_size would expect a single group.
+    result = flag_gems.topk_w8a16_fp8(
+        q, s, 17, group_size=64, out_dtype=torch.float16, sorted=False
+    )
+    _check_topk(
+        q_cpu,
+        s_cpu,
+        17,
+        group_size=64,
+        out_dtype=torch.float16,
+        sorted=False,
+        result=result,
+    )
