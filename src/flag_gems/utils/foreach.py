@@ -2229,17 +2229,17 @@ def _launch_ternary_group(
     device: Any,
     common: Optional[float] = None,
 ) -> None:
-    numels = [t.numel() for t in a_l]
+    numels = list(map(torch.Tensor.numel, a_l))
     max_numel = max(numels)
     if max_numel == 0:
         return
     block = _pick_block(numels)
     nt = len(a_l)
     meta = _device_meta(
-        [t.data_ptr() for t in a_l]
-        + [t.data_ptr() for t in b_l]
-        + [t.data_ptr() for t in c_l]
-        + [t.data_ptr() for t in d_l]
+        list(map(torch.Tensor.data_ptr, a_l))
+        + list(map(torch.Tensor.data_ptr, b_l))
+        + list(map(torch.Tensor.data_ptr, c_l))
+        + list(map(torch.Tensor.data_ptr, d_l))
         + numels,
         device,
     )
