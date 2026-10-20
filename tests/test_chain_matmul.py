@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -48,24 +50,55 @@ def _resolve_bound(symbol, dtype):
     }[symbol]
 
 
-def _make_input(dtype, shape, value_range):
+def _make_input(dtype, shape, value_range, scale=False):
     low = _resolve_bound(value_range[0], dtype)
     high = _resolve_bound(value_range[1], dtype)
     if low == high:
         return torch.full(shape, low, device=flag_gems.device, dtype=dtype)
-    return torch.testing.make_tensor(
+    tensor = torch.testing.make_tensor(
         shape, dtype=dtype, device=flag_gems.device, low=low, high=high
     )
+    if scale:
+        # Normalize by sqrt(K) so the chain product keeps the magnitude of its
+        # inputs instead of growing by a factor of ~sqrt(K) per matmul. The
+        # long chains below reduce over extents up to 2048, which without this
+        # drives the product of unit-range inputs to ~1e5 -- past the fp16 max
+        # of 65504, so both the reference and the candidate saturate to Inf and
+        # the case stops testing the kernel at all. Scaling in fp32 before the
+        # cast keeps the small-dtype inputs from losing bits to the division.
+        tensor = (tensor.to(torch.float32) / math.sqrt(shape[0])).to(dtype)
+    return tensor
 
 
-def _assert_close(res, ref):
+def _make_chain_inputs(dtype, shapes, value_range):
+    # Only the interior factors are normalized: scaling the first matrix would
+    # shrink the result without shortening the reduction it is scaled for.
+    return [
+        _make_input(dtype, shape, value_range, scale=bool(index))
+        for index, shape in enumerate(shapes)
+    ]
+
+
+def _reduce_dim(shapes):
+    # Largest extent in the chain, matching how the other chained-matmul test
+    # (test_linalg_multi_dot.py) scales its tolerance.
+    return max(extent for shape in shapes for extent in shape)
+
+
+def _assert_close(res, ref, reduce_dim):
     # The reference is kept in the input dtype, so each DP node rounds the same
     # way the candidate does; comparing against an upcast reference would
     # instead measure the chain's accumulated rounding, which differs with the
-    # parenthesization rather than with correctness. reduce_dim stays at its
-    # default for the same reason: the per-node rounding is already matched, so
-    # the tolerance must not grow with the chain's reduction extent.
-    utils.gems_assert_close(res, ref, ref.dtype, equal_nan=True)
+    # parenthesization rather than with correctness.
+    #
+    # The tolerance still has to grow with the chain's reduction extent. Both
+    # sides round per node, but they do not sum each node in the same order:
+    # the DP picks the parenthesization while the tile shape, split-K factor
+    # and K-step order of each gemm are chosen per shape and per device, so the
+    # candidate's reduction order is its own. Over a long reduction those
+    # orders diverge by a few ulp of the accumulator, which is exactly what
+    # reduce_dim is for.
+    utils.gems_assert_close(res, ref, ref.dtype, equal_nan=True, reduce_dim=reduce_dim)
 
 
 def _to_reference(inp):
@@ -142,14 +175,14 @@ NONCONTIG_CHAINS = [
 @pytest.mark.parametrize("value_range", VALUE_RANGES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_chain_matmul(shapes, value_range, dtype):
-    inp = [_make_input(dtype, shape, value_range) for shape in shapes]
+    inp = _make_chain_inputs(dtype, shapes, value_range)
     ref_inp = [_to_reference(matrix) for matrix in inp]
 
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
     res_out = flag_gems.chain_matmul(inp)
 
     assert res_out.is_contiguous()
-    _assert_close(res_out, ref_out.to(dtype))
+    _assert_close(res_out, ref_out.to(dtype), _reduce_dim(shapes))
 
 
 @pytest.mark.chain_matmul
@@ -165,7 +198,7 @@ def test_chain_matmul_non_contiguous(shapes, dtype):
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
     res_out = flag_gems.chain_matmul(inp)
 
-    _assert_close(res_out, ref_out.to(dtype))
+    _assert_close(res_out, ref_out.to(dtype), _reduce_dim(shapes))
 
 
 @pytest.mark.chain_matmul_out
@@ -173,7 +206,7 @@ def test_chain_matmul_non_contiguous(shapes, dtype):
 @pytest.mark.parametrize("value_range", VALUE_RANGES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 def test_chain_matmul_out(shapes, value_range, dtype):
-    inp = [_make_input(dtype, shape, value_range) for shape in shapes]
+    inp = _make_chain_inputs(dtype, shapes, value_range)
     ref_inp = [_to_reference(matrix) for matrix in inp]
 
     out_shape = (shapes[0][0], shapes[-1][1])
@@ -188,7 +221,7 @@ def test_chain_matmul_out(shapes, value_range, dtype):
 
     # The .out overload must write into and return the caller's buffer.
     assert res_ret is out
-    _assert_close(out, ref_out.to(dtype))
+    _assert_close(out, ref_out.to(dtype), _reduce_dim(shapes))
 
 
 @pytest.mark.chain_matmul
@@ -213,7 +246,7 @@ def test_chain_matmul_nan_inf(dtype, scenario):
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
     res_out = flag_gems.chain_matmul(inp)
 
-    _assert_close(res_out, ref_out)
+    _assert_close(res_out, ref_out, _reduce_dim([m1.shape, m2.shape]))
 
 
 @pytest.mark.chain_matmul
@@ -229,9 +262,11 @@ def test_chain_matmul_backward(shapes, dtype):
     ref_out = torch.ops.aten.chain_matmul(ref_inp)
     ref_grads = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
 
+    reduce_dim = _reduce_dim(shapes)
+
     # The candidate forward must match the native-dtype reference...
     res_out = flag_gems.chain_matmul(inp)
-    _assert_close(res_out, ref_out.to(dtype))
+    _assert_close(res_out, ref_out.to(dtype), reduce_dim)
 
     # ...and so must every input gradient, with the dtype preserved.
     assert res_out.requires_grad
@@ -239,7 +274,7 @@ def test_chain_matmul_backward(shapes, dtype):
     for res_grad, ref_g in zip(res_grads, ref_grads):
         assert res_grad.dtype == dtype
         assert res_grad.shape == ref_g.shape
-        _assert_close(res_grad, ref_g.to(dtype))
+        _assert_close(res_grad, ref_g.to(dtype), reduce_dim)
 
 
 @pytest.mark.chain_matmul
