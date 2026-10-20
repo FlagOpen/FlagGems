@@ -462,7 +462,11 @@ def _norm_stage2_kernel(
 # Below this many elements one chunk covers a whole tensor, so stage one can
 # finish the reduction itself and the second launch is pure overhead.  The
 # crossover is measured in e_gate.py, not copied from another operator.
-_NORM_SINGLE_LAUNCH_MAX_NUMEL = 1 << 17
+# fp32, list of 16, ``do_bench`` median on the 78-SM H20 (single / two-stage,
+# us): 65536 26.27 / 29.79, 131072 45.47 / 29.92, 262144 84.67 / 29.57.  The
+# gate used to sit at 2**17, which sent the 131072 rung down the slower
+# single-launch path (+15.5us).
+_NORM_SINGLE_LAUNCH_MAX_NUMEL = 1 << 16
 
 
 def _pow_sum_list(
