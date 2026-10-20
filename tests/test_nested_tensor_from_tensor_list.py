@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
+import unittest.mock
+
 import pytest
 import torch
 
@@ -65,3 +68,36 @@ def test_nested_tensor_from_tensor_list(shapes, dtype):
         assert res_t.shape == ref_t.shape
         ref_t_matched = ref_t if utils.TO_CPU else ref_t.to(res_t.device)
         utils.gems_assert_close(res_t, ref_t_matched, dtype)
+
+
+@pytest.mark.nested_tensor_from_tensor_list
+def test_dispatch_reaches_gems_impl():
+    # Calling the wrapper directly only proves the wrapper runs; this case
+    # proves the dispatcher path: with FlagGems enabled (use_gems()), calling
+    # the aten operator must invoke the registered Gems implementation. The
+    # Gems impl the registrar binds is read from _FULL_CONFIG at registration
+    # time, so the structural proof swaps the config entry for a spy and
+    # asserts the aten call lands there (a plain fallback to aten would skip
+    # the spy entirely).
+    calls = {"count": 0}
+    real_impl = flag_gems._nested_tensor_from_tensor_list
+
+    def spy(*args, **kwargs):
+        calls["count"] += 1
+        return real_impl(*args, **kwargs)
+
+    new_entries = [
+        (entry[0], spy) if entry[0] == "_nested_tensor_from_tensor_list" else entry
+        for entry in flag_gems._FULL_CONFIG
+    ]
+    tensor_list = [
+        torch.randn(3, 8, device=flag_gems.device),
+        torch.randn(2, 8, device=flag_gems.device),
+    ]
+    with unittest.mock.patch.object(flag_gems, "_FULL_CONFIG", tuple(new_entries)):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten._nested_tensor_from_tensor_list(tensor_list)
+
+    assert calls["count"] == 1, "aten dispatch did not reach the Gems implementation"
+    assert res_out.is_nested
+    assert len(torch.unbind(res_out)) == 2
