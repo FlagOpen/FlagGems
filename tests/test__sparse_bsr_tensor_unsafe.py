@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 # aten::_sparse_bsr_tensor_unsafe(Tensor crow_indices, Tensor col_indices,
@@ -102,6 +103,58 @@ def _block_for(size, block):
     return (2, 2) if rows % 2 == 0 and cols % 2 == 0 else (1, 1)
 
 
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin tensor transfer narrows float64 payloads to float32")
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin") or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # The constructor can wrap FP8 storage, although device-side encoding is absent.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if low == high:
+        values = torch.full(shape, low, dtype=torch.float32, device="cpu").to(dtype)
+    else:
+        values = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return values.to(flag_gems.device)
+
+
+def _component_values(tensor):
+    # Copy storage first: NPU FP8 slicing/casts are unavailable. Reconstruct the
+    # original geometry before observing values, including lazy view flags.
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and tensor.device.type != "cpu":
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+    return tensor.cpu()
+
+
+def _assert_component_equal(result, reference, *, device=None):
+    device = torch.device(flag_gems.device if device is None else device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else device)
+    tu.assert_result_equal(_component_values(result), _component_values(reference))
+
+
 def _bsparse_components(
     size, dtype, value_range, *, block=None, index_dtype=torch.int32, dense_shape=()
 ):
@@ -130,29 +183,51 @@ def _bsparse_components(
     else:
         crow, col = crow_1d, col_1d
     values_shape = batch + (row_blocks, block[0], block[1]) + tuple(dense_shape)
-    return crow, col, tu.make_input(dtype, values_shape, value_range)
+    return crow, col, _make_input(dtype, values_shape, value_range)
 
 
 def _bsparse_special_components(size, dtype, scenario):
     """Components whose stored blocks carry the shared nan/inf payload."""
     crow, col, template = _bsparse_components(size, dtype, ["-1", "1"])
-    payload = tu.make_special_input(dtype, scenario)
+    cpu_payload = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+        torch.float64,
+    )
+    # Repetition must also precede device transfer: float64 device repeat can
+    # silently return float32, and FP8 repeat may be unavailable.
+    payload = (
+        tu.make_special_input(torch.float32, scenario).cpu()
+        if cpu_payload
+        else tu.make_special_input(dtype, scenario)
+    )
     count = template.numel()
     values = payload.repeat(-(-count // payload.numel()))[:count].reshape(
         template.shape
     )
+    if cpu_payload:
+        values = values.to(dtype).to(flag_gems.device)
+    assert values.dtype == dtype
     return crow, col, values
 
 
-def _assert_bsr_matches(res, ref):
+def _assert_bsr_matches(res, ref, *, device=None):
     """Compare two BSR constructions through their stored components."""
+    expected_device = torch.device(flag_gems.device if device is None else device)
+    if expected_device.index is None and expected_device.type != "cpu":
+        expected_device = torch.device(
+            expected_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert res.device == expected_device
+    assert ref.device == (torch.device("cpu") if utils.TO_CPU else expected_device)
+    assert res.dtype == ref.dtype
     assert res.layout == ref.layout == torch.sparse_bsr
     assert res.shape == ref.shape
     assert res.sparse_dim() == ref.sparse_dim()
     assert res.dense_dim() == ref.dense_dim()
-    tu.assert_result_equal(res.crow_indices(), ref.crow_indices())
-    tu.assert_result_equal(res.col_indices(), ref.col_indices())
-    tu.assert_result_equal(res.values(), ref.values())
+    _assert_component_equal(res.crow_indices(), ref.crow_indices(), device=device)
+    _assert_component_equal(res.col_indices(), ref.col_indices(), device=device)
+    _assert_component_equal(res.values(), ref.values(), device=device)
 
 
 @pytest.mark.underscore_sparse_bsr_tensor_unsafe
@@ -383,9 +458,9 @@ def test_sparse_bsr_tensor_unsafe_wraps_components_without_copying():
     assert res_out.grad_fn is None
     _assert_bsr_matches(res_out, ref_out)
     # The three components are inputs and stay untouched.
-    tu.assert_result_equal(crow, crow_before)
-    tu.assert_result_equal(col, col_before)
-    tu.assert_result_equal(values, values_before)
+    _assert_component_equal(crow, tu.to_reference(crow_before))
+    _assert_component_equal(col, tu.to_reference(col_before))
+    _assert_component_equal(values, tu.to_reference(values_before))
 
 
 @pytest.mark.underscore_sparse_bsr_tensor_unsafe
@@ -407,8 +482,16 @@ def test_sparse_bsr_tensor_unsafe_optional_arguments(kwargs):
     res_out = flag_gems._sparse_bsr_tensor_unsafe(crow, col, values, [4, 4], **kwargs)
 
     assert res_out.device == torch.device("cpu")
-    assert res_out.is_pinned() == ref_out.is_pinned()
-    _assert_bsr_matches(res_out, ref_out)
+    # Ascend's sparse is_pinned accessor tries to access nonexistent dense
+    # storage. Check all three actual component allocations on that backend.
+    if flag_gems.vendor_name != "ascend":
+        assert res_out.is_pinned() == ref_out.is_pinned()
+    for result, reference in zip(
+        (res_out.crow_indices(), res_out.col_indices(), res_out.values()),
+        (ref_out.crow_indices(), ref_out.col_indices(), ref_out.values()),
+    ):
+        assert result.is_pinned() == reference.is_pinned()
+    _assert_bsr_matches(res_out, ref_out, device=cpu)
 
 
 SPECIAL_CASES = [
@@ -522,6 +605,10 @@ def test_sparse_bsr_tensor_unsafe_rejects_device_mismatch():
     torch.device(flag_gems.device).type == "cpu",
     reason="pinning is only rejected when the component allocation is not on the CPU",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon",
+    reason="Hygon native BSR constructor accepts pin_memory=True for accelerator components",
+)
 def test_sparse_bsr_tensor_unsafe_rejects_pin_memory_for_accelerator_components():
     crow, col, values = _bsparse_components((4, 4), torch.float32, ["-1", "1"])
 
@@ -552,15 +639,18 @@ def test__sparse_bsr_tensor_unsafe_requires_grad_input(dtype):
     plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
     values_shape = (2, 2, 2)
     size = [4, 4]
-    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    values = _make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_compressed = tu.to_reference(compressed)
+    ref_plain = tu.to_reference(plain)
+    ref_values = tu.to_reference(values)
     ref_out = torch.ops.aten._sparse_bsr_tensor_unsafe(
-        compressed,
-        plain,
-        values,
+        ref_compressed,
+        ref_plain,
+        ref_values,
         size,
         dtype=dtype,
         layout=torch.sparse_bsr,
-        device=values.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_bsr_tensor_unsafe(
         compressed,
@@ -576,4 +666,4 @@ def test__sparse_bsr_tensor_unsafe_requires_grad_input(dtype):
     assert res_out.requires_grad == ref_out.requires_grad
     assert res_out.grad_fn is ref_out.grad_fn is None
     assert res_out.values().data_ptr() == values.data_ptr()
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_bsr_matches(res_out, ref_out)
