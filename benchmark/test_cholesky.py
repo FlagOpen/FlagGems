@@ -74,9 +74,12 @@ def _build_inputs_fn(plan, dtype, device):
     # A = M @ M.mH + n * I is Hermitian positive definite for any M, which the
     # factorization requires. utils.generate_tensor_input has no float64 or
     # complex128 support, so the matrix is built directly here.
-    m = torch.randn(shape, dtype=dtype, device=device)
-    inp = m @ m.mH + n * torch.eye(n, dtype=dtype, device=device)
-    return inp, {"upper": upper}
+    creation_device = device
+    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        creation_device = "cpu"
+    m = torch.randn(shape, dtype=dtype, device=creation_device)
+    inp = m @ m.mH + n * torch.eye(n, dtype=dtype, device=creation_device)
+    return inp.to(device), {"upper": upper}
 
 
 class CholeskyBenchmark(OperatorBenchmark):

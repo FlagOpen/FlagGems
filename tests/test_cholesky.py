@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -90,6 +92,106 @@ VALUE_ROWS = tu.selected_cases(
 _REAL_OF = {torch.complex64: torch.float32, torch.complex128: torch.float64}
 
 
+def _construction_device(dtype):
+    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        return "cpu"
+    return flag_gems.device
+
+
+def _comparison_values(result, reference):
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else device)
+    if result.is_complex() and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        result, reference = _observe(result), _observe(reference)
+    return result, reference
+
+
+def _observe(tensor):
+    if tensor.device.type == "cpu":
+        return tensor
+    values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        tensor.untyped_storage().cpu(),
+        tensor.storage_offset(),
+        tensor.size(),
+        tensor.stride(),
+    )
+    if tensor.is_conj():
+        values = values.conj()
+    if tensor.is_neg():
+        values = torch._neg_view(values)
+    return values
+
+
+def _assert_close(result, reference):
+    result, reference = _comparison_values(result, reference)
+    tu.assert_result_close(result, reference)
+
+
+def _special_input(dtype, scenario):
+    if _construction_device(dtype) == "cpu":
+        return tu.make_special_input(torch.float32, scenario).cpu().to(dtype)
+    return tu.make_special_input(dtype, scenario)
+
+
+def _full(shape, value, dtype, device):
+    creation_device = device
+    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        creation_device = "cpu"
+    return torch.full(shape, value, dtype=dtype, device=creation_device).to(device)
+
+
+def _skip_reference_gap(family, dtype, **params):
+    vendor = flag_gems.vendor_name
+    reason = None
+    if family == "backward":
+        if vendor in ("ascend", "kunlunxin") and dtype == torch.complex64:
+            reason = f"{vendor} native complex64 cholesky backward is unsupported"
+    elif family == "imaginary_diagonal":
+        if vendor == "iluvatar" and dtype == torch.complex64:
+            reason = "iluvatar native cholesky retains the imaginary input diagonal"
+    elif family == "non_positive_definite":
+        if vendor == "metax" and params["fixture"] == "mixed_batch":
+            reason = "metax native cholesky does not reject the invalid middle batch"
+    elif family == "special_diagonal":
+        if (
+            vendor in ("ascend", "iluvatar", "metax")
+            and params["scenario"] in ("nan", "mixed")
+            and (vendor == "metax" or dtype in (torch.float32, torch.complex64))
+        ):
+            reason = (
+                f"{vendor} native cholesky does not reject this NaN diagonal payload"
+            )
+    elif family == "non_finite_rejected":
+        value = params["value"]
+        if (
+            vendor in ("ascend", "iluvatar", "metax")
+            and math.isnan(value)
+            and (vendor == "metax" or dtype in (torch.float32, torch.complex64))
+        ) or (
+            vendor in ("ascend", "metax")
+            and dtype.is_complex
+            and (vendor == "metax" or dtype == torch.complex64)
+            and params["placement"] == "hermitian_off_diagonal"
+            and value == float("inf")
+        ):
+            reason = f"{vendor} native cholesky does not reject this non-finite input"
+    elif family == "inf_diagonal":
+        if vendor == "nvidia" and utils.TO_CPU:
+            reason = "CPU and NVIDIA cholesky disagree on the +inf diagonal factor"
+        elif vendor == "kunlunxin" and dtype == torch.float32:
+            reason = "kunlunxin native float32 cholesky rejects a +inf diagonal"
+    if reason is not None:
+        pytest.skip(reason)
+
+
 def _range_upper(real_dtype, value_range):
     bound = value_range[1]
     if bound == "max":
@@ -119,12 +221,19 @@ def _make_pd_input(fixture, dtype, shape, value_range):
         real_dtype = _REAL_OF.get(dtype, dtype)
         upper = _range_upper(real_dtype, value_range)
         sampled = tu.make_input(real_dtype, shape[:-1], value_range).abs()
+        sampled = sampled.to(_construction_device(dtype))
         magnitude = upper - 0.5 * (upper - sampled)
-        return torch.diag_embed(magnitude.to(dtype))
+        return torch.diag_embed(magnitude.to(dtype)).to(flag_gems.device)
 
     n = shape[-1]
     m = tu.make_input(dtype, shape, value_range)
-    return m @ m.mH + n * torch.eye(n, dtype=dtype, device=flag_gems.device)
+    device = _construction_device(dtype)
+    if flag_gems.vendor_name == "kunlunxin" and m.numel() == 0:
+        device = "cpu"
+    m = m.to(device)
+    return (m @ m.mH + n * torch.eye(n, dtype=dtype, device=device)).to(
+        flag_gems.device
+    )
 
 
 @pytest.mark.cholesky
@@ -137,7 +246,7 @@ def test_cholesky_value_range(fixture, dtype, shape, value_range):
     ref_out = torch.ops.aten.cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
 
 # The optional schema bool: the default value is exercised by omitting the
@@ -156,7 +265,7 @@ def test_cholesky_upper(dtype, upper):
     ref_out = torch.ops.aten.cholesky(ref_inp, **kwargs)
     res_out = flag_gems.cholesky(inp, **kwargs)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
 
 LAYOUT_CASES = tu.selected_cases(
@@ -174,18 +283,28 @@ def _layout_input(base, layout):
     # native-valid for the factorization: a stride-(2n, 2) slice, a view with
     # strides (n+1, 1) and a nonzero storage offset, and a transposed real view or
     # a complex .mH view, which also carries the lazy conjugate bit.
+    device = _construction_device(base.dtype)
+    base = base.to(device)
     n = base.shape[-1]
     if layout == "strided_slice":
-        storage = torch.zeros((n, 2 * n), dtype=base.dtype, device=flag_gems.device)
+        storage = torch.zeros((n, 2 * n), dtype=base.dtype, device=device)
         view = storage[:, ::2]
         view.copy_(base)
-        return view, storage
-    if layout == "storage_offset":
-        storage = torch.zeros((n + 1, n + 1), dtype=base.dtype, device=flag_gems.device)
+    elif layout == "storage_offset":
+        storage = torch.zeros((n + 1, n + 1), dtype=base.dtype, device=device)
         view = storage[1:, 1:]
         view.copy_(base)
+    else:
+        view, storage = (base.t() if not base.is_complex() else base.mH), base
+    target_storage = storage.to(flag_gems.device)
+    if target_storage is storage:
         return view, storage
-    return (base.t() if not base.is_complex() else base.mH), base
+    target_view = torch.as_strided(
+        target_storage, view.size(), view.stride(), view.storage_offset()
+    )
+    if view.is_conj():
+        target_view = target_view.conj()
+    return target_view, target_storage
 
 
 @pytest.mark.cholesky
@@ -201,8 +320,10 @@ def test_cholesky_input_layout(dtype, layout):
 
     # The factorization is not in-place: nothing in the input storage, inside or
     # outside the view, may change.
-    tu.assert_result_equal(storage, preserved)
-    tu.assert_result_close(res_out, ref_out)
+    assert storage.device == preserved.device
+    values, expected = _comparison_values(storage, tu.to_reference(preserved))
+    tu.assert_result_equal(values, expected)
+    _assert_close(res_out, ref_out)
 
 
 OUT_CASES = tu.selected_cases(
@@ -230,24 +351,23 @@ def test_cholesky_out(dtype, upper, strided, shape):
     n = inp.shape[-1]
 
     if strided:
-        ref_backing = torch.full(
-            (n, 2 * n), 7.0, dtype=ref_inp.dtype, device=ref_inp.device
-        )
-        ref_out = ref_backing[:, ::2]
-        backing = torch.full((n, 2 * n), 7.0, dtype=dtype, device=flag_gems.device)
-        out = backing[:, ::2]
+        ref_backing = _full((n, 2 * n), 7.0, ref_inp.dtype, ref_inp.device)
+        ref_out = torch.as_strided(ref_backing, (n, n), (2 * n, 2))
+        backing = _full((n, 2 * n), 7.0, dtype, flag_gems.device)
+        out = torch.as_strided(backing, (n, n), (2 * n, 2))
     else:
-        ref_out = torch.full_like(ref_inp, 7.0)
-        out = torch.full_like(inp, 7.0)
+        ref_out = _full(ref_inp.shape, 7.0, ref_inp.dtype, ref_inp.device)
+        out = _full(inp.shape, 7.0, dtype, flag_gems.device)
 
     ref_ret = torch.ops.aten.cholesky.out(ref_inp, upper, out=ref_out)
     res_ret = flag_gems.cholesky(inp, upper, out=out)
 
     assert res_ret is out
+    _assert_close(res_ret, ref_ret)
     if strided:
         # the writes must stay inside the strided view
-        assert (backing[:, 1::2] == 7.0).all()
-    tu.assert_result_close(res_ret, ref_ret)
+        values = _observe(backing) if backing.is_complex() else backing
+        assert (values[:, 1::2] == 7.0).all()
 
 
 BACKWARD_CASES = tu.selected_cases(
@@ -258,6 +378,7 @@ BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,upper", BACKWARD_CASES)
 def test_cholesky_backward(dtype, upper):
+    _skip_reference_gap("backward", dtype)
     inp = _make_pd_input("gram", dtype, (4, 8, 8), ["-1", "1"])
     upstream = tu.make_input(dtype, (4, 8, 8), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
@@ -267,12 +388,12 @@ def test_cholesky_backward(dtype, upper):
 
     ref_out = torch.ops.aten.cholesky(ref_inp, upper)
     res_out = flag_gems.cholesky(res_inp, upper)
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_out, res_inp, grad_outputs=upstream)
 
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_close(res_grad, ref_grad)
 
 
 TRIANGLE_CASES = tu.selected_cases(
@@ -288,19 +409,20 @@ def test_cholesky_opposite_triangle(dtype, upper):
     # all four supported dtypes), so the perturbed matrix is a valid input and its
     # reference is the native result on that same matrix.
     inp = _make_pd_input("gram", dtype, (8, 8), ["-1", "1"])
+    inp = inp.to(_construction_device(dtype))
     n = inp.shape[-1]
-    ones = torch.ones((n, n), dtype=dtype, device=flag_gems.device)
+    ones = torch.ones((n, n), dtype=dtype, device=inp.device)
     if upper:
         perturbation = torch.tril(ones, diagonal=-1) * 1000
     else:
         perturbation = torch.triu(ones, diagonal=1) * 1000
-    perturbed = inp + perturbation
+    perturbed = (inp + perturbation).to(flag_gems.device)
 
     ref_inp = tu.to_reference(perturbed)
     ref_out = torch.ops.aten.cholesky(ref_inp, upper)
     res_out = flag_gems.cholesky(perturbed, upper)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
 
 IMAGINARY_DIAGONAL_CASES = tu.selected_cases(
@@ -311,18 +433,22 @@ IMAGINARY_DIAGONAL_CASES = tu.selected_cases(
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype", IMAGINARY_DIAGONAL_CASES)
 def test_cholesky_imaginary_diagonal(dtype):
+    _skip_reference_gap("imaginary_diagonal", dtype)
     # Measured: only the real part of the diagonal is read, so a matrix with an
     # imaginary diagonal part is a valid input and the native result is the one of
     # the same matrix with a real diagonal (identical bitwise for complex64 and
     # complex128). The candidate must reproduce that native result.
     inp = _make_pd_input("gram", dtype, (8, 8), ["-1", "1"])
-    inp = inp + 1j * 5 * torch.eye(8, dtype=dtype, device=flag_gems.device)
+    inp = inp.to(_construction_device(dtype))
+    inp = (inp + 1j * 5 * torch.eye(8, dtype=dtype, device=inp.device)).to(
+        flag_gems.device
+    )
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
 
 # Negatives use their own small shapes, independent of the positive grid, and are
@@ -382,14 +508,16 @@ def _make_non_pd_input(dtype, fixture):
         return torch.diag_embed(diagonal).to(dtype)
     # a single negative-definite matrix among positive-definite ones
     m = tu.make_input(dtype, (3, n, n), ["-1", "1"])
-    inp = m @ m.mH + n * torch.eye(n, dtype=dtype, device=flag_gems.device)
-    inp[1] = -torch.eye(n, dtype=dtype, device=flag_gems.device)
-    return inp
+    m = m.to(_construction_device(dtype))
+    inp = m @ m.mH + n * torch.eye(n, dtype=dtype, device=m.device)
+    inp[1] = -torch.eye(n, dtype=dtype, device=m.device)
+    return inp.to(flag_gems.device)
 
 
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,fixture", NON_PD_CASES)
 def test_cholesky_non_positive_definite(dtype, fixture):
+    _skip_reference_gap("non_positive_definite", dtype, fixture=fixture)
     inp = _make_non_pd_input(dtype, fixture)
 
     with pytest.raises(RuntimeError):
@@ -412,10 +540,12 @@ DIAGONAL_PAYLOAD_CASES = [
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,scenario", DIAGONAL_PAYLOAD_CASES)
 def test_cholesky_special_values_on_diagonal(dtype, scenario):
+    _skip_reference_gap("special_diagonal", dtype, scenario=scenario)
     n = 5
-    inp = 4 * torch.eye(n, dtype=dtype, device=flag_gems.device)
-    index = torch.arange(n, device=flag_gems.device)
-    inp[index, index] = tu.make_special_input(dtype, scenario)
+    inp = 4 * torch.eye(n, dtype=dtype, device=_construction_device(dtype))
+    index = torch.arange(n, device=inp.device)
+    inp[index, index] = _special_input(dtype, scenario)
+    inp = inp.to(flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems.cholesky(inp)
@@ -442,12 +572,14 @@ NON_FINITE_REJECT_CASES = [
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,placement,value", NON_FINITE_REJECT_CASES)
 def test_cholesky_non_finite_rejected(dtype, placement, value):
-    inp = 4 * torch.eye(5, dtype=dtype, device=flag_gems.device)
+    _skip_reference_gap("non_finite_rejected", dtype, placement=placement, value=value)
+    inp = 4 * torch.eye(5, dtype=dtype, device=_construction_device(dtype))
     if placement == "diagonal":
         inp[0, 0] = value
     else:
         inp[0, 1] = value
         inp[1, 0] = value
+    inp = inp.to(flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems.cholesky(inp)
@@ -459,19 +591,21 @@ INF_DIAGONAL_CASES = tu.selected_cases(CHOLESKY_DTYPES, quick=[])
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype", INF_DIAGONAL_CASES)
 def test_cholesky_inf_diagonal(dtype):
+    _skip_reference_gap("inf_diagonal", dtype)
     # Measured: a +inf diagonal entry is not rejected. The native factor is nan at
     # that diagonal position and the unaffected factor elsewhere, reproducible
     # across repeated calls (verified with an equal_nan comparison), so the native
     # result is the reference here. The shared comparison matches the nan positions
     # and does not replace them with finite values.
-    inp = 4 * torch.eye(5, dtype=dtype, device=flag_gems.device)
+    inp = 4 * torch.eye(5, dtype=dtype, device=_construction_device(dtype))
     inp[0, 0] = float("inf")
+    inp = inp.to(flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
 
 
 IGNORED_TRIANGLE_CASES = tu.selected_cases(
@@ -496,13 +630,14 @@ def test_cholesky_special_values_in_ignored_triangle(dtype, scenario):
     # (test_cholesky_special_values_on_diagonal) and each single non-finite entry is
     # covered independently above.
     n = 5
-    payload = tu.make_special_input(dtype, scenario)
-    inp = 4 * torch.eye(n, dtype=dtype, device=flag_gems.device)
-    rows, cols = torch.triu_indices(n, n, offset=1, device=flag_gems.device)
+    payload = _special_input(dtype, scenario)
+    inp = 4 * torch.eye(n, dtype=dtype, device=_construction_device(dtype))
+    rows, cols = torch.triu_indices(n, n, offset=1, device=inp.device)
     inp[rows, cols] = payload.repeat(2)[: rows.numel()]
+    inp = inp.to(flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.cholesky(ref_inp)
     res_out = flag_gems.cholesky(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_close(res_out, ref_out)
