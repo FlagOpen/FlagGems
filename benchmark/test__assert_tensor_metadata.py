@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -22,6 +24,13 @@ from . import base, consts
 # Metadata validation covers dense and stride-zero operands on the shared grid.
 
 _CAPS = flag_gems.runtime.device
+
+_UNSUPPORTED_CHECKS = set()
+if flag_gems.vendor_name == "hygon":
+    _UNSUPPORTED_CHECKS = {"device", "layout"} - {
+        arg.name
+        for arg in torch.ops.aten._assert_tensor_metadata.default._schema.arguments
+    }
 
 _DTYPES = list(consts.FLOAT_DTYPES) + [
     torch.int8,
@@ -55,15 +64,14 @@ _CHECK_SUBSETS = [
 ]
 
 
-def _case_fn(shape, dtype):
+def _case_fn(shape, dtype, checks):
     del dtype
     for layout in ("contiguous", "expanded"):
-        for checks in _CHECK_SUBSETS:
-            yield base.BenchmarkCasePlan(
-                shape={"input": shape},
-                params={"checks": checks, "layout": layout},
-                builder_args=(shape, layout),
-            )
+        yield base.BenchmarkCasePlan(
+            shape={"input": shape},
+            params={"checks": checks, "layout": layout},
+            builder_args=(shape, layout),
+        )
 
 
 def _build_inputs_fn(plan, dtype, device):
@@ -98,10 +106,24 @@ class AssertTensorMetadataBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.underscore_assert_tensor_metadata
-def test__assert_tensor_metadata():
+@pytest.mark.parametrize(
+    "checks",
+    [
+        pytest.param(
+            checks,
+            marks=pytest.mark.skipif(
+                bool(_UNSUPPORTED_CHECKS.intersection(checks)),
+                reason="Hygon native _assert_tensor_metadata schema lacks device/layout keywords",
+            ),
+        )
+        for checks in _CHECK_SUBSETS
+    ],
+    ids=["none", "size", "size-stride", "size-stride-dtype", "all"],
+)
+def test__assert_tensor_metadata(checks):
     bench = AssertTensorMetadataBenchmark(
         op_name="_assert_tensor_metadata",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, checks=checks),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._assert_tensor_metadata,
         gems_op=getattr(flag_gems, "_assert_tensor_metadata", None),
