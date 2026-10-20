@@ -30,6 +30,97 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Backend compatibility stays local to this operator suite.
+
+
+def _local_make_input(dtype, shape, value_range):
+    """Build a tensor of ``shape`` / ``dtype`` with values in ``value_range``.
+
+    ``value_range`` is a [low_symbol, high_symbol] pair whose symbols resolve
+    per-dtype (max/min are the dtype bounds). bool ignores the range; integer
+    ranges are snapped to ints; a degenerate range (low == high) fills the
+    constant; everything else uses torch.testing.make_tensor (complex fills
+    both real and imaginary parts).
+
+    Bounds are clamped to the dtype's representable range first, so the spec's
+    five ranges work unchanged for dtypes that cannot represent a bound (e.g.
+    uint8 cannot hold ``-1``, so ``[-1,0]`` becomes the degenerate ``[0,0]``
+    → a constant zero fill). This keeps the caller from having to special-case
+    unsigned dtypes.
+    """
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if dtype == torch.bool:
+        return torch.randint(0, 2, shape, device=flag_gems.device).bool()
+    if not (dtype.is_floating_point or dtype.is_complex):
+        low, high = (int(low), int(high))
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    if low == high:
+        result = torch.full(shape, low, device=creation_device, dtype=dtype)
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device=creation_device, low=low, high=high
+        )
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
+
+
+def _local_to_reference(inp, upcast=False):
+    """Independent tensor oracle for these tests, retaining view metadata.
+
+    A plain clone or device transfer can compact strides, reset offsets or
+    materialize lazy flags. Copy dense storage to the reference device before
+    rebuilding the view. Optional upcasting still follows accuracy_utils' value
+    conversion policy. This does not reproduce inter-input aliases or autograd
+    history; version-counter tests use their own reference setup.
+    """
+    from . import accuracy_utils as utils
+
+    if inp is None:
+        return None
+    if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
+        reference = inp.detach().clone()
+    else:
+        storage = inp.untyped_storage()
+        if utils.TO_CPU and inp.device.type != "cpu":
+            storage = storage.cpu()
+        else:
+            storage = storage.clone()
+        reference = torch.empty(0, dtype=inp.dtype, device=storage.device).set_(
+            storage, inp.storage_offset(), inp.size(), inp.stride()
+        )
+        if inp.is_conj():
+            reference = reference.conj()
+        if inp.is_neg():
+            reference = torch._neg_view(reference)
+    reference.requires_grad_(inp.requires_grad)
+    return utils.to_reference(reference, upcast)
+
+
+def _local_make_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    result = torch.tensor(
+        payloads[scenario], device=creation_device, dtype=torch.float32
+    ).to(dtype)
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: utils.bf16_is_supported,
     torch.float64: utils.fp64_is_supported,
@@ -187,8 +278,8 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
 def test_retains_grad_plain_tensor(shape, value_range, dtype):
     # A tensor that no operation produced is a leaf, so every supported dtype
     # and storage form (0-dim, strided, bool, FP8, complex) answers False.
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _local_make_input(dtype, shape, value_range)
+    ref_inp = _local_to_reference(inp)
 
     ref_out = torch.ops.aten.retains_grad(ref_inp)
     res_out = flag_gems.retains_grad(inp)
@@ -306,8 +397,8 @@ def test_retains_grad_lazy_conj_view(case):
 def test_retains_grad_does_not_mutate_input(shape, dtype):
     # A leaf accepts every dtype, so the candidate is also checked on the
     # integer/bool storage forms it must accept but never re-flag.
-    ref_inp = tu.make_input(dtype, shape, ["-1", "1"])
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    ref_inp = _local_make_input(dtype, shape, ["-1", "1"])
+    inp = _local_make_input(dtype, shape, ["-1", "1"])
     before = _autograd_snapshot(inp)
 
     ref_out = torch.ops.aten.retains_grad(ref_inp)
@@ -355,7 +446,7 @@ _BACKWARD_SHAPES = [(8, 12), (4, 5, 6)]
 def _backward_fixture(state, dtype, shape):
     # The operator has no differentiable output of its own, so the backward
     # pass is only run to completion; real values keep it meaningful.
-    base = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    base = _local_make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     out = base * 3
     if state == "retained":
         out.retain_grad()
@@ -412,7 +503,7 @@ _SPECIAL_ROWS = [
 )
 def test_retains_grad_special_values(dtype, scenario, state):
     def build():
-        node = tu.make_special_input(dtype, scenario).requires_grad_(True)
+        node = _local_make_special_input(dtype, scenario).requires_grad_(True)
         if state == "retained_nonleaf":
             node = node.clone()
             node.retain_grad()
@@ -445,7 +536,7 @@ def test_retains_grad_rejects_non_tensor(value):
 @pytest.mark.retains_grad
 @pytest.mark.parametrize("wrong_arity", ["missing_operand", "extra_operand"])
 def test_retains_grad_rejects_wrong_arity(wrong_arity):
-    inp = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    inp = _local_make_input(torch.float32, (4,), ["-1", "1"])
     args = (inp, inp) if wrong_arity == "extra_operand" else ()
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems.retains_grad(*args)

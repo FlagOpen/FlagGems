@@ -19,6 +19,97 @@ import flag_gems
 
 from . import test_utils as tu
 
+# Backend compatibility stays local to this operator suite.
+
+
+def _local_make_input(dtype, shape, value_range):
+    """Build a tensor of ``shape`` / ``dtype`` with values in ``value_range``.
+
+    ``value_range`` is a [low_symbol, high_symbol] pair whose symbols resolve
+    per-dtype (max/min are the dtype bounds). bool ignores the range; integer
+    ranges are snapped to ints; a degenerate range (low == high) fills the
+    constant; everything else uses torch.testing.make_tensor (complex fills
+    both real and imaginary parts).
+
+    Bounds are clamped to the dtype's representable range first, so the spec's
+    five ranges work unchanged for dtypes that cannot represent a bound (e.g.
+    uint8 cannot hold ``-1``, so ``[-1,0]`` becomes the degenerate ``[0,0]``
+    → a constant zero fill). This keeps the caller from having to special-case
+    unsigned dtypes.
+    """
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if dtype == torch.bool:
+        return torch.randint(0, 2, shape, device=flag_gems.device).bool()
+    if not (dtype.is_floating_point or dtype.is_complex):
+        low, high = (int(low), int(high))
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    if low == high:
+        result = torch.full(shape, low, device=creation_device, dtype=dtype)
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device=creation_device, low=low, high=high
+        )
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
+
+
+def _local_to_reference(inp, upcast=False):
+    """Independent tensor oracle for these tests, retaining view metadata.
+
+    A plain clone or device transfer can compact strides, reset offsets or
+    materialize lazy flags. Copy dense storage to the reference device before
+    rebuilding the view. Optional upcasting still follows accuracy_utils' value
+    conversion policy. This does not reproduce inter-input aliases or autograd
+    history; version-counter tests use their own reference setup.
+    """
+    from . import accuracy_utils as utils
+
+    if inp is None:
+        return None
+    if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
+        reference = inp.detach().clone()
+    else:
+        storage = inp.untyped_storage()
+        if utils.TO_CPU and inp.device.type != "cpu":
+            storage = storage.cpu()
+        else:
+            storage = storage.clone()
+        reference = torch.empty(0, dtype=inp.dtype, device=storage.device).set_(
+            storage, inp.storage_offset(), inp.size(), inp.stride()
+        )
+        if inp.is_conj():
+            reference = reference.conj()
+        if inp.is_neg():
+            reference = torch._neg_view(reference)
+    reference.requires_grad_(inp.requires_grad)
+    return utils.to_reference(reference, upcast)
+
+
+def _local_make_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    result = torch.tensor(
+        payloads[scenario], device=creation_device, dtype=torch.float32
+    ).to(dtype)
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
+
+
 # aten::is_non_overlapping_and_dense(Tensor self) -> bool is decided entirely by
 # sizes / strides / storage_offset, so it has no value semantics, never
 # broadcasts an operand and is not differentiable (autograd.grad on its bool
@@ -86,8 +177,8 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_is_non_overlapping_and_dense(dtype, shape, value_range):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _local_make_input(dtype, shape, value_range)
+    ref_inp = _local_to_reference(inp)
 
     ref_out = torch.ops.aten.is_non_overlapping_and_dense(ref_inp)
     res_out = flag_gems.is_non_overlapping_and_dense(inp)
@@ -141,10 +232,10 @@ _LAYOUT_ROWS = [
 @pytest.mark.is_non_overlapping_and_dense
 @pytest.mark.parametrize("layout,dtype", _LAYOUT_ROWS)
 def test_is_non_overlapping_and_dense_layout(layout, dtype):
-    base = tu.make_input(dtype, _BASE_SHAPE, ["-1", "1"])
+    base = _local_make_input(dtype, _BASE_SHAPE, ["-1", "1"])
     inp = _LAYOUTS[layout](base)
     meta = (tuple(inp.shape), inp.stride(), inp.storage_offset())
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _local_to_reference(inp)
 
     ref_out = torch.ops.aten.is_non_overlapping_and_dense(ref_inp)
     res_out = flag_gems.is_non_overlapping_and_dense(inp)
@@ -197,9 +288,9 @@ _SPECIAL_ROWS = tu.selected_cases(
 @pytest.mark.is_non_overlapping_and_dense
 @pytest.mark.parametrize("dtype,scenario,arrangement", _SPECIAL_ROWS)
 def test_is_non_overlapping_and_dense_special_values(dtype, scenario, arrangement):
-    base = tu.make_special_input(dtype, scenario)
+    base = _local_make_special_input(dtype, scenario)
     inp = base if arrangement == "dense" else base[:1].expand(base.shape)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _local_to_reference(inp)
 
     ref_out = torch.ops.aten.is_non_overlapping_and_dense(ref_inp)
     res_out = flag_gems.is_non_overlapping_and_dense(inp)
