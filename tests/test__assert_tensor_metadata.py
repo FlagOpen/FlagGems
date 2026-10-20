@@ -37,6 +37,33 @@ from . import test_utils as tu
 _CAPS = flag_gems.runtime.device
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
+# Older Hygon Torch schemas lack device/layout. Skip only calls that supply
+# those keywords; do not let an unrelated parser error satisfy a negative test.
+_UNSUPPORTED_KWARGS = set()
+if flag_gems.vendor_name == "hygon":
+    _UNSUPPORTED_KWARGS = {"device", "layout"} - {
+        arg.name
+        for arg in torch.ops.aten._assert_tensor_metadata.default._schema.arguments
+    }
+
+
+def _requires_metadata(*names):
+    return pytest.mark.skipif(
+        bool(_UNSUPPORTED_KWARGS.intersection(names)),
+        reason="Hygon native _assert_tensor_metadata schema lacks device/layout keywords",
+    )
+
+
+def _requires_row(row):
+    return _requires_metadata(
+        *(
+            name
+            for name, token in zip(("size", "stride", "dtype", "device", "layout"), row)
+            if token is not None
+        )
+    )
+
+
 # The spec's nine dtypes (the FP8 pair only where the backend can build fp8 tensors)
 # plus the extra types this backend represents. float64/complex are gated on the fp64
 # capability; every dtype here was probed native-valid on the active device.
@@ -256,6 +283,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+@_requires_metadata("device", "layout")
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
@@ -274,7 +302,9 @@ def test__assert_tensor_metadata(shape, value_range, dtype):
 
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", _METADATA_SHAPES)
-@pytest.mark.parametrize("row", _CALL_ROWS)
+@pytest.mark.parametrize(
+    "row", [pytest.param(row, marks=_requires_row(row)) for row in _CALL_ROWS]
+)
 def test__assert_tensor_metadata_call_form(shape, row):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     kwargs = _row_kwargs(inp, row)
@@ -287,6 +317,7 @@ def test__assert_tensor_metadata_call_form(shape, row):
     tu.assert_result_equal(inp, values_before)
 
 
+@_requires_metadata("device", "layout")
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("label", _STATE_ROWS)
 def test__assert_tensor_metadata_tensor_state(label):
@@ -314,7 +345,13 @@ def test__assert_tensor_metadata_dtype_mismatch(shape, dtype):
 
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("shape", _METADATA_SHAPES)
-@pytest.mark.parametrize("expected,row", _MISMATCH_ROWS)
+@pytest.mark.parametrize(
+    "expected,row",
+    [
+        pytest.param(expected, row, marks=_requires_row(row))
+        for expected, row in _MISMATCH_ROWS
+    ],
+)
 def test__assert_tensor_metadata_mismatch(shape, expected, row):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     kwargs = _row_kwargs(inp, row)
@@ -327,6 +364,7 @@ def test__assert_tensor_metadata_mismatch(shape, expected, row):
     tu.assert_result_equal(inp, values_before)
 
 
+@_requires_metadata("device", "layout")
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize("arg,bad_value", _INVALID_ARGUMENT_ROWS)
 def test__assert_tensor_metadata_invalid_argument(arg, bad_value):
@@ -344,6 +382,7 @@ def test__assert_tensor_metadata_invalid_argument(arg, bad_value):
 # The op never reads elements, so a NaN/Inf payload is not a special value for it:
 # these default-only cases record that a NaN/Inf carrier still passes metadata
 # validation. Quick omits them, like every other positive special-value case.
+@_requires_metadata("device", "layout")
 @pytest.mark.underscore_assert_tensor_metadata
 @pytest.mark.parametrize(
     "dtype,scenario",

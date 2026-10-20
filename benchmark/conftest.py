@@ -598,25 +598,21 @@ def pytest_runtest_logreport(report):
     if not Config.record_json:
         return
 
-    op = report.opid
-    TEST_RESULTS.setdefault(op, {})
+    if report.when != "call" and report.outcome == "passed":
+        return
 
-    if report.when == "setup":
-        if report.outcome == "skipped":
-            reason = get_reason(report)
-            TEST_RESULTS[op]["result"] = "skipped"
-            TEST_RESULTS[op]["reason"] = reason
-            TEST_RESULTS[op]["test_case"] = report.nodeid
+    result = TEST_RESULTS.setdefault(report.opid, {})
+    reason = None if report.outcome == "passed" else get_reason(report)
+    if report.outcome == "skipped":
+        result.setdefault("skipped_cases", []).append(
+            {"test_case": report.nodeid, "phase": report.when, "reason": reason}
+        )
 
-    elif report.when == "call":
-        TEST_RESULTS[op]["result"] = report.outcome
-        TEST_RESULTS[op]["test_case"] = report.nodeid
-
-        if report.outcome in ["skipped", "failed"]:
-            reason = get_reason(report)
-            TEST_RESULTS[op]["reason"] = reason
-        else:
-            TEST_RESULTS[op]["reason"] = None
+    # One operator can have several pytest parameters: retain any failure,
+    # otherwise report measured parameters as passed and keep partial skips.
+    priority = {"skipped": 0, "passed": 1, "failed": 2}
+    if priority.get(result.get("result"), -1) < priority[report.outcome]:
+        result.update(result=report.outcome, reason=reason, test_case=report.nodeid)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
