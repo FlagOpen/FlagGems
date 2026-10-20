@@ -17,6 +17,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import torch
@@ -126,9 +127,21 @@ layout = torch.sparse_csr
 flag_gems._validate_sparse_bsc_tensor_args(comp, plain, values, size)
 flag_gems.runtime.torch_device_fn.synchronize()
 """
+    # pytest.ini adds src to this interpreter only; child Python processes
+    # need an explicit path to the same checkout, including in remote CI.
+    child_env = os.environ.copy()
+    child_env["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            (
+                str(Path(__file__).resolve().parents[1] / "src"),
+                child_env.get("PYTHONPATH"),
+            ),
+        )
+    )
     result = subprocess.run(
         [sys.executable, "-c", child, case],
-        env=os.environ.copy(),
+        env=child_env,
         capture_output=True,
         text=True,
         timeout=45,
