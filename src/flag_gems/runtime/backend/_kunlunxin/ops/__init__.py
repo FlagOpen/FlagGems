@@ -28,6 +28,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_abs_ import _foreach_abs_
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
@@ -52,11 +53,23 @@ from ._foreach_binary_scalar import (  # noqa: F401
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_math import (
+    _foreach_acos,
+    _foreach_acos_,
+    _foreach_asin,
+    _foreach_asin_,
+    _foreach_lgamma,
+    _foreach_lgamma_,
+    _foreach_log2,
+    _foreach_log2_,
+)
 from ._foreach_neg import _foreach_neg, _foreach_neg_
 from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
+from ._foreach_round_ import _foreach_round_
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_sign_ import _foreach_sign_
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -785,15 +798,26 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_abs_",
+    "_foreach_acos",
+    "_foreach_acos_",
     "_foreach_addcmul_ScalarList",
+    "_foreach_asin",
+    "_foreach_asin_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_lgamma",
+    "_foreach_lgamma_",
+    "_foreach_log2",
+    "_foreach_log2_",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
     "_foreach_pow_List",
+    "_foreach_round_",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
+    "_foreach_sign_",
     "_foreach_tan",
     "_foreach_tan_",
     "_functional_assert_async",

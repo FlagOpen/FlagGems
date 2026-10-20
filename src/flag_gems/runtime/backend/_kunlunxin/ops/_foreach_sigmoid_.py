@@ -56,9 +56,10 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_SIGMOID_" record
-# under the *generic* logger name (see tests/test_foreach_unary.py), so the
-# record must be emitted from this logger rather than the module's own.
+# The registration-liveness test (tests/test_foreach_unary.py) captures the
+# record under the *generic* logger name, so it must be emitted from this
+# logger rather than the module-local one.  The message carries the vendor
+# prefix "GEMS_KUNLUNXIN", per the operator-log convention.
 logger = logging.getLogger("flag_gems.ops._foreach_unary")
 
 # sigmoid rejects complex32 but accepts complex64/complex128, all ints and bool
@@ -184,7 +185,7 @@ def _try_fast(tensors):
 
 
 def _foreach_sigmoid_(self):
-    logger.debug("GEMS _FOREACH_SIGMOID_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_SIGMOID_")
     tensors = check_tensor_list(self)
     if _try_fast(tensors):
         # In-place schemas return ``()``; returning the list would make the
