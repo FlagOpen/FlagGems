@@ -368,6 +368,7 @@ def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
     assert inp.requires_grad == requires_grad
     # The payload snapshot comes from the unflagged tensor, so comparing it does
     # not have to materialize the negation view.
+    _check_input(inp, dtype, shape)
     _check_input(plain, dtype, shape)
     _assert_payload_equal(_reference(plain), plain_before)
 
