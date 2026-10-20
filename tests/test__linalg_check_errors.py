@@ -126,7 +126,8 @@ def test__linalg_check_errors_info_grid(shape, value_range, is_matrix, dtype):
     res_exc, ref_exc = _compare_calls(info, API_NAME, is_matrix)
 
     _assert_same_outcome(res_exc, ref_exc)
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 # The reference accepts all-zero codes of any shape, including empty 1-D and empty
@@ -159,7 +160,8 @@ def test__linalg_check_errors_zero_info(shape, is_matrix):
     res = flag_gems._linalg_check_errors(info, API_NAME, is_matrix=is_matrix)
 
     assert res is None
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 # For each name the same code 2 selects different wording and, for inv, cholesky
@@ -230,7 +232,8 @@ def test__linalg_check_errors_reports_first_failure(shape, values, is_matrix):
     res_exc, ref_exc = _compare_calls(info, API_NAME, is_matrix)
 
     _assert_same_outcome(res_exc, ref_exc)
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 _SCALAR_INFO_CODES = tu.selected_cases(
@@ -296,7 +299,16 @@ if utils.fp8_is_supported:
 def test__linalg_check_errors_rejects_non_int32_dtype(bad_dtype):
     """Only int32 reaches the kernel; any other constructible dtype is an
     invalid input."""
-    info = torch.zeros((2, 3), dtype=bad_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend" and bad_dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # NPU zero-fill does not support FP8. Encode the same positive-zero
+        # payload on CPU, then exercise the candidate with the original dtype.
+        info = torch.zeros((2, 3), dtype=torch.float32, device="cpu").to(bad_dtype)
+        info = info.to(flag_gems.device)
+    else:
+        info = torch.zeros((2, 3), dtype=bad_dtype, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._linalg_check_errors(info, API_NAME, is_matrix=False)
 
@@ -319,7 +331,8 @@ def test__linalg_check_errors_rejects_non_contiguous_info(buffer_shape, size, st
     with pytest.raises(RuntimeError):
         flag_gems._linalg_check_errors(info, API_NAME, is_matrix=False)
 
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 # A storage-offset slice is contiguous, so it is accepted; only its position
@@ -349,7 +362,8 @@ def test__linalg_check_errors_offset_view(length, start, stop, failing):
     res_exc, ref_exc = _compare_calls(info, API_NAME, False)
 
     _assert_same_outcome(res_exc, ref_exc)
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 _READ_ONLY_CASES = [[0, 0, 0], [0, 1, 0], [0, -1, 0], [4, 0, 0]]
@@ -366,7 +380,8 @@ def test__linalg_check_errors_leaves_info_unchanged(values):
     res_exc, ref_exc = _compare_calls(info, API_NAME, False)
 
     _assert_same_outcome(res_exc, ref_exc)
-    tu.assert_result_equal(info, snapshot)
+    assert info.device == snapshot.device
+    tu.assert_result_equal(info, tu.to_reference(snapshot))
 
 
 @pytest.mark.underscore_linalg_check_errors
