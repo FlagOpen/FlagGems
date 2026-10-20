@@ -89,7 +89,11 @@ def _axes_for(shape):
 def _quantized_input(shape, axis, storage_dtype, family, device):
     scales_dtype, zero_points_dtype = QPARAM_DTYPES[family]
     channels = _channels(shape, axis)
-    scales = torch.arange(1, channels + 1, dtype=scales_dtype, device=device) * 0.5
+    # Integer indices avoid CPU-dependent float32 arange rounding above 2**24.
+    scales = (
+        torch.arange(1, channels + 1, dtype=torch.int64, device=device).to(scales_dtype)
+        * 0.5
+    )
     zero_points = (torch.arange(channels, dtype=torch.int32, device=device) % 7).to(
         zero_points_dtype
     )
@@ -185,6 +189,8 @@ class QPerChannelScalesBenchmark(OperatorBenchmark):
                 record
                 for record in base.Config.reference_records
                 if record.get("operator") == self.op_name
+                and record.get("nodeid") == base.Config.current_nodeid
+                and "failure" not in record
                 and record.get("status") == "FAILED"
                 and record.get("stage") == "benchmark_reference"
             ]

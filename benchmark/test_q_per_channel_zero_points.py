@@ -145,6 +145,8 @@ class QPerChannelZeroPointsBenchmark(base.GenericBenchmark):
                 record
                 for record in base.Config.reference_records
                 if record.get("operator") == self.op_name
+                and record.get("nodeid") == base.Config.current_nodeid
+                and "failure" not in record
                 and record.get("status") == "FAILED"
                 and record.get("stage") == "benchmark_reference"
             ]
