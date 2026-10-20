@@ -22,25 +22,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# ``_nested_tensor_storage_offsets`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names (pytest 8.1.1 and 9.x both raise AttributeError("Marker name must NOT
-# start with underscore") from MarkGenerator.__getattr__, so registering the
-# name in pytest.ini or via pytest_configure cannot enable the decorator -- it
-# is the attribute access itself that is refused). Build the decorator from the
-# PUBLIC ``pytest.Mark`` / ``pytest.MarkDecorator`` exports (pytest >= 8.0)
-# instead of importing the private _pytest.mark.structures module, then
-# register it on the MarkGenerator so
-# ``@pytest.mark._nested_tensor_storage_offsets`` and
-# ``-m _nested_tensor_storage_offsets`` both work.
-setattr(
-    pytest.mark,
-    "_nested_tensor_storage_offsets",
-    pytest.MarkDecorator(
-        pytest.Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+# The operator id starts with an underscore, so the #6359 marker convention
+# strips it: ``@pytest.mark._nested_tensor_storage_offsets`` is refused by
+# ``pytest.mark``'s attribute access, and the derived marker that
+# ``tools/test-op.sh`` selects with (and ``check_operator_markers.py``
+# requires) is the stripped name ``nested_tensor_storage_offsets``. That name
+# does not collide with a distinct operator id, so no ``underscore_`` variant
+# is needed.
 
 # The operator reads only layout metadata: the output is a CPU int64 tensor of
 # shape (num_tensors,) and never depends on the constituent values or dtypes.
@@ -75,7 +63,7 @@ def _make_nested(dtype, device, shapes):
     return torch.nested.nested_tensor(parts, device=device)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", NT_DTYPES)
 @pytest.mark.parametrize("shapes", NT_SHAPE_SETS, ids=["1d", "2d", "3d", "single"])
 def test_accuracy__nested_tensor_storage_offsets(dtype, shapes):
@@ -90,7 +78,7 @@ def test_accuracy__nested_tensor_storage_offsets(dtype, shapes):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_from_shared_buffer_views():
     # Nested tensors built from views of one buffer with holes between the
     # views: ``nested_tensor`` repacks contiguous parts (running sum of
@@ -114,7 +102,7 @@ def test__nested_tensor_storage_offsets_from_shared_buffer_views():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_stored_offsets_with_gap():
     # ``_nested_view_from_buffer`` stores the offsets verbatim: with sizes
     # (2, 3), (4, 3) and offsets [0, 12] the buffer has a 6-element hole after
@@ -140,7 +128,7 @@ def test__nested_tensor_storage_offsets_stored_offsets_with_gap():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_empty_nested():
     # A nested tensor with zero constituents has empty metadata; the output is
     # an empty int64 CPU tensor (shape (0,)).
@@ -155,7 +143,7 @@ def test__nested_tensor_storage_offsets_empty_nested():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_scalar_nesting():
     # Scalars nested (0-dim constituents): sizes are (N, 0) and the offsets
     # are 0..N-1, one per scalar.
@@ -171,7 +159,7 @@ def test__nested_tensor_storage_offsets_scalar_nesting():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_cpu_nested():
     # A CPU nested tensor takes the NestedTensorCPU native path.
     nt = torch.nested.nested_tensor([torch.randn(2, 3), torch.randn(4, 5)])
@@ -183,7 +171,7 @@ def test__nested_tensor_storage_offsets_cpu_nested():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_aliases_native_metadata():
     # The returned tensor is a zero-copy view of the nested tensor's internal
     # metadata storage: the same storage native hands out (identical
@@ -209,7 +197,7 @@ def test__nested_tensor_storage_offsets_aliases_native_metadata():
     res_out.copy_(before)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_non_nested_error():
     # Dense input has no nested metadata; native ATen has no kernel for it and
     # the dispatcher raises NotImplementedError (also mirrored by the impl, so
@@ -229,7 +217,7 @@ def test__nested_tensor_storage_offsets_non_nested_error():
         flag_gems._nested_tensor_storage_offsets(dense)
 
 
-@pytest.mark._nested_tensor_storage_offsets
+@pytest.mark.nested_tensor_storage_offsets
 def test__nested_tensor_storage_offsets_dispatch_stability():
     # The impl delegates to the very op it registers (below the autograd key);
     # repeated dispatcher calls with an unrelated native op in between must
