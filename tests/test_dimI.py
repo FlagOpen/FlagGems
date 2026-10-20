@@ -83,6 +83,7 @@ def _assert_int_and_equal(res_out, ref_out, name=""):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("shape", SPARSE_SHAPES)
 @pytest.mark.parametrize("dtype", VALUE_DTYPES)
 def test_dimI_coo_all_sparse(shape, dtype):
@@ -103,6 +104,7 @@ def test_dimI_coo_all_sparse(shape, dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("shape", SPARSE_SHAPES)
 @pytest.mark.parametrize("dtype", VALUE_DTYPES)
 def test_dimI_coo_hybrid(shape, dtype):
@@ -121,6 +123,7 @@ def test_dimI_coo_hybrid(shape, dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("shape", SPARSE_SHAPES)
 def test_dimI_matches_indices_formula(shape):
     """Pinned formula: _dimI == _indices().shape[0] for sparse COO."""
@@ -130,6 +133,7 @@ def test_dimI_matches_indices_formula(shape):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize(
     "shape,sparse_dim", [((3, 4), 2), ((4, 5, 6), 2), ((4, 5, 6), 1)]
 )
@@ -149,6 +153,7 @@ def test_dimI_empty(shape, sparse_dim, dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", VALUE_DTYPES)
 def test_dimI_single_entry(dtype):
     inp = _make_coo((3, 4, 5), 2, dtype, nnz=1, seed=3)
@@ -162,6 +167,7 @@ def test_dimI_single_entry(dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", VALUE_DTYPES)
 def test_dimI_uncoalesced(dtype):
     """Coalescing state is layout metadata the query must not depend on."""
@@ -184,6 +190,7 @@ def test_dimI_uncoalesced(dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("dtype", VALUE_DTYPES)
 def test_dimI_nan_inf_values_ignored(dtype):
     """Values (even nan/inf) are never read; only the index layout matters."""
@@ -209,6 +216,7 @@ def test_dimI_nan_inf_values_ignored(dtype):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test_dimI_dense_raises():
     inp = torch.randn(4, 4, device=flag_gems.device)
     # Native ATen registers aten::_dimI only for the Sparse (COO) backends:
@@ -221,6 +229,7 @@ def test_dimI_dense_raises():
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 @pytest.mark.parametrize("layout", ["csr", "csc"])
 def test_dimI_compressed_layouts_raise(layout):
     t = torch.randn(2, 3, device=flag_gems.device)
@@ -234,6 +243,7 @@ def test_dimI_compressed_layouts_raise(layout):
 
 
 @pytest.mark.dimI
+@pytest.mark.underscore_dimI
 def test_dimI_dispatch_stability():
     # The registration is on the Sparse dispatch key; exercise the
     # dispatcher-routed path repeatedly (a recursion bug or stale state would
