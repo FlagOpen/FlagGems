@@ -22,7 +22,9 @@ Design notes
   :func:`launch_stats` rather than hidden.
 """
 
+import array
 import logging
+import math
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -301,6 +303,7 @@ def foreach_binary_kernel(
     B_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     ALPHA: tl.constexpr,
+    B_SCALAR: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """One launch, ``NT`` tensors, two tensor inputs per element.
@@ -321,6 +324,12 @@ def foreach_binary_kernel(
     match up the wrong elements, so both sides are staged to dense form by the
     caller before they reach here.
 
+    ``B_SCALAR`` is the ``.Tensor`` broadcast case: the second operand holds a
+    single element, so it is loaded once per program and splatted by the
+    element-wise function instead of being materialised into a full-size copy
+    on the host.  Reading it here is a uniform device load; reading it back on
+    the host with ``.item()`` would synchronise and drain every queued launch.
+
     ``ALPHA`` scales the second operand before the element-wise function runs;
     it is a ``constexpr`` so the multiply compiles away for the default value.
     """
@@ -335,7 +344,10 @@ def foreach_binary_kernel(
     idx = offset + tl.arange(0, BLOCK)
     mask = idx < n_elements
     a = tl.load(a_ptr + idx, mask=mask, other=0)
-    b = tl.load(b_ptr + idx, mask=mask, other=0)
+    if B_SCALAR:
+        b = tl.load(b_ptr)
+    else:
+        b = tl.load(b_ptr + idx, mask=mask, other=0)
     b = (b * ALPHA).to(OUT_DT) if ALPHA != 1 else b.to(OUT_DT)
     tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT), mask=mask)
 
@@ -344,12 +356,14 @@ def foreach_binary_kernel(
 def foreach_binary_scalar_kernel(
     meta_ptr,
     scalar_ptr,
+    scalar_value: tl.float64,
     fn: tl.constexpr,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     S_DT: tl.constexpr,
     ALPHA: tl.constexpr,
+    SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """``NT`` tensors against one scalar *each*.
@@ -357,11 +371,13 @@ def foreach_binary_scalar_kernel(
     ``meta_ptr`` layout matches the unary kernel (in / out / counts); the
     per-tensor scalars live in their own ``scalar_ptr`` array indexed by tensor.
 
-    A single ``ScalarList`` array covers both the ``.Scalar`` and
-    ``.ScalarList`` overloads -- ``.Scalar`` simply broadcasts one value into
-    every slot on the host side. Passing the scalars through device memory
-    rather than as kernel arguments keeps one compiled kernel for any list
-    length, which is the whole point of the shared executor.
+    ``SCALAR_BY_VALUE`` selects the ``.Scalar`` path: when every tensor shares
+    the same value there is nothing to index, so it travels as an ordinary
+    kernel argument and no device buffer is built.  ``scalar_value`` is declared
+    ``float64`` so the ``.Scalar`` path keeps the exact value the device buffer
+    would have held; the cast to ``S_DT`` below reproduces the host-side
+    ``torch.tensor(..., dtype=S_DT)`` rounding bit for bit.  ``.ScalarList``
+    still needs the per-tensor array.
 
     ``ALPHA`` scales the scalar before the element-wise function runs; it is a
     ``constexpr`` so the multiply compiles away for the default value.
@@ -372,7 +388,10 @@ def foreach_binary_scalar_kernel(
     a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
     out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(OUT_DT))
     n_elements = tl.load(meta_ptr + 2 * NT + t)
-    s = tl.load(scalar_ptr + t)
+    if SCALAR_BY_VALUE:
+        s = scalar_value.to(S_DT)
+    else:
+        s = tl.load(scalar_ptr + t)
     s = (s * ALPHA).to(S_DT) if ALPHA != 1 else s
     s = s.to(OUT_DT)
 
@@ -386,10 +405,13 @@ def foreach_binary_scalar_kernel(
 def foreach_ternary_kernel(
     meta_ptr,
     scalar_ptr,
+    scalar_value: tl.float64,
     fn: tl.constexpr,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
+    S_DT: tl.constexpr,
+    SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """``NT`` tensors, three tensor inputs and one per-tensor scalar.
@@ -405,6 +427,11 @@ def foreach_ternary_kernel(
     This serves ``addcmul``/``addcdiv`` (``self + value * t1 <op> t2``) and the
     ``lerp`` weight forms; the scalar array is the ``value``/``weight``
     argument, broadcast on the host when the overload supplies a single value.
+
+    ``SCALAR_BY_VALUE`` selects the ``.Scalar`` form: a single value that every
+    tensor shares travels as an ordinary kernel argument instead of a device
+    buffer.  ``scalar_value`` is declared ``float64`` so nothing is lost on the
+    way in; the cast to ``S_DT`` reproduces the buffer's rounding exactly.
     """
     t = tl.program_id(0)
     offset = tl.program_id(1) * BLOCK
@@ -414,7 +441,10 @@ def foreach_ternary_kernel(
     c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(A_DT))
     out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(OUT_DT))
     n_elements = tl.load(meta_ptr + 4 * NT + t)
-    s = tl.load(scalar_ptr + t)
+    if SCALAR_BY_VALUE:
+        s = scalar_value.to(S_DT)
+    else:
+        s = tl.load(scalar_ptr + t)
 
     idx = offset + tl.arange(0, BLOCK)
     mask = idx < n_elements
@@ -493,11 +523,10 @@ def _launch_group(
     # calls).  Making it safe needs a CUDA event per call, and allocating plus
     # recording that event costs more than the pageable copy saves: end to end it
     # measured 93us per call against 46us for this version.
-    meta_cpu = torch.tensor(
+    meta = _device_meta(
         [t.data_ptr() for t in srcs] + [t.data_ptr() for t in dsts] + numels,
-        dtype=torch.int64,
+        device,
     )
-    meta = meta_cpu.to(device, non_blocking=True)
 
     grid = (nt, triton.cdiv(max_numel, block))
     if is_complex:
@@ -576,13 +605,17 @@ def foreach_unary(
 
     for i, t in enumerate(tensors):
         dtype = t.dtype
-        check_dtype_supported(dtype, allowed_dtypes)
+        # The helper is only a message builder; calling it per tensor for the
+        # accepted case measured 0.6us on a sixteen-tensor list.
+        if allowed_dtypes is not None and dtype not in allowed_dtypes:
+            check_dtype_supported(dtype, allowed_dtypes)
         if dtype.is_complex and complex_fn is None:
             raise NotImplementedError(
                 f"foreach executor has no complex kernel for {dtype}"
             )
         out_dtype = out_dtype_fn(dtype)
         key = (t.device, dtype)
+        flat = is_flat_addressable(t)
 
         if inplace:
             if out_dtype != dtype:
@@ -593,13 +626,16 @@ def foreach_unary(
                     " can't be cast to the desired output type "
                     f"{str(dtype).replace('torch.', '').capitalize()}"
                 )
-            if has_internal_overlap(t):
+            # A flat-addressable tensor is non-overlapping-and-dense by
+            # definition, so the dispatcher-backed probe cannot change the
+            # answer there; skipping it saves a dispatch per tensor.
+            if not flat and has_internal_overlap(t):
                 raise RuntimeError(
                     "unsupported operation: more than one element of the "
                     "written-to tensor refers to a single memory location. "
                     "Please clone() the tensor before performing the operation."
                 )
-            if is_flat_addressable(t):
+            if flat:
                 src = dst = t
             else:
                 # Gappy view: compute on a dense copy, then scatter back.
@@ -608,7 +644,7 @@ def foreach_unary(
                 _STATS.staged_inputs += 1
             results[i] = t
         else:
-            src = t if is_flat_addressable(t) else t.contiguous()
+            src = t if flat else t.contiguous()
             if src is not t:
                 _STATS.staged_inputs += 1
             # empty_like reproduces PyTorch's foreach output stride policy: it
@@ -662,15 +698,102 @@ def _check_same_length(a: Sequence[torch.Tensor], b: Sequence[Any], what: str) -
         )
 
 
-def _result_dtype(t: torch.Tensor, other: Any) -> torch.dtype:
-    """ATen's type promotion for one tensor against a tensor or a number.
+# Promotion is a pure function of the operand dtypes (plus whether an operand is
+# zero-dimensional, which ATen treats as a weak scalar), so the answer is
+# memoised: a 16-tensor list asks the same question 16 times.
+_PROMOTION_CACHE: Dict[Tuple[Any, ...], torch.dtype] = {}
 
-    Delegating to ``torch.result_type`` rather than reimplementing the lattice
-    is deliberate: it is the same routine ATen consults, so an int64 list plus a
-    float scalar promotes to float32 here exactly as ``torch._foreach_add``
-    does.
+
+def _promotion_probe(t: torch.Tensor) -> torch.Tensor:
+    """A meta tensor standing in for ``t`` in a ``result_type`` query."""
+    if t.dim() == 0:
+        return torch.empty((), dtype=t.dtype, device="meta")
+    return torch.empty(0, dtype=t.dtype, device="meta")
+
+
+def _promote_dtypes(
+    a: torch.Tensor, b: torch.Tensor, c: Optional[torch.Tensor] = None
+) -> torch.dtype:
+    """Two- or three-way ``result_type`` fold, memoised on the operand shapes.
+
+    ``result_type`` takes two operands, so a three-way promotion is a fold with
+    an intermediate dtype.  The original spelled that intermediate out as a
+    fresh ``meta`` tensor per tensor in the list, which measured 54us for a
+    16-tensor ``addcmul`` -- more than the kernel it feeds.  Nothing about the
+    answer depends on the values, so the dtype tuple keys a dict instead.
     """
-    return torch.result_type(t, other)
+    key = (
+        a.dtype,
+        a.dim() == 0,
+        b.dtype,
+        b.dim() == 0,
+        c.dtype if c is not None else None,
+        c is not None and c.dim() == 0,
+    )
+    out = _PROMOTION_CACHE.get(key)
+    if out is None:
+        out = torch.result_type(_promotion_probe(a), _promotion_probe(b))
+        if c is not None:
+            out = torch.result_type(
+                torch.empty(0, dtype=out, device="meta"), _promotion_probe(c)
+            )
+        _PROMOTION_CACHE[key] = out
+    return out
+
+
+def _promote_with_scalar(dtype: torch.dtype, value: Any) -> torch.dtype:
+    """``result_type(tensor, scalar)`` memoised on ``(dtype, type(value))``.
+
+    A Python number is a weak scalar, so its *value* never changes the answer --
+    only its type (an ``int`` keeps an integral tensor integral, a ``float``
+    promotes it to the default float dtype).  A zero-dimensional tensor is also
+    weak, so the probe only has to match that one property.
+    """
+    zero_dim = isinstance(value, torch.Tensor) and value.dim() == 0
+    key = ("scalar", dtype, type(value), zero_dim)
+    out = _PROMOTION_CACHE.get(key)
+    if out is None:
+        probe = torch.empty(0, dtype=dtype, device="meta")
+        out = torch.result_type(probe, value)
+        _PROMOTION_CACHE[key] = out
+    return out
+
+
+def _common_scalar(vals: Sequence[Any]) -> Optional[Any]:
+    """The single value every slot shares, or ``None`` when they differ.
+
+    ``==`` on its own would fold ``0.0`` and ``-0.0`` together; the sign bit
+    matters because ``div``/``pow`` turn it into ``+inf`` versus ``-inf``.
+    NaNs never compare equal, so they fall through to the per-tensor buffer.
+    """
+    # ``float`` is what the device-buffer path would have applied anyway, and
+    # it keeps the by-value argument a plain number even if a caller handed in
+    # zero-dimensional tensors.
+    first = float(vals[0])
+    sign = math.copysign(1.0, first)
+    for v in vals:
+        v = float(v)
+        if v != first or math.copysign(1.0, v) != sign:
+            return None
+    return first
+
+
+def _device_meta(values: List[int], device: Any) -> torch.Tensor:
+    """A fresh int64 device tensor holding ``values``.
+
+    ``array.array`` + ``frombuffer`` skips the generic sequence-to-tensor path,
+    and going through ``empty`` + ``copy_`` sidesteps the dispatcher's
+    ``_to_copy``: inside ``use_gems()`` the plain ``torch.tensor(...).to(device)``
+    form runs the gems implementation and measured 21.5us against 13.1us here.
+
+    Both sides are fresh on every call.  The host buffer is pageable, so the
+    runtime stages it before the copy call returns; nothing is reused, which is
+    exactly what made the cached pinned staging pool unsafe.
+    """
+    host = torch.frombuffer(array.array("q", values), dtype=torch.int64)
+    out = torch.empty(len(values), dtype=torch.int64, device=device)
+    out.copy_(host, non_blocking=True)
+    return out
 
 
 def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[Any]:
@@ -715,6 +838,7 @@ def foreach_binary_list(
     out_dtype_fn: Optional[Callable[[torch.dtype], torch.dtype]] = None,
     out_dtypes: Optional[Sequence[torch.dtype]] = None,
     copy_semantics: bool = False,
+    scalar_operand: bool = False,
 ) -> List[torch.Tensor]:
     """``self[i] <op> alpha * other[i]`` for every position, one launch per group.
 
@@ -732,6 +856,10 @@ def foreach_binary_list(
     the list's shape, and promoting against the *expanded* view would widen an
     fp16 list to fp32, where ATen keeps fp16 because a zero-dimensional tensor
     counts as a scalar.
+
+    ``scalar_operand`` marks the second list as one repeated single-element
+    tensor (the ``.Tensor`` broadcast); the kernel then reads it as a uniform
+    scalar instead of indexing it element by element.
     """
     self = check_tensor_list(self)
     other = check_tensor_list(other)
@@ -743,9 +871,13 @@ def foreach_binary_list(
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, List, List]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
+    prev_key = None
 
     for i, (a, b) in enumerate(zip(self, other)):
-        check_dtype_supported(a.dtype, allowed_dtypes, dtype_error, dtype_error_type)
+        if allowed_dtypes is not None and a.dtype not in allowed_dtypes:
+            check_dtype_supported(
+                a.dtype, allowed_dtypes, dtype_error, dtype_error_type
+            )
         if copy_semantics:
             # The destination dtype is the source of truth; the operand is cast
             # into it rather than promoted against it.
@@ -753,11 +885,12 @@ def foreach_binary_list(
         elif out_dtypes is not None:
             out_dtype = out_dtypes[i]
         else:
-            out_dtype = _result_dtype(a, b)
+            out_dtype = _promote_dtypes(a, b)
             if out_dtype_fn is not None:
                 out_dtype = out_dtype_fn(out_dtype)
-        src_a = _dense(a)
-        src_b = _dense(b)
+        contiguous_a = a.is_contiguous()
+        src_a = a if contiguous_a else _dense(a)
+        src_b = b if b.is_contiguous() else _dense(b)
         if inplace:
             if not copy_semantics and out_dtype != a.dtype:
                 raise RuntimeError(
@@ -765,7 +898,7 @@ def foreach_binary_list(
                     " can't be cast to the desired output type "
                     f"{str(a.dtype).replace('torch.', '').capitalize()}"
                 )
-            if has_internal_overlap(a):
+            if not contiguous_a and has_internal_overlap(a):
                 raise RuntimeError(
                     "unsupported operation: more than one element of the "
                     "written-to tensor refers to a single memory location. "
@@ -779,15 +912,19 @@ def foreach_binary_list(
             dst = torch.empty_like(src_a, dtype=out_dtype)
             results.append(dst)
         key = (a.device, src_a.dtype, src_b.dtype)
-        bucket = buckets.get(key)
-        if bucket is None:
-            bucket = buckets[key] = ([], [], [])
+        if key != prev_key:
+            bucket = buckets.get(key)
+            if bucket is None:
+                bucket = buckets[key] = ([], [], [])
+            prev_key = key
         bucket[0].append(src_a)
         bucket[1].append(src_b)
         bucket[2].append(dst)
 
     for (device, a_dt, b_dt), (a_list, b_list, d_list) in buckets.items():
-        _launch_binary_group(a_list, b_list, d_list, fn, a_dt, b_dt, device, alpha)
+        _launch_binary_group(
+            a_list, b_list, d_list, fn, a_dt, b_dt, device, alpha, scalar_operand
+        )
 
     _finish_inplace(results, writebacks)
     return results
@@ -802,6 +939,7 @@ def _launch_binary_group(
     b_dt: torch.dtype,
     device: Any,
     alpha: float = 1,
+    b_scalar: bool = False,
 ) -> None:
     numels = [t.numel() for t in a_list]
     max_numel = max(numels)
@@ -809,13 +947,13 @@ def _launch_binary_group(
         return
     block = _pick_block(numels)
     nt = len(a_list)
-    meta = torch.tensor(
+    meta = _device_meta(
         [t.data_ptr() for t in a_list]
         + [t.data_ptr() for t in b_list]
         + [t.data_ptr() for t in d_list]
         + numels,
-        dtype=torch.int64,
-    ).to(device, non_blocking=True)
+        device,
+    )
     grid = (nt, triton.cdiv(max_numel, block))
     foreach_binary_kernel[grid](
         meta,
@@ -825,6 +963,7 @@ def _launch_binary_group(
         tl_dtype(b_dt),
         tl_dtype(d_list[0].dtype),
         alpha,
+        b_scalar,
         block,
     )
     _STATS.executor_launches += 1
@@ -855,13 +994,33 @@ def foreach_binary_scalar(
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, List, List]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
+    prev_key = None
+    prev_promotion = None
+    prev_out_dtype = None
 
     for t, v in zip(self, values):
-        check_dtype_supported(t.dtype, allowed_dtypes, dtype_error, dtype_error_type)
-        out_dtype = _result_dtype(t, v)
-        if out_dtype_fn is not None:
-            out_dtype = out_dtype_fn(out_dtype)
-        src = _dense(t)
+        if allowed_dtypes is not None and t.dtype not in allowed_dtypes:
+            check_dtype_supported(
+                t.dtype, allowed_dtypes, dtype_error, dtype_error_type
+            )
+        # ``_promote_with_scalar`` memoises on exactly this triple, so a run of
+        # tensors sharing it can reuse the previous answer instead of paying
+        # for another lookup.
+        promotion = (
+            t.dtype,
+            type(v),
+            isinstance(v, torch.Tensor) and v.dim() == 0,
+        )
+        if promotion != prev_promotion:
+            out_dtype = _promote_with_scalar(t.dtype, v)
+            if out_dtype_fn is not None:
+                out_dtype = out_dtype_fn(out_dtype)
+            prev_promotion = promotion
+            prev_out_dtype = out_dtype
+        else:
+            out_dtype = prev_out_dtype
+        contiguous = t.is_contiguous()
+        src = t if contiguous else _dense(t)
         if inplace:
             if out_dtype != t.dtype:
                 raise RuntimeError(
@@ -869,7 +1028,7 @@ def foreach_binary_scalar(
                     " can't be cast to the desired output type "
                     f"{str(t.dtype).replace('torch.', '').capitalize()}"
                 )
-            if has_internal_overlap(t):
+            if not contiguous and has_internal_overlap(t):
                 raise RuntimeError(
                     "unsupported operation: more than one element of the "
                     "written-to tensor refers to a single memory location. "
@@ -883,9 +1042,11 @@ def foreach_binary_scalar(
             dst = torch.empty_like(src, dtype=out_dtype)
             results.append(dst)
         key = (t.device, src.dtype, out_dtype)
-        bucket = buckets.get(key)
-        if bucket is None:
-            bucket = buckets[key] = ([], [], [])
+        if key != prev_key:
+            bucket = buckets.get(key)
+            if bucket is None:
+                bucket = buckets[key] = ([], [], [])
+            prev_key = key
         bucket[0].append(src)
         bucket[1].append(dst)
         bucket[2].append(v)
@@ -913,10 +1074,10 @@ def _launch_scalar_group(
         return
     block = _pick_block(numels)
     nt = len(srcs)
-    meta = torch.tensor(
+    meta = _device_meta(
         [t.data_ptr() for t in srcs] + [t.data_ptr() for t in dsts] + numels,
-        dtype=torch.int64,
-    ).to(device, non_blocking=True)
+        device,
+    )
     # The scalars ride in a device array of the *output* dtype, so integer
     # operators keep integer semantics instead of going through a float.
     #
@@ -925,19 +1086,32 @@ def _launch_scalar_group(
     # an allocation, and measured 0.32ms per call -- on its own more than
     # PyTorch's entire foreach call.
     s_dtype = out_dt if out_dt.is_floating_point else torch.float32
-    scalar_buf = torch.tensor([float(v) for v in vals], dtype=s_dtype).to(
-        device, non_blocking=True
-    )
+    # ``.Scalar`` broadcasts one value into every slot, so when the values are
+    # all equal there is nothing for an array to index: the value travels as a
+    # kernel argument instead.  That drops a host->device copy and a device
+    # allocation (~9us) from every such call.
+    common = _common_scalar(vals)
+    by_value = common is not None
+    if by_value:
+        scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
+        scalar_value = common
+    else:
+        scalar_buf = torch.tensor([float(v) for v in vals], dtype=s_dtype).to(
+            device, non_blocking=True
+        )
+        scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
     foreach_binary_scalar_kernel[grid](
         meta,
         scalar_buf,
+        scalar_value,
         fn,
         nt,
         tl_dtype(in_dt),
         tl_dtype(out_dt),
-        tl_dtype(scalar_buf.dtype),
+        tl_dtype(s_dtype),
         alpha,
+        by_value,
         block,
     )
     _STATS.executor_launches += 1
@@ -970,19 +1144,21 @@ def foreach_ternary(
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, ...]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
+    prev_key = None
 
     for a, b, c, v in zip(self, tensor1, tensor2, values):
-        check_dtype_supported(a.dtype, allowed_dtypes)
+        if allowed_dtypes is not None and a.dtype not in allowed_dtypes:
+            check_dtype_supported(a.dtype, allowed_dtypes)
         # ``result_type`` pairs two tensors or a tensor and a number, so the
-        # three-way promotion is folded through zero-element probes of the
+        # three-way promotion is folded through a zero-element probe of the
         # intermediate dtype rather than by chaining dtypes directly.
-        out_dtype = torch.result_type(a, b)
-        out_dtype = torch.result_type(
-            torch.empty(0, dtype=out_dtype, device="meta"), c.to("meta")
-        )
+        out_dtype = _promote_dtypes(a, b, c)
         if not out_dtype.is_floating_point and not out_dtype.is_complex:
-            out_dtype = torch.result_type(a, v)
-        src_a, src_b, src_c = _dense(a), _dense(b), _dense(c)
+            out_dtype = _promote_with_scalar(a.dtype, v)
+        contiguous_a = a.is_contiguous()
+        src_a = a if contiguous_a else _dense(a)
+        src_b = b if b.is_contiguous() else _dense(b)
+        src_c = c if c.is_contiguous() else _dense(c)
         if inplace:
             if out_dtype != a.dtype:
                 raise RuntimeError(
@@ -990,7 +1166,7 @@ def foreach_ternary(
                     " can't be cast to the desired output type "
                     f"{str(a.dtype).replace('torch.', '').capitalize()}"
                 )
-            if has_internal_overlap(a):
+            if not contiguous_a and has_internal_overlap(a):
                 raise RuntimeError(
                     "unsupported operation: more than one element of the "
                     "written-to tensor refers to a single memory location. "
@@ -1004,9 +1180,11 @@ def foreach_ternary(
             dst = torch.empty_like(src_a, dtype=out_dtype)
             results.append(dst)
         key = (a.device, src_a.dtype, out_dtype)
-        bucket = buckets.get(key)
-        if bucket is None:
-            bucket = buckets[key] = ([], [], [], [], [])
+        if key != prev_key:
+            bucket = buckets.get(key)
+            if bucket is None:
+                bucket = buckets[key] = ([], [], [], [], [])
+            prev_key = key
         bucket[0].append(src_a)
         bucket[1].append(src_b)
         bucket[2].append(src_c)
@@ -1037,21 +1215,40 @@ def _launch_ternary_group(
         return
     block = _pick_block(numels)
     nt = len(a_l)
-    meta = torch.tensor(
+    meta = _device_meta(
         [t.data_ptr() for t in a_l]
         + [t.data_ptr() for t in b_l]
         + [t.data_ptr() for t in c_l]
         + [t.data_ptr() for t in d_l]
         + numels,
-        dtype=torch.int64,
-    ).to(device, non_blocking=True)
-    s_dtype = out_dt if out_dt.is_floating_point else torch.float32
-    scalar_buf = torch.tensor([float(v) for v in v_l], dtype=s_dtype).to(
-        device, non_blocking=True
+        device,
     )
+    s_dtype = out_dt if out_dt.is_floating_point else torch.float32
+    # Same treatment as the binary scalar path: the ``.Scalar`` form supplies one
+    # value for the whole list, so it travels as a kernel argument instead of a
+    # device buffer.  The ``.ScalarList`` form still needs the array.
+    common = _common_scalar(v_l)
+    by_value = common is not None
+    if by_value:
+        scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
+        scalar_value = common
+    else:
+        scalar_buf = torch.tensor([float(v) for v in v_l], dtype=s_dtype).to(
+            device, non_blocking=True
+        )
+        scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
     foreach_ternary_kernel[grid](
-        meta, scalar_buf, fn, nt, tl_dtype(in_dt), tl_dtype(out_dt), block
+        meta,
+        scalar_buf,
+        scalar_value,
+        fn,
+        nt,
+        tl_dtype(in_dt),
+        tl_dtype(out_dt),
+        tl_dtype(s_dtype),
+        by_value,
+        block,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1

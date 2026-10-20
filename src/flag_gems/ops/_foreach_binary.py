@@ -31,6 +31,7 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
+    _promote_dtypes,
     foreach_binary_list,
     foreach_binary_scalar,
     foreach_ternary,
@@ -104,6 +105,15 @@ def _pow_fn(a, b):
     # is ``inf``), which the plain power already gives once the operand is
     # promoted.
     return _pow(a.to(tl.float32), b.to(tl.float32))
+
+
+@triton.jit
+def _rpow_fn(a, b):
+    # ``pow.ScalarAndTensor``: the scalar is the base, so the power is reversed
+    # relative to ``_pow_fn`` (``a`` is the exponent, ``b`` the base).  Kept at
+    # module scope like every other kernel: defining it inside the wrapper
+    # rebuilt the ``JITFunction`` and its caches on every call.
+    return _pow(b.to(tl.float32), a.to(tl.float32))
 
 
 @triton.jit
@@ -316,8 +326,9 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
 
     ATen accepts any shape here that broadcasts against each element of the list.
     A zero-dimensional tensor is the common case -- it is what optimizers pass --
-    and it is routed through the paired kernel with the operand expanded rather
-    than read back with ``.item()``.
+    and it is routed through the paired kernel with the operand read once per
+    program rather than expanded into a full-size staging copy (or read back
+    with ``.item()``).
 
     Reading the value out would be simpler, but ``.item()`` synchronises the
     device: with sixteen kernels already queued it measured 2.11ms per call
@@ -332,20 +343,28 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
     if alpha != 1:
         for t in self_list:
             _check_alpha(alpha, t.dtype)
-    expanded = [
-        other if other.shape == t.shape else other.expand_as(t) for t in self_list
-    ]
+    if other.numel() == 1:
+        # A single-element operand needs no copy at all: the kernel reads it
+        # once per program as a uniform load, so the same tensor is handed to
+        # every position and materialising it would only add a full-size copy.
+        operands = [other] * len(self_list)
+        scalar_operand = True
+    else:
+        operands = [
+            other if other.shape == t.shape else other.expand_as(t) for t in self_list
+        ]
+        scalar_operand = False
     # Promotion is resolved against the *original* operand, not the expanded
     # view: ATen treats a zero-dimensional tensor as a scalar here, so an fp16
     # list times an fp32 scalar tensor stays fp16, while a genuine fp32 tensor
     # list would promote. Expanding first and asking ``result_type`` afterwards
     # would silently widen the result.
-    out_dtypes = [torch.result_type(t, other) for t in self_list]
+    out_dtypes = [_promote_dtypes(t, other) for t in self_list]
     if op.out_dtype_fn is not None:
         out_dtypes = [op.out_dtype_fn(dt) for dt in out_dtypes]
     res = foreach_binary_list(
         self_list,
-        expanded,
+        operands,
         op.fn,
         inplace=inplace,
         alpha=alpha,
@@ -353,6 +372,7 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
         dtype_error=op.dtype_error,
         dtype_error_type=op.dtype_error_type,
         out_dtypes=out_dtypes,
+        scalar_operand=scalar_operand,
     )
     return None if inplace else res
 
@@ -581,14 +601,10 @@ def _foreach_pow_ScalarAndTensor(self, exponent):
         if t.dtype == torch.bool:
             raise NotImplementedError(_POW_BOOL_ERROR)
 
-    @triton.jit
-    def _rpow(a, b):
-        return _pow(b.to(tl.float32), a.to(tl.float32))
-
     return foreach_binary_scalar(
         exponent,
         self,
-        _rpow,
+        _rpow_fn,
         allowed_dtypes=op.allowed,
         dtype_error=op.dtype_error,
         dtype_error_type=op.dtype_error_type,
