@@ -1526,6 +1526,92 @@ def _launch_binary_group(
     _STATS.groups += 1
 
 
+def _binary_scalar_homogeneous(
+    self: List[torch.Tensor],
+    values: List[Any],
+    vclass: Optional[type],
+    common: Optional[float],
+    fn: Callable,
+    inplace: bool,
+    alpha: float,
+    allowed_dtypes: Optional[frozenset],
+    dtype_error: Optional[str],
+    dtype_error_type: type,
+    out_dtype_fn: Optional[Callable[[torch.dtype], torch.dtype]],
+) -> Optional[List[torch.Tensor]]:
+    """Execute a uniform scalar list in one bucket, or return ``None``.
+
+    The counterpart of ``_binary_homogeneous`` for the ``.Scalar`` /
+    ``.ScalarList`` forms.  ``None`` means the caller's per-tensor bucket loop
+    has to run: the lists are heterogeneous in device or dtype, or the values
+    do not all promote the same way.
+    """
+    a0 = self[0]
+    dev = a0.device
+    dt = a0.dtype
+    for t in self:
+        if t.dtype is not dt or t.device != dev:
+            return None
+    # ``_promote_with_scalar`` memoises on ``(dtype, type(value), zero-dim)``,
+    # so with one dtype the whole list promotes alike as soon as every entry
+    # has the same class.  The broadcast forms already repeat one object, so
+    # only a real list needs to be looked at.
+    v0 = values[0]
+    if vclass is None:
+        v_key = (type(v0), isinstance(v0, torch.Tensor) and v0.dim() == 0)
+        for v in values:
+            if (type(v), isinstance(v, torch.Tensor) and v.dim() == 0) != v_key:
+                return None
+
+    if allowed_dtypes is not None and dt not in allowed_dtypes:
+        check_dtype_supported(dt, allowed_dtypes, dtype_error, dtype_error_type)
+    out_dtype = _promote_with_scalar(dt, v0)
+    if out_dtype_fn is not None:
+        out_dtype = out_dtype_fn(out_dtype)
+
+    conts = [t.is_contiguous() for t in self]
+    if all(conts):
+        srcs = self
+    else:
+        srcs = [t if c else _dense(t) for t, c in zip(self, conts)]
+
+    if inplace:
+        # No allocation: the destination is the source, and a source that had
+        # to be staged is written back once the kernel has filled it.
+        if out_dtype != dt:
+            raise RuntimeError(
+                f"result type {str(out_dtype).replace('torch.', '').capitalize()}"
+                " can't be cast to the desired output type "
+                f"{str(dt).replace('torch.', '').capitalize()}"
+            )
+        if srcs is not self:
+            for t, c in zip(self, conts):
+                if not c and has_internal_overlap(t):
+                    raise RuntimeError(
+                        "unsupported operation: more than one element of the "
+                        "written-to tensor refers to a single memory location. "
+                        "Please clone() the tensor before performing the operation."
+                    )
+            writebacks = [(t, s) for t, s in zip(self, srcs) if s is not t]
+        else:
+            writebacks = []
+        results = list(self)
+        dsts = srcs
+    else:
+        if out_dtype is dt:
+            results = [torch.empty_like(t) for t in srcs]
+        else:
+            results = [torch.empty_like(t, dtype=out_dtype) for t in srcs]
+        dsts = results
+        writebacks = []
+
+    _launch_scalar_group(
+        srcs, dsts, values, fn, dt, out_dtype, dev, alpha, common
+    )
+    _finish_inplace(results, writebacks)
+    return results
+
+
 def foreach_binary_scalar(
     self: Sequence[torch.Tensor],
     scalars: Any,
@@ -1546,6 +1632,22 @@ def foreach_binary_scalar(
     self = check_tensor_list(self)
     values, common, vclass = _resolve_scalars(self, scalars)
     _STATS.reset()
+
+    homogeneous = _binary_scalar_homogeneous(
+        self,
+        values,
+        vclass,
+        common,
+        fn,
+        inplace,
+        alpha,
+        allowed_dtypes,
+        dtype_error,
+        dtype_error_type,
+        out_dtype_fn,
+    )
+    if homogeneous is not None:
+        return homogeneous
 
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, List, List]] = {}
@@ -1626,6 +1728,98 @@ def foreach_binary_scalar(
     return results
 
 
+# The scalar kernel's launcher is cached exactly like the binary one's: same
+# key shape, same hook check, same fail-open behaviour.  The two pointer runs
+# (metadata and the per-tensor value buffer) both have to keep their alignment,
+# because that is what Triton specialises each one on.
+_SCALAR_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+_SCALAR_LAUNCH_STATS: Dict[str, int] = {"replay": 0, "dispatch": 0}
+
+
+def _launch_scalar_kernel(
+    meta: torch.Tensor,
+    scalar_buf: torch.Tensor,
+    scalar_value: float,
+    grid: Tuple[int, int],
+    nt: int,
+    fn: Callable,
+    a_dt: Any,
+    out_dt: Any,
+    s_dt: Any,
+    alpha: float,
+    by_value: bool,
+    block: int,
+) -> None:
+    key = (
+        meta.device,
+        nt,
+        fn,
+        a_dt,
+        out_dt,
+        s_dt,
+        alpha,
+        type(alpha),
+        by_value,
+        block,
+        not (meta.data_ptr() & 15),
+        not (scalar_buf.data_ptr() & 15),
+    )
+    entry = _SCALAR_LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                scalar_buf,
+                scalar_value,
+                fn,
+                nt,
+                a_dt,
+                out_dt,
+                s_dt,
+                alpha,
+                by_value,
+                block,
+            )
+            _SCALAR_LAUNCH_STATS["replay"] += 1
+            return
+        except Exception:
+            _SCALAR_LAUNCH_CACHE.pop(key, None)
+    _SCALAR_LAUNCH_STATS["dispatch"] += 1
+    compiled = foreach_binary_scalar_kernel[grid](
+        meta,
+        scalar_buf,
+        scalar_value,
+        fn,
+        nt,
+        a_dt,
+        out_dt,
+        s_dt,
+        alpha,
+        by_value,
+        block,
+    )
+    if compiled is not None:
+        _SCALAR_LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
+
+
 def _launch_scalar_group(
     srcs: List[torch.Tensor],
     dsts: List[torch.Tensor],
@@ -1643,8 +1837,11 @@ def _launch_scalar_group(
         return
     block = _pick_block(numels)
     nt = len(srcs)
+    # An in-place call writes back into its inputs, so the destination run
+    # repeats the pointer run already read above instead of reading it again.
+    ptrs = [t.data_ptr() for t in srcs]
     meta = _device_meta(
-        [t.data_ptr() for t in srcs] + [t.data_ptr() for t in dsts] + numels,
+        ptrs + (ptrs if dsts is srcs else [t.data_ptr() for t in dsts]) + numels,
         device,
     )
     # The scalars ride in a device array of the *output* dtype, so integer
@@ -1672,12 +1869,13 @@ def _launch_scalar_group(
         )
         scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
-    foreach_binary_scalar_kernel[grid](
+    _launch_scalar_kernel(
         meta,
         scalar_buf,
         scalar_value,
-        fn,
+        grid,
         nt,
+        fn,
         tl_dtype(in_dt),
         tl_dtype(out_dt),
         tl_dtype(s_dtype),
