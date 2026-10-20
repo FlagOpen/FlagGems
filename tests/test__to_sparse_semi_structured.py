@@ -14,10 +14,9 @@
 
 """Correctness tests for ``aten::_to_sparse_semi_structured``."""
 
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
@@ -65,12 +64,34 @@ _LAYOUT_KINDS = ("transposed", "sliced", "expanded", "dilated")
 _PATTERN_SHAPE = (64, 64)
 
 
-def _assert_pair(res, ref):
+def _reference(inp):
+    if inp.device.type == "cuda":
+        return torch.ops.aten._to_sparse_semi_structured(inp)
+    from torch.sparse._semi_structured_conversions import (
+        sparse_semi_structured_from_dense_cutlass,
+    )
+
+    dense = inp.cpu().contiguous()
+    if dense.shape[1] == 0:
+        # The CPU converter cannot infer a -1 dimension beside zero columns.
+        metadata_dtype = torch.int32 if dense.dtype == torch.int8 else torch.int16
+        return torch.empty_like(dense), torch.empty(dense.shape, dtype=metadata_dtype)
+    return sparse_semi_structured_from_dense_cutlass(dense)
+
+
+def _assert_equal(result, reference):
+    if reference.device.type == "cpu":
+        result = result.cpu()
+    tu.assert_result_equal(result, reference)
+
+
+def _assert_pair(res, ref, device):
     # The operator returns (packed, metadata). Both are exact payloads, so each
     # component uses the zero-tolerance comparison instead of a tolerance policy.
     assert len(res) == len(ref) == 2
-    tu.assert_result_equal(res[0], ref[0])
-    tu.assert_result_equal(res[1], ref[1])
+    assert res[0].device == res[1].device == device
+    _assert_equal(res[0], ref[0])
+    _assert_equal(res[1], ref[1])
 
 
 def _axis(size, device):
@@ -369,13 +390,13 @@ def test__to_sparse_semi_structured_shape_grid(dtype, shape, value_range):
     inp = _masked_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
+    expected_device = inp.device
     res = flag_gems._to_sparse_semi_structured(inp)
-    ref = torch.ops.aten._to_sparse_semi_structured(ref_inp)
+    ref = _reference(ref_inp)
 
-    _assert_pair(res, ref)
-    assert res[0].device == inp.device
-    assert res[1].device == inp.device
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_pair(res, ref, expected_device)
+    assert inp.device == expected_device
+    _assert_equal(inp, ref_inp)
 
 
 @pytest.mark.to_sparse_semi_structured
@@ -384,13 +405,13 @@ def test__to_sparse_semi_structured_empty(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
+    expected_device = inp.device
     res = flag_gems._to_sparse_semi_structured(inp)
-    ref = torch.ops.aten._to_sparse_semi_structured(ref_inp)
+    ref = _reference(ref_inp)
 
-    _assert_pair(res, ref)
-    assert res[0].device == inp.device
-    assert res[1].device == inp.device
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_pair(res, ref, expected_device)
+    assert inp.device == expected_device
+    _assert_equal(inp, ref_inp)
 
 
 @pytest.mark.to_sparse_semi_structured
@@ -399,13 +420,13 @@ def test__to_sparse_semi_structured_pattern(kind, dtype):
     inp = _pattern_fixture(kind, dtype, _PATTERN_SHAPE)
     ref_inp = tu.to_reference(inp)
 
+    expected_device = inp.device
     res = flag_gems._to_sparse_semi_structured(inp)
-    ref = torch.ops.aten._to_sparse_semi_structured(ref_inp)
+    ref = _reference(ref_inp)
 
-    _assert_pair(res, ref)
-    assert res[0].device == inp.device
-    assert res[1].device == inp.device
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_pair(res, ref, expected_device)
+    assert inp.device == expected_device
+    _assert_equal(inp, ref_inp)
 
 
 def _layout_view(kind, parent):
@@ -421,24 +442,41 @@ def _layout_view(kind, parent):
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("kind,dtype", LAYOUT_ROWS)
 def test__to_sparse_semi_structured_layout(kind, dtype):
-    parent = _pattern_fixture("varied", dtype, _LAYOUT_BASES[dtype][kind])
+    shape = _LAYOUT_BASES[dtype][kind]
+    if kind == "transposed":
+        # Both axes must retain half of each 2/4-slot group. Binary-index
+        # parity also keeps the mask's logical/physical encodings identical
+        # across this power-of-two transpose; native metadata reads storage.
+        rows, columns = shape
+        row_parity = torch.tensor(
+            [i.bit_count() % 2 for i in range(rows)], device=flag_gems.device
+        )
+        column_parity = torch.tensor(
+            [i.bit_count() % 2 for i in range(columns)], device=flag_gems.device
+        )
+        mask = row_parity[:, None] == column_parity[None, :]
+        values = _pattern_values("varied", rows, columns, dtype, flag_gems.device)
+        parent = _structured(dtype, values, mask, 1)
+    else:
+        parent = _pattern_fixture("varied", dtype, shape)
     inp = _layout_view(kind, parent)
     ref_parent = tu.to_reference(parent)
     ref_inp = _layout_view(kind, ref_parent)
 
+    expected_device = inp.device
     res = flag_gems._to_sparse_semi_structured(inp)
-    ref = torch.ops.aten._to_sparse_semi_structured(ref_inp)
+    ref = _reference(ref_inp)
 
-    _assert_pair(res, ref)
-    assert res[0].device == inp.device
-    assert res[1].device == inp.device
+    _assert_pair(res, ref, expected_device)
+    assert inp.device == expected_device
     # The view must keep its parent allocation, geometry and offset.
     assert inp.untyped_storage().data_ptr() == parent.untyped_storage().data_ptr()
     assert inp.storage_offset() == ref_inp.storage_offset()
     assert inp.stride() == ref_inp.stride()
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(inp, ref_inp)
     # The whole parent must survive the op, padding included.
-    tu.assert_result_equal(parent, ref_parent)
+    assert parent.device == expected_device
+    _assert_equal(parent, ref_parent)
 
 
 @pytest.mark.to_sparse_semi_structured
@@ -447,13 +485,13 @@ def test__to_sparse_semi_structured_special_values(dtype, scenario):
     inp = _special_input(scenario, dtype, _PATTERN_SHAPE)
     ref_inp = tu.to_reference(inp)
 
+    expected_device = inp.device
     res = flag_gems._to_sparse_semi_structured(inp)
-    ref = torch.ops.aten._to_sparse_semi_structured(ref_inp)
+    ref = _reference(ref_inp)
 
-    _assert_pair(res, ref)
-    assert res[0].device == inp.device
-    assert res[1].device == inp.device
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_pair(res, ref, expected_device)
+    assert inp.device == expected_device
+    _assert_equal(inp, ref_inp)
 
 
 @pytest.mark.to_sparse_semi_structured
@@ -492,7 +530,8 @@ def test__to_sparse_semi_structured_invalid_pattern(dtype, shape, mode):
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape", UNSUPPORTED_DTYPE_ROWS)
 def test__to_sparse_semi_structured_unsupported_dtype(dtype, shape):
-    inp = tu.make_input(dtype, shape, ["0", "1"])
+    # Unsupported dtypes are rejected before any payload is read.
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems._to_sparse_semi_structured(inp)

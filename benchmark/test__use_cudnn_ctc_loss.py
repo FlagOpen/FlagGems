@@ -28,12 +28,16 @@ only, so ``--list-cases`` and ``--case-id`` replay allocate no tensors and call 
 operator, and the plans used for listing are the same ones used for execution.
 """
 
-import pytest
-import torch
+import platform
+import time
+from dataclasses import asdict, dataclass
 
 import flag_gems
+import pytest
+import torch
+from torch.utils.benchmark import Timer
 
-from . import base, utils
+from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
 # Rank-3 (T, N, C) log_probs: every input_length equals T and every target length
@@ -91,7 +95,77 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
+def _reference(log_probs, targets, input_lengths, target_lengths, blank):
+    # This is the eligibility predicate, not CTC computation. Non-CUDA input
+    # cannot use cuDNN; no CPU dispatch of the CUDA-only native API is needed.
+    return False
+
+
+@dataclass
+class _HostMetrics(base.BenchmarkMetrics):
+    measurement_source: dict | None = None
+
+
 class UseCudnnCtcLossBenchmark(OperatorBenchmark):
+    def get_latency(self, op, *args, **kwargs):
+        if self.is_backward:
+            raise ValueError("A capability predicate has no backward benchmark")
+        if (
+            not base.Config.reference_only
+            and base.Config.mode != consts.BenchMode.OPERATOR
+        ):
+            raise ValueError("CPU host timing requires --mode operator")
+        # GPU events cannot measure this host metadata API. One CPU thread and
+        # repeated wall-clock samples keep tiny accessor timings meaningful.
+        self._host_source = {
+            "kind": (
+                "cuda_dispatch_host_predicate"
+                if torch.device(flag_gems.device).type == "cuda"
+                else "portable_host_predicate"
+            ),
+            "actual_timing_mode": "host_wall_time",
+            "device": "cpu",
+            "architecture": platform.machine(),
+            "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+            "torch": str(torch.__version__),
+            "threads": 1,
+            "timer": "torch.utils.benchmark.Timer",
+            "scope": "Host capability predicate; no CTC loss computation",
+        }
+        latency = (
+            Timer(
+                stmt="op(*args, **kwargs)",
+                globals={"op": op, "args": args, "kwargs": kwargs},
+                num_threads=1,
+                timer=time.perf_counter,
+            )
+            .blocked_autorange(min_run_time=0.05)
+            .median
+            * 1000
+        )
+        if base.Config.reference_only:
+            active = [
+                record
+                for record in base.Config.reference_records
+                if record.get("operator") == self.op_name
+                and record.get("nodeid") == base.Config.current_nodeid
+                and "failure" not in record
+                and record.get("status") == "FAILED"
+                and record.get("stage") == "benchmark_reference"
+            ]
+            if len(active) != 1:
+                raise RuntimeError("Cannot identify the active CPU reference case")
+            active[0]["measurement_source"] = self._host_source
+        return latency
+
+    def _measure_input(self, input, case_id=None):
+        if "tflops" in self.to_bench_metrics or "gbps" in self.to_bench_metrics:
+            raise ValueError("A host predicate supports latency metrics only")
+        metric = super()._measure_input(input, case_id)
+        if metric.speedup is not None:
+            metric.speedup = metric.latency_base / metric.latency
+        return _HostMetrics(**asdict(metric), measurement_source=self._host_source)
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         # Other ranks are valid predicate workloads returning False. Retain
@@ -107,7 +181,11 @@ def test__use_cudnn_ctc_loss():
         op_name="_use_cudnn_ctc_loss",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten._use_cudnn_ctc_loss,
+        torch_op=(
+            torch.ops.aten._use_cudnn_ctc_loss
+            if torch.device(flag_gems.device).type == "cuda"
+            else _reference
+        ),
         gems_op=getattr(flag_gems, "_use_cudnn_ctc_loss", None),
         dtypes=[torch.float32],
     )

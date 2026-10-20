@@ -14,12 +14,14 @@
 
 import math
 
+import flag_gems
 import pytest
 import torch
 
-import flag_gems
-
 from . import test_utils as tu
+
+# These APIs expose CPU quantizer metadata; preserve that ABI on every backend.
+_HOST = "cpu"
 
 # q_per_channel_scales returns the scale tensor a per-channel quantizer already holds
 # (float64 for per_channel_affine, float32 for per_channel_affine_float_qparams); the
@@ -183,7 +185,7 @@ def _storage_values(shape, storage_dtype):
     # so it only has to be initialized and non-trivial.
     numel = math.prod(shape)
     return (
-        (torch.arange(numel, dtype=torch.int32, device=flag_gems.device) % 100)
+        (torch.arange(numel, dtype=torch.int32, device=_HOST) % 100)
         .to(STORAGE_BYTES[storage_dtype])
         .reshape(shape)
     )
@@ -194,17 +196,14 @@ def _make_operand(
 ):
     channels = _channels(shape, axis)
     if scale_values is None:
-        scales = (
-            torch.arange(1, channels + 1, dtype=scales_dtype, device=flag_gems.device)
-            * 0.5
-        )
+        scales = torch.arange(1, channels + 1, dtype=scales_dtype, device=_HOST) * 0.5
     else:
         scales = torch.as_tensor(
-            scale_values, dtype=scales_dtype, device=flag_gems.device
+            scale_values, dtype=scales_dtype, device=_HOST
         ).reshape(-1)
-    zero_points = (
-        torch.arange(channels, dtype=torch.int32, device=flag_gems.device) % 7
-    ).to(zero_points_dtype)
+    zero_points = (torch.arange(channels, dtype=torch.int32, device=_HOST) % 7).to(
+        zero_points_dtype
+    )
     return torch.ops.aten._make_per_channel_quantized_tensor(
         _storage_values(shape, storage_dtype), scales, zero_points, axis
     )
@@ -237,10 +236,10 @@ def test_q_per_channel_scales(
     ref_snapshot = torch.ops.aten.q_per_channel_scales(ref_inp).detach().clone()
 
     res_out = flag_gems.q_per_channel_scales(inp)
+    assert res_out.device.type == _HOST
 
     # One scale per channel, in the dtype the stored qparams carry, on the input device.
     assert res_out.dtype == RESULT_DTYPE[family]
-    assert res_out.device == inp.device
     assert res_out.shape == (_channels(shape, axis),)
     tu.assert_result_equal(res_out, ref_snapshot)
 
@@ -280,6 +279,7 @@ def test_q_per_channel_scales_out(
 
     ref_out = torch.ops.aten.q_per_channel_scales.out(ref_inp, out=ref_buf)
     res_out = flag_gems.q_per_channel_scales(inp, out=out_buf)
+    assert res_out.device.type == _HOST
 
     # The caller's object is filled and returned, resizing a mismatched buffer.
     assert res_out is out_buf
@@ -309,6 +309,7 @@ def test_q_per_channel_scales_returns_stored_parameter(
     ref_snapshot = torch.ops.aten.q_per_channel_scales(ref_inp).detach().clone()
 
     res_out = flag_gems.q_per_channel_scales(inp)
+    assert res_out.device.type == _HOST
 
     # The default entry point hands back the quantizer's own parameter tensor instead of
     # recomputing or copying it, and the stored metadata survives the call untouched.
@@ -332,6 +333,7 @@ def test_q_per_channel_scales_int32_zero_points(shape, axis):
 
     ref_snapshot = torch.ops.aten.q_per_channel_scales(ref_inp).detach().clone()
     res_out = flag_gems.q_per_channel_scales(inp)
+    assert res_out.device.type == _HOST
 
     assert res_out.dtype == torch.float64
     assert res_out.shape == (_channels(shape, axis),)
@@ -359,6 +361,7 @@ def test_q_per_channel_scales_scale_values(
 
     ref_snapshot = torch.ops.aten.q_per_channel_scales(ref_inp).detach().clone()
     res_out = flag_gems.q_per_channel_scales(inp)
+    assert res_out.device.type == _HOST
 
     assert res_out.dtype == RESULT_DTYPE[family]
     assert res_out.shape == (1024,)
@@ -387,6 +390,7 @@ def test_q_per_channel_scales_special_scale_values(
 
     ref_snapshot = torch.ops.aten.q_per_channel_scales(ref_inp).detach().clone()
     res_out = flag_gems.q_per_channel_scales(inp)
+    assert res_out.device.type == _HOST
 
     assert res_out.dtype == RESULT_DTYPE[family]
     assert res_out.shape == (len(scale_values),)
@@ -399,11 +403,11 @@ def _invalid_args(case):
     if case == "non_tensor_input":
         return ([1.0, 2.0, 3.0], {})
     if case == "plain_float_tensor":
-        return (torch.zeros((4, 4), dtype=torch.float32, device=flag_gems.device), {})
+        return (torch.zeros((4, 4), dtype=torch.float32, device=_HOST), {})
     if case == "not_per_channel":
         return (
             torch.quantize_per_tensor(
-                torch.zeros((4, 4), device=flag_gems.device), 0.25, 0, torch.quint8
+                torch.zeros((4, 4), device=_HOST), 0.25, 0, torch.quint8
             ),
             {},
         )
@@ -412,7 +416,7 @@ def _invalid_args(case):
         # Affine metadata is float64, so a float32 buffer must be rejected.
         return (
             inp,
-            {"out": torch.empty(32, dtype=torch.float32, device=flag_gems.device)},
+            {"out": torch.empty(32, dtype=torch.float32, device=_HOST)},
         )
     return (inp, {"out": [0.0] * 32})
 

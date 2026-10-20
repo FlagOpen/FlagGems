@@ -41,10 +41,9 @@ parameter, it is required and has no schema default), and fp8 special values
 further below.
 """
 
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import test_utils as tu
 
@@ -85,6 +84,16 @@ def _where(device_kind):
     return "cpu" if device_kind == "cpu" else flag_gems.device
 
 
+def _reference(log_probs, targets, input_lengths, target_lengths, blank):
+    # Device and stride are inputs to this host predicate. Keep the originals:
+    # moving them for --ref cpu would change eligibility, not provide an oracle.
+    if log_probs.device.type != "cuda":
+        return False  # cuDNN cannot run on a non-CUDA device.
+    return torch.ops.aten._use_cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, blank
+    )
+
+
 def _assert_bool(res_out, ref_out):
     # The result is a Python scalar: check its type and value directly instead of
     # wrapping it in an artificial tensor.
@@ -104,12 +113,7 @@ def test__use_cudnn_ctc_loss(shape, value_range, dtype):
     input_lengths = [t] * n
     target_lengths = [target_length] * n
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, input_lengths, target_lengths, 0
-    )
+    ref_out = _reference(log_probs, targets, input_lengths, target_lengths, 0)
     res_out = flag_gems._use_cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0
     )
@@ -124,15 +128,14 @@ def test__use_cudnn_ctc_loss_rejected_log_probs_dtype(shape, dtype):
     # The scalar_type test runs before any element is read, so one value range
     # suffices: the values cannot change the outcome and it is a plain False.
     t, n, c = _ctc_shape(shape)
-    log_probs = tu.make_input(dtype, (t, n, c), ["-1", "1"])
+    log_probs = (
+        torch.empty((t, n, c), dtype=dtype, device=flag_gems.device)
+        if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        else tu.make_input(dtype, (t, n, c), ["-1", "1"])
+    )
     targets = _targets(n, 3)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, [t] * n, [3] * n, 0
-    )
+    ref_out = _reference(log_probs, targets, [t] * n, [3] * n, 0)
     res_out = flag_gems._use_cudnn_ctc_loss(log_probs, targets, [t] * n, [3] * n, 0)
 
     _assert_bool(res_out, ref_out)
@@ -146,12 +149,7 @@ def test__use_cudnn_ctc_loss_targets_dtype(targets_dtype):
     log_probs = tu.make_input(torch.float32, (8, 3, 5), ["-1", "1"])
     targets = _targets(3, 3, dtype=targets_dtype)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, [8, 8, 8], [3, 3, 3], 0
-    )
+    ref_out = _reference(log_probs, targets, [8, 8, 8], [3, 3, 3], 0)
     res_out = flag_gems._use_cudnn_ctc_loss(log_probs, targets, [8, 8, 8], [3, 3, 3], 0)
 
     _assert_bool(res_out, ref_out)
@@ -183,12 +181,7 @@ def test__use_cudnn_ctc_loss_targets_layout(kind):
     log_probs = tu.make_input(torch.float32, (8, 3, 5), ["-1", "1"])
     targets = _targets_variant(kind, 3, 3)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, [8, 8, 8], [3, 3, 3], 0
-    )
+    ref_out = _reference(log_probs, targets, [8, 8, 8], [3, 3, 3], 0)
     res_out = flag_gems._use_cudnn_ctc_loss(log_probs, targets, [8, 8, 8], [3, 3, 3], 0)
 
     _assert_bool(res_out, ref_out)
@@ -233,12 +226,7 @@ def test__use_cudnn_ctc_loss_lengths(log_probs_shape, input_lengths, target_leng
     log_probs = tu.make_input(torch.float32, log_probs_shape, ["-1", "1"])
     targets = _targets(log_probs_shape[1], 3)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, input_lengths, target_lengths, 0
-    )
+    ref_out = _reference(log_probs, targets, input_lengths, target_lengths, 0)
     res_out = flag_gems._use_cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0
     )
@@ -252,12 +240,7 @@ def test__use_cudnn_ctc_loss_blank(blank):
     log_probs = tu.make_input(torch.float32, (8, 3, 5), ["-1", "1"])
     targets = _targets(3, 3)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, [8, 8, 8], [3, 3, 3], blank
-    )
+    ref_out = _reference(log_probs, targets, [8, 8, 8], [3, 3, 3], blank)
     res_out = flag_gems._use_cudnn_ctc_loss(
         log_probs, targets, [8, 8, 8], [3, 3, 3], blank
     )
@@ -321,14 +304,7 @@ def test__use_cudnn_ctc_loss_tensor_lengths(row):
         tl_values, dtype=lengths_dtype, device=_where(lengths_where)
     )
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-    ref_input_lengths = tu.to_reference(input_lengths)
-    ref_target_lengths = tu.to_reference(target_lengths)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss.Tensor(
-        ref_log_probs, ref_targets, ref_input_lengths, ref_target_lengths, blank
-    )
+    ref_out = _reference(log_probs, targets, input_lengths, target_lengths, blank)
     res_out = flag_gems._use_cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, blank
     )
@@ -350,12 +326,7 @@ def test__use_cudnn_ctc_loss_special_values(dtype, scenario):
     log_probs = tu.make_special_input(dtype, scenario).reshape(5, 1, 1)
     targets = _targets(1, 1)
 
-    ref_log_probs = tu.to_reference(log_probs)
-    ref_targets = tu.to_reference(targets)
-
-    ref_out = torch.ops.aten._use_cudnn_ctc_loss(
-        ref_log_probs, ref_targets, [5], [1], 0
-    )
+    ref_out = _reference(log_probs, targets, [5], [1], 0)
     res_out = flag_gems._use_cudnn_ctc_loss(log_probs, targets, [5], [1], 0)
 
     _assert_bool(res_out, ref_out)
@@ -408,9 +379,7 @@ def test_use_cudnn_ctc_loss_rank_and_backend_state(shape, enabled, form):
         input_lengths = torch.tensor(input_lengths, dtype=torch.int32)
         target_lengths = torch.tensor(target_lengths, dtype=torch.int32)
     with torch.backends.cudnn.flags(enabled=enabled):
-        ref = torch.ops.aten._use_cudnn_ctc_loss(
-            log_probs, targets, input_lengths, target_lengths, 0
-        )
+        ref = _reference(log_probs, targets, input_lengths, target_lengths, 0)
         res = flag_gems._use_cudnn_ctc_loss(
             log_probs, targets, input_lengths, target_lengths, 0
         )

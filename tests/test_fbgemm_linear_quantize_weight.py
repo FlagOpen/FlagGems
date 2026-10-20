@@ -12,15 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
+import flag_gems
 import pytest
 import torch
 
-import flag_gems
-
 from . import test_utils as tu
+from .accuracy_utils import TO_CPU
 
 # aten::fbgemm_linear_quantize_weight(input) -> (Tensor, Tensor, float, int)
-#   q: int8, same shape as input; bias: int32 with shape input.shape[:-1];
+#   q: int8, same shape as input; bias: int32 with shape (input.size(0),);
 #   scale: Python float; zero_point: Python int -- one pair per tensor, with the
 #   integer bias consumed by the packed GEMM kernels.
 # Native contract probed on this checkout: rank >= 2 (rank 1/0 raise IndexError
@@ -128,11 +130,72 @@ _REJECTED_DTYPES = [
 _REJECTED_SHAPES = [(), (1,), (256,)]
 
 
+def _float32(value):
+    return torch.tensor(value, dtype=torch.float32).item()
+
+
+def _reference(inp):
+    if flag_gems.vendor_name != "ascend" and not TO_CPU:
+        return torch.ops.aten.fbgemm_linear_quantize_weight(inp)
+
+    # FBGEMM is absent from ARM builds. Mirror its affine quantizer, including
+    # float32 parameter rounding, nearest-even integer conversion and int32 wrap.
+    weight = inp.contiguous()
+    low, high = (
+        (weight.min().item(), weight.max().item()) if weight.numel() else (0.0, 0.0)
+    )
+    low, high = min(low, 0.0), max(high, 0.0)
+    scale = _float32((high - low) / 255)
+    if scale == 0 or math.isinf(_float32(1 / scale)):
+        scale = _float32(0.1)
+    if scale < _float32(6.1e-5):
+        original = scale
+        scale = _float32(6.1e-5)
+        if low == 0:
+            high = _float32(scale * 255)
+        elif high == 0:
+            low = _float32(-scale * 255)
+        else:
+            multiplier = _float32(scale / original)
+            low, high = _float32(low * multiplier), _float32(high * multiplier)
+    from_low = -128 - low / scale
+    from_high = 127 - high / scale
+    initial = (
+        from_low if 128 + abs(low / scale) < 127 + abs(high / scale) else from_high
+    )
+    zero_point = (
+        -2147483648 if math.isnan(initial) else max(-128, min(127, round(initial)))
+    )
+    scaled = weight * _float32(1 / scale)
+    # Match the source x86 SIMD conversion's NaN/positive-overflow sentinel.
+    scaled = torch.where(
+        torch.isnan(scaled), torch.full_like(scaled, 2147483520.0), scaled
+    )
+    quantized = (
+        (scaled.clamp(max=2147483520.0).round().to(torch.int32) + zero_point)
+        .clamp(-128, 127)
+        .to(torch.int8)
+    )
+    rows, columns = weight.shape[:2]
+    # Native uses size(1), even for higher-rank operands: do not flatten all
+    # trailing axes into the reduction width.
+    offsets = (
+        quantized.flatten()[: rows * columns]
+        .reshape(rows, columns)
+        .to(torch.int32)
+        .sum(1, dtype=torch.int32)
+        - zero_point * columns
+    ).to(torch.int32)
+    return quantized, offsets, scale, zero_point
+
+
 def _assert_quantized(res, ref):
     """Compare a (q, bias, scale, zero_point) result with the native tuple."""
     assert len(res) == 4, len(res)
     res_q, res_bias, res_scale, res_zp = res
     ref_q, ref_bias, ref_scale, ref_zp = ref
+
+    assert res_q.device.type == res_bias.device.type == "cpu"
 
     # Schema types: the native operator returns a Python float and a Python int.
     assert isinstance(res_scale, float), type(res_scale)
@@ -159,11 +222,12 @@ def test_fbgemm_linear_quantize_weight_value_ranges(dtype, shape, value_range):
     ref_inp = tu.to_reference(inp)
     inp_before = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
     # The weight is read, not written: only fresh buffers are returned.
+    assert inp.device.type == "cpu"
     tu.assert_result_equal(inp, inp_before)
 
 
@@ -173,7 +237,7 @@ def test_fbgemm_linear_quantize_weight_row_length(row_length):
     inp = tu.make_input(torch.float32, (3, row_length), ["-1", "1"]).cpu()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -185,7 +249,7 @@ def test_fbgemm_linear_quantize_weight_constant_row(row):
     inp = torch.tensor([row], dtype=torch.float32)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -203,7 +267,7 @@ def test_fbgemm_linear_quantize_weight_zero_row(zero_row):
     inp = torch.tensor(rows, dtype=torch.float32)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -225,7 +289,7 @@ def test_fbgemm_linear_quantize_weight_non_contiguous(layout):
         inp = block[:1].expand(6, 8)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -238,7 +302,7 @@ def test_fbgemm_linear_quantize_weight_empty_input(shape):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"]).cpu()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -252,7 +316,7 @@ def test_fbgemm_linear_quantize_weight_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).cpu().reshape(1, 5)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)
@@ -261,7 +325,8 @@ def test_fbgemm_linear_quantize_weight_special_values(dtype, scenario):
 @pytest.mark.fbgemm_linear_quantize_weight
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test_fbgemm_linear_quantize_weight_rejects_unsupported_dtype(dtype):
-    inp = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu()
+    # This CPU operator rejects the dtype before reading its payload.
+    inp = torch.empty((4, 8), dtype=dtype, device="cpu")
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.fbgemm_linear_quantize_weight(inp)
@@ -281,7 +346,7 @@ def test_fbgemm_linear_quantize_weight_grad_metadata():
     inp = torch.randn((3, 8), dtype=torch.float32, device="cpu", requires_grad=True)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.fbgemm_linear_quantize_weight(ref_inp)
+    ref_out = _reference(ref_inp)
     res_out = flag_gems.fbgemm_linear_quantize_weight(inp)
 
     _assert_quantized(res_out, ref_out)

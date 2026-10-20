@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-import torch
+import platform
+import time
+from dataclasses import asdict, dataclass
 
 import flag_gems
+import pytest
+import torch
+from torch.utils.benchmark import Timer
 
-from . import base
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 # q_per_channel_scales returns stored per-channel quantizer metadata, so the default
@@ -85,7 +89,11 @@ def _axes_for(shape):
 def _quantized_input(shape, axis, storage_dtype, family, device):
     scales_dtype, zero_points_dtype = QPARAM_DTYPES[family]
     channels = _channels(shape, axis)
-    scales = torch.arange(1, channels + 1, dtype=scales_dtype, device=device) * 0.5
+    # Integer indices avoid CPU-dependent float32 arange rounding above 2**24.
+    scales = (
+        torch.arange(1, channels + 1, dtype=torch.int64, device=device).to(scales_dtype)
+        * 0.5
+    )
     zero_points = (torch.arange(channels, dtype=torch.int32, device=device) % 7).to(
         zero_points_dtype
     )
@@ -121,11 +129,13 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    device = "cpu"  # The native input ABI is a CPU quantized tensor.
     shape, axis, storage_dtype, family = plan.builder_args
     return (_quantized_input(shape, axis, storage_dtype, family, device),)
 
 
 def _build_inputs_fn_out(plan, dtype, device):
+    device = "cpu"  # The native input ABI is a CPU quantized tensor.
     shape, axis, storage_dtype, family = plan.builder_args
     inp = _quantized_input(shape, axis, storage_dtype, family, device)
     # Allocation happens in the builder and is not timed. out is keyword-only in the
@@ -136,7 +146,67 @@ def _build_inputs_fn_out(plan, dtype, device):
     return inp, {"out": out_buf}
 
 
+@dataclass
+class _HostMetrics(base.BenchmarkMetrics):
+    measurement_source: dict | None = None
+
+
 class QPerChannelScalesBenchmark(OperatorBenchmark):
+    def get_latency(self, op, *args, **kwargs):
+        if self.is_backward:
+            raise ValueError("Quantizer metadata access has no backward benchmark")
+        if (
+            not base.Config.reference_only
+            and base.Config.mode != consts.BenchMode.OPERATOR
+        ):
+            raise ValueError("CPU host timing requires --mode operator")
+        # GPU events cannot measure this host metadata API. One CPU thread and
+        # repeated wall-clock samples keep tiny accessor timings meaningful.
+        self._host_source = {
+            "kind": "cpu_host",
+            "actual_timing_mode": "host_wall_time",
+            "device": "cpu",
+            "architecture": platform.machine(),
+            "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+            "torch": str(torch.__version__),
+            "threads": 1,
+            "timer": "torch.utils.benchmark.Timer",
+            "scope": "CPU dispatch and quantizer metadata access",
+        }
+        latency = (
+            Timer(
+                stmt="op(*args, **kwargs)",
+                globals={"op": op, "args": args, "kwargs": kwargs},
+                num_threads=1,
+                timer=time.perf_counter,
+            )
+            .blocked_autorange(min_run_time=0.05)
+            .median
+            * 1000
+        )
+        if base.Config.reference_only:
+            active = [
+                record
+                for record in base.Config.reference_records
+                if record.get("operator") == self.op_name
+                and record.get("nodeid") == base.Config.current_nodeid
+                and "failure" not in record
+                and record.get("status") == "FAILED"
+                and record.get("stage") == "benchmark_reference"
+            ]
+            if len(active) != 1:
+                raise RuntimeError("Cannot identify the active CPU reference case")
+            active[0]["measurement_source"] = self._host_source
+        return latency
+
+    def _measure_input(self, input, case_id=None):
+        if "tflops" in self.to_bench_metrics or "gbps" in self.to_bench_metrics:
+            raise ValueError("CPU metadata access supports latency metrics only")
+        metric = super()._measure_input(input, case_id)
+        if metric.speedup is not None:
+            metric.speedup = metric.latency_base / metric.latency
+        return _HostMetrics(**asdict(metric), measurement_source=self._host_source)
+
     def set_more_shapes(self):
         # Extra per-channel boundaries merged by the shared loader at the comprehensive
         # level; a caller shape file still overrides the default shapes.
