@@ -68,6 +68,51 @@ def _offset_capacity(dtype):
     return int(torch.iinfo(dtype).max)
 
 
+def _batch_coordinate_overflows(shape, dtype):
+    # Native narrow-index coordinate construction can wrap batch coordinates,
+    # even though its requested output type is int32/int64. Empty outputs have
+    # no coordinates to overflow; pointer/column values remain unchanged.
+    return (
+        dtype in (torch.int8, torch.uint8)
+        and all(extent > 0 for extent in shape)
+        and any(extent - 1 > torch.iinfo(dtype).max for extent in shape[:-1])
+    )
+
+
+def _native_skip_reason(shape, dtype):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and _batch_coordinate_overflows(
+        shape, dtype
+    ):
+        return f"{flag_gems.vendor_name} native CSR-to-COO wraps batch coordinates in the narrow input index dtype"
+    return None
+
+
+def _reference(crow, col, **flags):
+    if crow.device.type == "cpu" and _batch_coordinate_overflows(col.shape, crow.dtype):
+        # Output width is controlled by out_int32, independently of input
+        # width. Widen only reference index arithmetic: CPU native otherwise
+        # wraps valid batch coordinates. Candidate inputs retain their dtype.
+        crow, col = crow.to(torch.int64), col.to(torch.int64)
+    return torch.ops.aten._convert_indices_from_csr_to_coo(crow, col, **flags)
+
+
+def _assert_indices_equal(result, reference):
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout
+    if utils.TO_CPU:
+        assert reference.device == torch.device("cpu")
+    else:
+        assert reference.device == result.device
+    tu.assert_result_equal(result, reference)
+
+
 def _index_tensor(values, dtype):
     return torch.tensor(values, dtype=dtype, device=flag_gems.device)
 
@@ -80,6 +125,18 @@ def _csr_offsets(col_shape, dtype):
     is (the grid keeps only such extents).
     """
     rows = col_shape[-1] + 1
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.int8,
+        torch.uint8,
+        torch.int16,
+    ):
+        # NPU arange cannot construct these otherwise valid index buffers.
+        offsets = torch.arange(rows, dtype=dtype, device="cpu")
+        return (
+            offsets.repeat(_numel(col_shape[:-1]))
+            .reshape(col_shape[:-1] + (rows,))
+            .to(flag_gems.device)
+        )
     offsets = torch.arange(rows, dtype=dtype, device=flag_gems.device)
     return offsets.repeat(_numel(col_shape[:-1])).reshape(col_shape[:-1] + (rows,))
 
@@ -133,21 +190,34 @@ _GRID_CASES = tu.selected_cases(_GRID_ROWS, quick=_QUICK_GRID_ROWS)
 
 
 @pytest.mark.underscore_convert_indices_from_csr_to_coo
-@pytest.mark.parametrize("shape,dtype,value_range", _GRID_CASES)
+@pytest.mark.parametrize(
+    "shape,dtype,value_range",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                _native_skip_reason(shape, dtype) is not None,
+                reason=_native_skip_reason(shape, dtype)
+                or "native batch coordinates supported",
+            ),
+        )
+        for shape, dtype, value_range in _GRID_CASES
+    ],
+)
 def test__convert_indices_from_csr_to_coo(shape, dtype, value_range):
     crow = _csr_offsets(shape, dtype)
     col = tu.make_input(dtype, shape, value_range)
     ref_crow = tu.to_reference(crow)
     ref_col = tu.to_reference(col)
 
-    ref_out = torch.ops.aten._convert_indices_from_csr_to_coo(
-        ref_crow, ref_col, **_DEFAULT_OUT_KWARGS
-    )
+    ref_out = _reference(ref_crow, ref_col, **_DEFAULT_OUT_KWARGS)
     res_out = flag_gems._convert_indices_from_csr_to_coo(
         crow, col, **_DEFAULT_OUT_KWARGS
     )
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_indices_equal(res_out, ref_out)
 
 
 # Every flag combination, including the call that omits the argument.  The
@@ -184,12 +254,10 @@ def test__convert_indices_from_csr_to_coo_flags(shape, label, flags, value_range
     ref_crow = tu.to_reference(crow)
     ref_col = tu.to_reference(col)
 
-    ref_out = torch.ops.aten._convert_indices_from_csr_to_coo(
-        ref_crow, ref_col, **flags
-    )
+    ref_out = _reference(ref_crow, ref_col, **flags)
     res_out = flag_gems._convert_indices_from_csr_to_coo(crow, col, **flags)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_indices_equal(res_out, ref_out)
 
 
 # Output-buffer rows keep every flag combination whose expected output dtype the
@@ -217,7 +285,24 @@ _OUT_CASES = tu.selected_cases(
 
 
 @pytest.mark.underscore_convert_indices_from_csr_to_coo
-@pytest.mark.parametrize("shape,dtype,out_int32,transpose,value_range", _OUT_CASES)
+@pytest.mark.parametrize(
+    "shape,dtype,out_int32,transpose,value_range",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            out_int32,
+            transpose,
+            value_range,
+            marks=pytest.mark.skipif(
+                _native_skip_reason(shape, dtype) is not None,
+                reason=_native_skip_reason(shape, dtype)
+                or "native batch coordinates supported",
+            ),
+        )
+        for shape, dtype, out_int32, transpose, value_range in _OUT_CASES
+    ],
+)
 def test__convert_indices_from_csr_to_coo_out(
     shape, dtype, out_int32, transpose, value_range
 ):
@@ -226,16 +311,14 @@ def test__convert_indices_from_csr_to_coo_out(
     ref_crow = tu.to_reference(crow)
     ref_col = tu.to_reference(col)
 
-    ref_out = torch.ops.aten._convert_indices_from_csr_to_coo(
-        ref_crow, ref_col, out_int32=out_int32, transpose=transpose
-    )
+    ref_out = _reference(ref_crow, ref_col, out_int32=out_int32, transpose=transpose)
     buf = torch.zeros(ref_out.shape, dtype=ref_out.dtype, device=flag_gems.device)
     res_out = flag_gems._convert_indices_from_csr_to_coo(
         crow, col, out_int32=out_int32, transpose=transpose, out=buf
     )
 
     assert res_out is buf, "the out overload must write into the provided tensor"
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_indices_equal(res_out, ref_out)
 
 
 # Named csr distributions.  Batched entries use rectangular blocks whose
@@ -281,14 +364,12 @@ def test__convert_indices_from_csr_to_coo_crow_distribution(
     ref_crow = tu.to_reference(crow)
     ref_col = tu.to_reference(col)
 
-    ref_out = torch.ops.aten._convert_indices_from_csr_to_coo(
-        ref_crow, ref_col, **_DEFAULT_OUT_KWARGS
-    )
+    ref_out = _reference(ref_crow, ref_col, **_DEFAULT_OUT_KWARGS)
     res_out = flag_gems._convert_indices_from_csr_to_coo(
         crow, col, **_DEFAULT_OUT_KWARGS
     )
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_indices_equal(res_out, ref_out)
 
 
 _CROW_SPEC = [0, 1, 1, 2]
@@ -334,14 +415,12 @@ def test__convert_indices_from_csr_to_coo_strided_inputs(
     ref_crow = tu.to_reference(crow)
     ref_col = tu.to_reference(col)
 
-    ref_out = torch.ops.aten._convert_indices_from_csr_to_coo(
-        ref_crow, ref_col, **_DEFAULT_OUT_KWARGS
-    )
+    ref_out = _reference(ref_crow, ref_col, **_DEFAULT_OUT_KWARGS)
     res_out = flag_gems._convert_indices_from_csr_to_coo(
         crow, col, **_DEFAULT_OUT_KWARGS
     )
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_indices_equal(res_out, ref_out)
 
 
 _ZERO_DIM_CASES = [
