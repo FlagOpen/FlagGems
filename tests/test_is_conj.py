@@ -20,24 +20,101 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate nonempty FP8 test payloads",
-)
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
 
 
-def _input_marks(dtype):
-    if dtype.is_complex:
-        return (_ASCEND_COMPLEX_SKIP,)
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-        return (_ASCEND_FP8_INPUT_SKIP,)
-    return ()
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
 
 
-_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend complex input/reference support is incomplete",
-)
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _reference(inp):
+    return _copy_to(inp, "cpu" if utils.TO_CPU else inp.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+        if low == high:
+            value = torch.full(shape, low, dtype=torch.float32, device="cpu")
+        else:
+            value = torch.testing.make_tensor(
+                shape, dtype=torch.float32, device="cpu", low=low, high=high
+            )
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    cpu_encoding = (
+        flag_gems.vendor_name == "ascend"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype == torch.complex32)
+    if cpu_encoding:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _assert_payload_equal(result, reference):
+    # Validate the selected reference ABI before observing values on CPU.
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    expected = _device("cpu" if utils.TO_CPU else flag_gems.device)
+    assert result.device == reference.device == expected
+    torch.testing.assert_close(
+        _copy_to(result, "cpu"),
+        _copy_to(reference, "cpu"),
+        rtol=0,
+        atol=0,
+        equal_nan=True,
+    )
 
 
 # aten::is_conj(Tensor self) -> bool only reads the tensor's lazy conjugate bit,
@@ -74,6 +151,14 @@ _DTYPES = (
 
 def _conj_state(base, state):
     """Return a tensor in the requested lazy-flag state, preserving layout."""
+    if (
+        flag_gems.vendor_name == "ascend"
+        and base.dtype == torch.complex32
+        and state in ("conj_resolved", "conj_cloned")
+    ):
+        cpu = _copy_to(base, "cpu").conj()
+        cpu = cpu.resolve_conj() if state == "conj_resolved" else cpu.clone()
+        return _copy_to(cpu, base.device)
     if state == "plain":
         return base
     if state == "conj":
@@ -130,14 +215,11 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
     "dtype,value_range",
-    [
-        pytest.param(dtype, value_range, marks=_input_marks(dtype))
-        for dtype, value_range in _DTYPE_RANGE_CASES
-    ],
+    [pytest.param(dtype, value_range) for dtype, value_range in _DTYPE_RANGE_CASES],
 )
 def test_is_conj(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.is_conj(ref_inp)
     res_out = flag_gems.is_conj(inp)
@@ -185,15 +267,12 @@ _STATE_CASES = tu.selected_cases(
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_input_marks(dtype))
-        for dtype in _COMPLEX_DTYPES + [torch.float32]
-    ],
+    [pytest.param(dtype) for dtype in _COMPLEX_DTYPES + [torch.float32]],
 )
 @pytest.mark.parametrize("state,shape", _STATE_CASES)
 def test_is_conj_state(state, shape, dtype):
-    base = tu.make_input(dtype, shape, tu.selected_ranges()[0])
-    ref_base = tu.to_reference(base)
+    base = _make_input(dtype, shape, tu.selected_ranges()[0])
+    ref_base = _reference(base)
 
     inp = _conj_state(base, state)
     ref_inp = _conj_state(ref_base, state)
@@ -213,13 +292,13 @@ _BOUNDARY_DTYPES = _COMPLEX_DTYPES + [torch.float32, torch.int64, torch.bool]
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _BOUNDARY_DTYPES],
+    [pytest.param(dtype) for dtype in _BOUNDARY_DTYPES],
 )
 @pytest.mark.parametrize("state", ["plain", "conj"])
 @pytest.mark.parametrize("shape", [(), (1,), (0,), (3, 0)])
 def test_is_conj_boundary_shapes(shape, state, dtype):
-    base = tu.make_input(dtype, shape, tu.selected_ranges()[0])
-    ref_base = tu.to_reference(base)
+    base = _make_input(dtype, shape, tu.selected_ranges()[0])
+    ref_base = _reference(base)
 
     inp = _conj_state(base, state)
     ref_inp = _conj_state(ref_base, state)
@@ -244,15 +323,12 @@ _SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype,scenario",
-    [
-        pytest.param(dtype, scenario, marks=_input_marks(dtype))
-        for dtype, scenario in _SPECIAL_CASES
-    ],
+    [pytest.param(dtype, scenario) for dtype, scenario in _SPECIAL_CASES],
 )
 @pytest.mark.parametrize("state", ["plain", "conj"])
 def test_is_conj_special_values(state, dtype, scenario):
-    base = tu.make_special_input(dtype, scenario).to(flag_gems.device)
-    ref_base = tu.to_reference(base)
+    base = _make_special_input(dtype, scenario).to(flag_gems.device)
+    ref_base = _reference(base)
 
     inp = _conj_state(base, state)
     ref_inp = _conj_state(ref_base, state)
@@ -267,20 +343,18 @@ def test_is_conj_special_values(state, dtype, scenario):
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_input_marks(dtype))
-        for dtype in _COMPLEX_DTYPES + [torch.float32]
-    ],
+    [pytest.param(dtype) for dtype in _COMPLEX_DTYPES + [torch.float32]],
 )
 @pytest.mark.parametrize("shape", [(256,), (20, 320, 15)])
 def test_is_conj_query_leaves_input_untouched(shape, dtype):
     # Querying a lazy-conj view must neither resolve the flag nor touch the
     # storage it aliases.
-    inp = _conj_state(tu.make_input(dtype, shape, tu.selected_ranges()[0]), "conj")
+    inp = _conj_state(_make_input(dtype, shape, tu.selected_ranges()[0]), "conj")
     # to_reference already re-applies the lazy conjugate bit, so a second .conj()
     # would toggle it back off and compare against a plain tensor.
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
+    expected_device, expected_dtype = inp.device, inp.dtype
     before_ptr = inp.data_ptr()
     before_offset = inp.storage_offset()
     before_stride = inp.stride()
@@ -289,13 +363,14 @@ def test_is_conj_query_leaves_input_untouched(shape, dtype):
         inp.untyped_storage().nbytes(),
     )
     before_state = (inp.is_conj(), inp.is_neg(), inp.shape)
-    before_payload = tu.to_reference(inp)
+    before_payload = _reference(inp)
 
     ref_out = torch.ops.aten.is_conj(ref_inp)
     res_out = flag_gems.is_conj(inp)
 
     assert type(res_out) is bool
     assert res_out == ref_out
+    assert inp.device == expected_device and inp.dtype == expected_dtype
     assert inp.data_ptr() == before_ptr
     assert inp.storage_offset() == before_offset
     assert inp.stride() == before_stride
@@ -303,18 +378,18 @@ def test_is_conj_query_leaves_input_untouched(shape, dtype):
         before_storage
     )
     assert (inp.is_conj(), inp.is_neg(), inp.shape) == before_state
-    tu.assert_result_equal(tu.to_reference(inp), before_payload)
+    _assert_payload_equal(_reference(inp), before_payload)
 
 
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _COMPLEX_DTYPES],
+    [pytest.param(dtype) for dtype in _COMPLEX_DTYPES],
 )
 @pytest.mark.parametrize("shape", [(1024, 1024)])
 def test_is_conj_flag_is_per_tensor_not_per_storage(shape, dtype):
-    base = tu.make_input(dtype, shape, tu.selected_ranges()[0])
-    ref_base = tu.to_reference(base)
+    base = _make_input(dtype, shape, tu.selected_ranges()[0])
+    ref_base = _reference(base)
 
     # A lazy-conj alias and a plain alias of the same storage.
     inp_view = base.conj()

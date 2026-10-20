@@ -19,11 +19,6 @@ import flag_gems
 
 from . import base, consts, utils
 
-_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend normal_ does not support complex input dtypes",
-)
-
 BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
 
 # aten::is_conj(Tensor self) -> bool only reads the lazy conjugate bit and runs no
@@ -47,7 +42,16 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     shape, state = plan.builder_args
-    inp = utils.generate_tensor_input(shape, dtype, device)
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        inp = utils.generate_tensor_input(shape, dtype, "cpu").to(device)
+    else:
+        inp = utils.generate_tensor_input(shape, dtype, device)
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.dtype == dtype and inp.device == expected
     if state == "conj":
         inp = inp.conj()
     elif state == "conj_resolved":
@@ -75,10 +79,7 @@ class IsConjBenchmark(base.GenericBenchmark):
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in BENCH_DTYPES
-    ],
+    [pytest.param(dtype) for dtype in BENCH_DTYPES],
 )
 def test_is_conj(dtype):
 
