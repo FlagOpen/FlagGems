@@ -1228,3 +1228,14 @@ batch_norm_elemt:
     - [128, 256, 32, 32]
     - [4, 32, 8, 8, 8]
   shape_desc: "N, C, *spatial"
+
+# Sparse COO inputs: the dim-1 / dim-0 projection cost scales with the stored
+# nnz, so these are the (M, N) sparse-matrix shapes the benchmark builds.
+sparse_sum:
+  shapes:
+    - [1024, 1024]
+    - [2048, 2048]
+    - [4096, 4096]
+    - [8192, 8192]
+    - [4096, 1024]
+  shape_desc: "M, N"
