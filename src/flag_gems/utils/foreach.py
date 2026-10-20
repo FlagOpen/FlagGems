@@ -30,6 +30,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver as _triton_driver
 
 logger = logging.getLogger(__name__)
 
@@ -492,6 +494,89 @@ def launch_stats() -> Dict[str, int]:
     return _STATS.as_dict()
 
 
+# Every argument of the executor kernels other than the metadata pointer is a
+# ``tl.constexpr``, so ``(kernel, NT, fn, dtype, dtype, BLOCK)`` identifies the
+# compiled variant exactly and a replay only has to hand the same values to the
+# kernel's launcher.  Triton's Python dispatch between that lookup and the
+# actual launch -- binder, cache-key hash, launch-metadata and hook checks --
+# measured ~4us per launch, about a tenth of the small-shape budget, and none of
+# it can change the result.  The hit rate is high by construction: a benchmark
+# loop launches the same variant thousands of times.
+#
+# Only the *launcher* is cached.  The metadata tensor is rebuilt and uploaded on
+# every call, so no device-visible buffer is shared across calls; see
+# ``_device_meta``.
+#
+# The only thing Triton specializes on here is the metadata pointer's 16-byte
+# alignment, so that bit is part of the key and an unusually aligned allocation
+# gets a variant of its own rather than a mismatch.  A miss, an installed launch
+# hook (proton and other instrumentation install one), or a launcher that raises
+# all take the normal path, which fills the cache.
+_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+
+
+def _launch_executor_kernel(
+    kernel: Callable,
+    grid: Tuple[int, int],
+    nt: int,
+    meta: torch.Tensor,
+    fn: Callable,
+    dt_in: Any,
+    dt_out: Any,
+    block: int,
+) -> None:
+    # ``meta.device`` is part of the key: a compiled kernel belongs to one
+    # device's module, so replaying device A's launcher for device B would use
+    # the wrong context.
+    key = (
+        kernel,
+        meta.device,
+        nt,
+        fn,
+        dt_in,
+        dt_out,
+        block,
+        not (meta.data_ptr() & 15),
+    )
+    entry = _LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and runtime.launch_enter_hook is None
+        and runtime.launch_exit_hook is None
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                fn,
+                nt,
+                dt_in,
+                dt_out,
+                block,
+            )
+            return
+        except Exception:
+            # A launcher that cannot be replayed this way is not a correctness
+            # problem: forget the entry and let Triton dispatch as usual.
+            _LAUNCH_CACHE.pop(key, None)
+    compiled = kernel[grid](meta, fn, nt, dt_in, dt_out, block)
+    if compiled is not None:
+        _LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
+
+
 # ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
@@ -537,10 +622,19 @@ def _launch_group(
             if dsts[0].dtype.is_floating_point
             else foreach_unary_c2c_kernel
         )
-        kernel[grid](meta, fn, nt, tl_dtype(real_dtype), acc, block)
+        _launch_executor_kernel(
+            kernel, grid, nt, meta, fn, tl_dtype(real_dtype), acc, block
+        )
     else:
-        foreach_unary_kernel[grid](
-            meta, fn, nt, tl_dtype(in_dtype), tl_dtype(dsts[0].dtype), block
+        _launch_executor_kernel(
+            foreach_unary_kernel,
+            grid,
+            nt,
+            meta,
+            fn,
+            tl_dtype(in_dtype),
+            tl_dtype(dsts[0].dtype),
+            block,
         )
     _STATS.executor_launches += 1
     _STATS.groups += 1
@@ -570,6 +664,24 @@ def check_dtype_supported(
         raise error_type(
             f'"foreach" not implemented for \'{str(dtype).replace("torch.", "")}\''
         )
+
+
+# ``flag_gems`` overrides ``Tensor.copy_`` on the CUDA key inside
+# ``use_gems()``, and ``_device_meta`` runs that copy once per group.  The gems
+# wrapper validates its arguments and then re-dispatches this CPU->CUDA copy to
+# the composite aten kernel anyway, so address that implementation directly.
+# The handle is optional: a build without ``redispatch`` keeps the method.
+try:
+    _ATEN_COMPOSITE_KEYSET = torch._C.DispatchKeySet(
+        torch._C.DispatchKey.CompositeExplicitAutograd
+    )
+except (AttributeError, RuntimeError):  # pragma: no cover - depends on torch build
+    _ATEN_COMPOSITE_KEYSET = None
+
+try:
+    _ATEN_COPY_REDISPATCH = torch.ops.aten.copy_.default.redispatch
+except (AttributeError, RuntimeError):  # pragma: no cover - depends on torch build
+    _ATEN_COPY_REDISPATCH = None
 
 
 def foreach_unary(
@@ -786,13 +898,26 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     ``_to_copy``: inside ``use_gems()`` the plain ``torch.tensor(...).to(device)``
     form runs the gems implementation and measured 21.5us against 13.1us here.
 
+    The copy addresses the composite aten implementation directly.  Inside
+    ``use_gems()`` the ``Tensor.copy_`` method runs flag_gems' Python wrapper,
+    which validates its arguments and then redispatches this CPU->CUDA copy to
+    exactly that composite kernel anyway; the wrapper measured ~10us per call
+    (P1's cProfile: ``copy_`` cumulative 13.5-14.9us, of which the transfer is
+    small).  ``redispatch`` is only an optimisation, so a build without it falls
+    back to the regular method.
+
     Both sides are fresh on every call.  The host buffer is pageable, so the
     runtime stages it before the copy call returns; nothing is reused, which is
     exactly what made the cached pinned staging pool unsafe.
     """
     host = torch.frombuffer(array.array("q", values), dtype=torch.int64)
     out = torch.empty(len(values), dtype=torch.int64, device=device)
-    out.copy_(host, non_blocking=True)
+    if _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
+        out.copy_(host, non_blocking=True)
+    else:
+        # Skip the Python-level copy_ registration and go straight to the
+        # CompositeExplicitAutograd implementation.
+        _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
     return out
 
 
