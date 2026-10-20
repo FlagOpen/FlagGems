@@ -64,19 +64,19 @@ _SM_COUNTS: Dict[Any, int] = {}
 # than the second launch and its allocation; the comparison is on the largest
 # tensor of the group, which bounds that serial walk.
 #
-# Measured on the 78-SM H20 (list of 16, 1-D tensors of the stated numel,
-# fp16/bf16/fp32, ``do_bench`` median, two rounds, medians across dtypes): the
-# two-stage path is flat at 91us from 16K to 1M elements, while the single
-# launch grows with the serial walk -- 50us at 65536 (1.8x faster), 68us at
-# 131072 (1.3x faster), 95us at 196608 (4% slower, inside the +-7% single-row
-# noise) and 124us at 262144 (1.4x slower).  The crossover therefore lies
-# between 128K and 192K elements, and the gate sits on the 2**17 rung: the
-# largest size with a win well outside that noise band.  This is one rung above
-# the Kunlunxin ``_pick_block`` ladder's 65536 step (which shrinks the block
-# size once the *multi-program* fast path reaches 64K elements): that path keeps
-# many programs busy, whereas ``G == 1`` leaves one program per tensor, so its
-# serial walk only becomes the bottleneck two doublings later.
-_SINGLE_LAUNCH_MAX_NUMEL = 131072
+# Measured on the 78-SM H20 (list of 16, 1-D fp16/fp32 tensors of the stated
+# numel, ``do_bench`` median; single / two-stage, us): 1024 8.2/26.5, 4096
+# 10.0/27.3, 16384 14.9/27.2, 32768 23.3/26.4, 65536 38.7/26.8, 131072
+# 69.1/27.8, 262144 130.0/27.2.  ``G == 1`` leaves one program per tensor --
+# sixteen CTAs on 78 SMs, each walking ``numel / 1024`` blocks serially -- so the
+# single launch wins only while that walk is short, and the cross-over sits
+# between 32K and 64K elements.  The gate is held one rung below it (2**14):
+# that keeps the walk at sixteen blocks, where the single launch is still ~12us
+# ahead for a sixteen-element list, and bounds the loss for a one-element list
+# to a few microseconds (13.1 vs 9.4us there).  Compared with the previous 2**17
+# rung this is -12us on the 256x256 benchmark row, which is 65536 elements per
+# tensor and used to take the single-launch path.
+_SINGLE_LAUNCH_MAX_NUMEL = 16384
 
 
 def _sm_count(device: torch.device) -> int:
