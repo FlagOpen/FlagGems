@@ -168,6 +168,9 @@ def _gru_cell_backward_kernel(
         reset_gate = reset_gate.to(tl.bfloat16)
         input_gate = input_gate.to(tl.bfloat16)
 
+    # ATen materializes rg*hn as an input-dtype tensor before adding `in`.
+    # hn was upcast to fp32 above, so round the product back to the input
+    # dtype here to preserve that rounding boundary.
     reset_hidden_new = reset_gate * hn
     if IS_FP16:
         reset_hidden_new = reset_hidden_new.to(tl.float16)
@@ -177,7 +180,11 @@ def _gru_cell_backward_kernel(
     if IS_FP16:
         new_gate_arg = new_gate_arg.to(tl.float16)
     if IS_BF16:
-        new_gate_arg = new_gate_arg.to(tl.bfloat16)
+        # An fp32 identity barrier keeps the compiler from contracting this
+        # downcast with the addition above, which breaks round-half-to-even
+        # on ties and shifts bf16 results by one ULP.
+        nga32 = new_gate_arg.to(tl.float32)
+        new_gate_arg = (nga32 + tl.zeros_like(nga32)).to(tl.bfloat16)
     if IS_FP64:
         new_gate = libdevice.tanh(new_gate_arg)
     else:
