@@ -289,15 +289,32 @@ def test_sparse_dim_bsr_bsc_coverage():
 
 @pytest.mark.sparse_dim
 def test_sparse_dim_unsupported_layout_parity():
-    # Unknown layouts: explicitly recognize the supported compressed sparse
-    # layouts (CSR/CSC/BSR/BSC) instead of falling through to ``return 2``
-    # for every other layout. Native ATen rejects layouts that are neither
-    # strided nor sparse (verified: the dispatcher raises for an unsupported
-    # layout); our implementation must match that behavior.
-    # NOTE: for now the fallback ``return 2`` covers CSR/CSC/BSR/BSC, so the
-    # unsupported-layout path is not reachable through the public API. The
-    # reviewer requested this test to document the contract; if a future
-    # layout is added, the implementation must be extended accordingly.
-    # The native calls in this test act as a parity probe for the layouts
-    # that *are* supported (CSR/CSC/BSR/BSC already covered above).
-    pass
+    # Nested tensors are the reachable unsupported case: a non-jagged nested
+    # tensor reports layout == torch.strided (and is_nested == True), so
+    # without the is_nested guard it would take the strided branch and
+    # return 0. Native ATen instead rejects it with a NotImplementedError
+    # naming the NestedTensorCUDA dispatch key; the implementation must
+    # reproduce that.
+    nested = torch.nested.nested_tensor(
+        [
+            torch.randn(2, 3, device=flag_gems.device),
+            torch.randn(4, 5, device=flag_gems.device),
+        ]
+    )
+    assert nested.layout == torch.strided
+    assert nested.is_nested
+
+    with pytest.raises(NotImplementedError) as ref_err:
+        torch.ops.aten.sparse_dim(nested)
+    with pytest.raises(NotImplementedError) as res_err:
+        flag_gems.sparse_dim(nested)
+
+    native_msg = str(ref_err.value)
+    res_msg = str(res_err.value)
+    backend = "NestedTensor" + nested.device.type.upper()
+    assert f"'{backend}' backend" in native_msg
+    assert f"'{backend}' backend" in res_msg
+    # The dispatcher's opening sentence (which names the backend key) is the
+    # build-independent part of the native message; match it exactly. The
+    # trailing registered-backend list varies per build and is not repeated.
+    assert res_msg.split(". ")[0] == native_msg.split(". ")[0]

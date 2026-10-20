@@ -33,7 +33,8 @@ def sparse_dim(self: torch.Tensor) -> int:
     and recurse.
 
     Semantics by layout (verified against native ATen on H20):
-    - ``torch.strided``: no sparse dimensions, ``sparse_dim == 0``.
+    - ``torch.strided`` (dense, non-nested): no sparse dimensions,
+      ``sparse_dim == 0``.
     - ``torch.sparse_coo``: the leading dimension of the index matrix,
       ``self._indices().shape[0]``. Hybrid COO tensors (values with
       trailing dense dimensions) are covered by the same formula, and the
@@ -42,13 +43,34 @@ def sparse_dim(self: torch.Tensor) -> int:
       ATen contract, independent of the logical tensor shape. These are the
       only four layouts with a compressed index buffer, so they are
       recognized explicitly rather than falling through to a catch-all.
-    - Any other layout (nested, jagged, future additions) has no native
-      ``sparse_dim`` kernel registered: ATen rejects it with a
-      ``NotImplementedError`` naming the dispatch backend key. The
-      implementation reproduces that rejection explicitly instead of
-      returning a default value for an unrecognized layout.
+    - Nested tensors (``self.is_nested``) are rejected. A non-jagged nested
+      tensor still reports ``torch.strided``, so it must be caught by
+      ``is_nested`` before the layout dispatch; native ATen has no
+      ``sparse_dim`` kernel on its ``NestedTensor<CPU|CUDA>`` dispatch key
+      and raises ``NotImplementedError`` naming that key, which the
+      implementation reproduces. Jagged nested tensors are rejected by the
+      same guard (native also raises, through a different dispatch path).
+    - Any remaining layout has no native kernel either and is rejected with
+      a ``NotImplementedError``. No dispatcher key can be derived for such
+      a layout, so the message names the layout itself rather than guessing
+      a sparse backend.
     """
     logger.debug("GEMS SPARSE_DIM")
+    if self.is_nested:
+        # Native aten::sparse_dim is not registered on the NestedTensor
+        # dispatch key (verified on H20: NestedTensorCUDA for CUDA tensors,
+        # NestedTensorCPU for CPU tensors). Reproduce the dispatcher's
+        # message; only its build-independent prefix is emitted, since the
+        # native message appends the full registered-backend list.
+        backend = "NestedTensor" + str(self.device.type).upper()
+        raise NotImplementedError(
+            "Could not run 'aten::sparse_dim' with arguments from the "
+            f"'{backend}' backend. This could be because the operator doesn't "
+            "exist for this backend, or was omitted during the "
+            "selective/custom build process (if using custom build). If you "
+            "are a Facebook employee using PyTorch on mobile, please visit "
+            "https://fburl.com/ptmfixes for possible resolutions."
+        )
     if self.layout == torch.strided:
         return 0
     if self.layout == torch.sparse_coo:
@@ -60,13 +82,12 @@ def sparse_dim(self: torch.Tensor) -> int:
         torch.sparse_bsc,
     ):
         return 2
-    # Unknown layout: native has no kernel registered on this dispatch key
-    # (verified on H20: a NestedTensorCUDA tensor raises NotImplementedError
-    # with the dispatcher's backend-identifying message), so the native
-    # rejection is reproduced explicitly.
-    backend = "Sparse" + str(self.device.type).capitalize()
+    # Unrecognized layout: native has no kernel for it either. There is no
+    # dispatcher key to name here (for instance a nested tensor dispatches on
+    # NestedTensorCUDA, not SparseCUDA), so report the layout instead of
+    # guessing a sparse backend.
     raise NotImplementedError(
-        "Could not run 'aten::sparse_dim' with arguments from the "
-        f"'{backend}' backend. This could be because the operator doesn't "
-        "exist for this backend."
+        "Could not run 'aten::sparse_dim' with arguments from an "
+        f"unsupported layout ('{self.layout}'). This could be because the "
+        "operator doesn't exist for this layout."
     )
