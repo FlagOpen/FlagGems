@@ -18398,6 +18398,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_coo_tensor_with_dims
+  description: 'Allocates an empty sparse COO tensor descriptor from its dimension
+    counts: sparse_dim coordinate dimensions, dense_dim trailing dense dimensions
+    and the full logical size, with no stored entries.
+
+    '
+  for:
+  - _sparse_coo_tensor_with_dims
+  - _sparse_coo_tensor_with_dims.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
