@@ -1956,6 +1956,28 @@ def foreach_ternary(
     values, common, vclass = _resolve_scalars(self, scalars)
     _STATS.reset()
 
+    # Homogeneous fast path: one floating dtype, one device, all dense.  The
+    # general loop below still handles mixed dtypes (each promotion is folded
+    # once and reused), views (``_dense``), and disallowed dtypes (which raise
+    # from ``check_dtype_supported`` inside the loop).
+    homogeneous = _ternary_homogeneous(self, tensor1, tensor2, allowed_dtypes)
+    if homogeneous is not None:
+        device = self[0].device
+        dsts = self if inplace else [torch.empty_like(t) for t in self]
+        _launch_ternary_group(
+            self,
+            tensor1,
+            tensor2,
+            dsts,
+            values,
+            fn,
+            homogeneous,
+            homogeneous,
+            device,
+            common,
+        )
+        return list(self) if inplace else dsts
+
     results: List[torch.Tensor] = []
     buckets: Dict[Tuple[Any, torch.dtype, torch.dtype], Tuple[List, ...]] = {}
     writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
@@ -2054,6 +2076,147 @@ def foreach_ternary(
     return results
 
 
+_TERNARY_UPLOAD_TYPES = {
+    torch.float32: ("f", torch.float32),
+    torch.float64: ("d", torch.float64),
+}
+
+
+def _ternary_upload(values: List[Any], dtype: torch.dtype, device: Any) -> torch.Tensor:
+    """Upload one scalar per tensor to ``device`` as a ``len(values)`` buffer.
+
+    ``torch.tensor(values).to(device)`` pays the Python ``Tensor.to`` /
+    ``copy_`` registrations on top of the transfer.  Building the host side
+    with ``array`` + ``frombuffer`` keeps it out of the dispatcher, and
+    redispatching ``aten::copy_`` at ``CompositeExplicitAutograd`` skips the
+    Python registration.  The host buffer stays pageable and freshly built,
+    so the staging copy is ordered before the caller can reuse it.
+    """
+    spec = _TERNARY_UPLOAD_TYPES.get(dtype)
+    if spec is None or _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
+        # fp16/bf16 have no ``array`` typecode; the generic path is the only
+        # way to build a host tensor of that dtype.
+        return torch.tensor([float(v) for v in values], dtype=dtype).to(
+            device, non_blocking=True
+        )
+    code, host_dtype = spec
+    host = torch.frombuffer(
+        array.array(code, [float(v) for v in values]), dtype=host_dtype
+    )
+    out = torch.empty(len(values), dtype=host_dtype, device=device)
+    _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
+    return out
+
+
+def _ternary_homogeneous(
+    a_l: Sequence[torch.Tensor],
+    b_l: Sequence[torch.Tensor],
+    c_l: Sequence[torch.Tensor],
+    allowed_dtypes: Optional[frozenset],
+) -> Optional[torch.dtype]:
+    """The shared dtype when every operand agrees, else ``None``.
+
+    Three operands of one floating dtype on one device, all dense, need no
+    promotion, no densifying and no bucketing: the whole per-tensor
+    bookkeeping in :func:`foreach_ternary` is then pure overhead.  ``get_device``
+    returns an int (``-1`` on CPU) and measured ~1.5us cheaper over 48 tensors
+    than building ``torch.device`` objects to compare.
+    """
+    dtype = a_l[0].dtype
+    if not dtype.is_floating_point:
+        return None
+    if allowed_dtypes is not None and dtype not in allowed_dtypes:
+        return None
+    dev = a_l[0].get_device()
+    for a, b, c in zip(a_l, b_l, c_l):
+        if a.dtype is not dtype or b.dtype is not dtype or c.dtype is not dtype:
+            return None
+        if a.get_device() != dev or b.get_device() != dev or c.get_device() != dev:
+            return None
+        if not (a.is_contiguous() and b.is_contiguous() and c.is_contiguous()):
+            return None
+    return dtype
+
+
+_TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+
+
+def _launch_ternary_kernel(
+    grid: Tuple[int, int],
+    nt: int,
+    meta: torch.Tensor,
+    scalar_buf: torch.Tensor,
+    scalar_value: float,
+    fn: Callable,
+    dt_in: Any,
+    dt_out: Any,
+    s_dt: Any,
+    by_value: bool,
+    block: int,
+) -> None:
+    """``foreach_ternary_kernel[grid](...)`` with a cached launcher.
+
+    Everything except the metadata pointer, the scalar buffer and the scalar
+    value is a ``tl.constexpr``, so the key identifies the compiled variant
+    exactly and a replay only hands over the runtime arguments.  Same contract
+    as ``_launch_executor_kernel``: no device-visible buffer is cached, and a
+    miss, an installed launch hook, or a launcher that raises all take
+    Triton's normal dispatch.
+    """
+    key = (
+        meta.device,
+        nt,
+        fn,
+        dt_in,
+        dt_out,
+        s_dt,
+        by_value,
+        block,
+        not (meta.data_ptr() & 15),
+    )
+    entry = _TERNARY_LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                scalar_buf,
+                scalar_value,
+                fn,
+                nt,
+                dt_in,
+                dt_out,
+                s_dt,
+                by_value,
+                block,
+            )
+            return
+        except Exception:
+            _TERNARY_LAUNCH_CACHE.pop(key, None)
+    compiled = foreach_ternary_kernel[grid](
+        meta, scalar_buf, scalar_value, fn, nt, dt_in, dt_out, s_dt, by_value, block
+    )
+    if compiled is not None:
+        _TERNARY_LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
+
+
 def _launch_ternary_group(
     a_l: List[torch.Tensor],
     b_l: List[torch.Tensor],
@@ -2091,17 +2254,16 @@ def _launch_ternary_group(
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common
     else:
-        scalar_buf = torch.tensor([float(v) for v in v_l], dtype=s_dtype).to(
-            device, non_blocking=True
-        )
+        scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
-    foreach_ternary_kernel[grid](
+    _launch_ternary_kernel(
+        grid,
+        nt,
         meta,
         scalar_buf,
         scalar_value,
         fn,
-        nt,
         tl_dtype(in_dt),
         tl_dtype(out_dt),
         tl_dtype(s_dtype),
