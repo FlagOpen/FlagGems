@@ -16,22 +16,18 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# ``_shape_as_tensor`` starts with an underscore, and ``pytest.mark`` refuses
-# to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._shape_as_tensor`` and
-# ``-m _shape_as_tensor`` both work.
-setattr(
-    pytest.mark,
-    "_shape_as_tensor",
-    MarkDecorator(Mark("_shape_as_tensor", (), {}, _ispytest=True), _ispytest=True),
-)
+# The operator id starts with an underscore, so the #6359 marker convention
+# strips it: ``@pytest.mark._shape_as_tensor`` is refused by ``pytest.mark``'s
+# attribute access, and the derived marker that ``tools/test-op.sh`` selects
+# with (and ``check_operator_markers.py`` requires) is the stripped name
+# ``shape_as_tensor``. That name does not collide with a distinct operator id,
+# so no ``underscore_`` variant is needed.
 
 # ``_shape_as_tensor`` is a metadata query returning one int64 per dimension;
 # values and strides of the input are irrelevant. Coverage is driven by rank,
@@ -60,7 +56,7 @@ def _make_coo(nnd, nnz, size, seed=0):
     return torch.sparse_coo_tensor(indices, values, size)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 @pytest.mark.parametrize("shape", STRIDED_SHAPES)
 def test_accuracy__shape_as_tensor_strided(shape):
     inp = torch.randn(shape, device=flag_gems.device)
@@ -77,7 +73,7 @@ def test_accuracy__shape_as_tensor_strided(shape):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_noncontiguous():
     inp = torch.randn(4, 6, device=flag_gems.device).t()
     assert not inp.is_contiguous()
@@ -88,7 +84,7 @@ def test_accuracy__shape_as_tensor_noncontiguous():
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_sparse_coo():
     cases = [
         ("plain", _make_coo(2, 3, (2, 3), seed=1), [2, 3]),
@@ -119,7 +115,7 @@ def test_accuracy__shape_as_tensor_sparse_coo():
         utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_sparse_compressed():
     row = torch.tensor([0, 2, 4], dtype=torch.int64, device=flag_gems.device)
     col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=flag_gems.device)
@@ -150,7 +146,7 @@ def test_accuracy__shape_as_tensor_sparse_compressed():
         utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_matches_reference_table():
     # Reference values captured in a process that never imported flag_gems
     # (un-substituted environment, H20 build): result values, dtype, device
@@ -177,7 +173,7 @@ def test_accuracy__shape_as_tensor_matches_reference_table():
     assert zero.shape == (0,) and zero.dtype == torch.int64
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_fresh_storage_and_resize_independence():
     # Native returns a freshly allocated tensor: it never aliases ``self``
     # and later resizes of ``self`` must not retroactively change it.
@@ -197,7 +193,7 @@ def test_accuracy__shape_as_tensor_fresh_storage_and_resize_independence():
     assert ref.tolist() == [3, 4]
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_device_is_cpu_for_cuda_input():
     # Measured native rule: the C++ kernel builds the result from
     # TensorOptions(at::kLong) without a device, so the result is a CPU
@@ -216,7 +212,7 @@ def test_accuracy__shape_as_tensor_device_is_cpu_for_cuda_input():
     assert res.tolist() == [2, 3]
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_quantized_and_pinned():
     dev = flag_gems.device
     q = torch.quantize_per_tensor(torch.randn(2, 3, device=dev), 0.1, 10, torch.quint8)
@@ -234,7 +230,7 @@ def test_accuracy__shape_as_tensor_quantized_and_pinned():
     utils.gems_assert_equal(res_p, ref_p)
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_disjoint_from_native_neighbors():
     # The implementation must not re-dispatch the operator it implements
     # (registered on backend keys, an internal aten re-entry would recurse
@@ -259,7 +255,7 @@ def test_accuracy__shape_as_tensor_disjoint_from_native_neighbors():
     assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]
 
 
-@pytest.mark._shape_as_tensor
+@pytest.mark.shape_as_tensor
 def test_accuracy__shape_as_tensor_dispatch_sentinel():
     # Registration-path check: the op is registered on CUDA, SparseCUDA and
     # SparseCsrCUDA (measured on this build: the plain CUDA key intercepts
