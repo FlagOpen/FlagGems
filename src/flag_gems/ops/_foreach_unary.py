@@ -69,8 +69,6 @@ from flag_gems.ops.log2 import log2_func
 from flag_gems.ops.log10 import log10_func
 from flag_gems.ops.neg import neg_func
 from flag_gems.ops.reciprocal import reciprocal_func
-from flag_gems.ops.round import round_half_to_even_impl
-from flag_gems.ops.rsqrt import rsqrt_func
 from flag_gems.ops.sigmoid import sigmoid_forward
 from flag_gems.ops.sin import sin_func
 from flag_gems.ops.sinh import sinh_kernel
@@ -79,6 +77,7 @@ from flag_gems.ops.sqrt import sqrt_func
 from flag_gems.ops.tan import tan_func
 from flag_gems.ops.tanh import tanh_kernel
 from flag_gems.ops.trunc_ import trunc_func
+from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
     foreach_unary,
     int_to_float,
@@ -106,18 +105,45 @@ def _scalar_fn(pointwise_fn) -> Callable:
 #
 # ``round`` and ``sign`` are implemented in FlagGems as hand-written kernels
 # rather than ``pointwise_dynamic``, so there is no scalar function to borrow.
-# ``round`` still reuses the repository's tie-breaking device function; only the
-# dtype guard around it is restated here.
+# ``rsqrt`` does have one, but its ``1.0 / tl.sqrt(x)`` form keeps a
+# full-precision divide where ``tl.rsqrt`` is available.
+#
+# ``tan`` keeps the borrowed scalar function.  A ``sin/cos`` quotient was tried
+# and rejected: on this device it takes 1.25x to 1.94x the kernel time of the
+# generic libdevice body at every size measured (the extern already shares its
+# range reduction across the two calls it makes, so the quotient pays for it
+# twice), and the size gate that would have masked the small-tensor case only
+# moved the regression above the gate.
 
 
 @triton.jit
 def _round_func(x):
-    # Integral inputs are already rounded; float ones go through the shared
-    # half-to-even helper from ops/round.py, which requires fp32.
-    if x.dtype.is_floating():
-        return round_half_to_even_impl(x.to(tl.float32)).to(x.dtype)
+    # Integral inputs are already rounded; float ones go through libdevice's
+    # ``rint``, which is round-half-to-even and measured bitwise identical to
+    # ``torch.round`` on 24k exact ties per dtype (both signs, including
+    # ``+-0.5``) and on random data in fp32/fp16/bf16.  The previous emulation
+    # (floor + parity test + select) needed about eight instructions and got
+    # the sign of a zero result wrong; ``rint`` is one.  ``rint`` has no 16-bit
+    # overload, so those widen first; ``float64`` is called directly because
+    # widening it to float32 would round large values that the emulation used
+    # to round exactly.
+    if x.dtype == tl.float64:
+        return tl_extra_shim.rint(x)
+    elif x.dtype.is_floating():
+        return tl_extra_shim.rint(x.to(tl.float32)).to(x.dtype)
     else:
         return x
+
+
+@triton.jit
+def _rsqrt_func(x):
+    # ``tl.rsqrt`` measured bitwise identical to ``torch.rsqrt`` on fp32, fp16
+    # and bf16 over the suite's sample range and on grids near 1e-6 and 1.0;
+    # the reused scalar function spells it as ``1.0 / tl.sqrt(x)``, which
+    # leaves a full-precision divide in the body.  Triton flushes fp32
+    # denormals, so inputs below 2**-126 give inf here -- the base expression
+    # does the same, so this is not a regression.
+    return tl.rsqrt(x.to(tl.float32))
 
 
 @triton.jit
@@ -214,7 +240,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
             c_reciprocal,
         ),
         UnaryOp("round", _round_func, same_dtype, NO_BOOL_NO_COMPLEX),
-        UnaryOp("rsqrt", _scalar_fn(rsqrt_func), int_to_float, NO_COMPLEX32, c_rsqrt),
+        UnaryOp("rsqrt", _rsqrt_func, int_to_float, NO_COMPLEX32, c_rsqrt),
         UnaryOp(
             "sigmoid",
             _scalar_fn(sigmoid_forward),
