@@ -556,7 +556,16 @@ def test_topk_fp8_over_sort_capacity_ascend():
 @pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend only")
 @pytest.mark.topk_w8a16
 def test_topk_fp8_output_dtype_and_strides_ascend():
-    raw = torch.arange(4 * 256, device="npu", dtype=torch.int32).remainder(120).byte()
+    # The op must accept non-contiguous fp8/scale views. Build the reference
+    # from CPU-side strided tensors so the comparison never issues a device
+    # copy of a strided float8 tensor (Ascend AICPU StridedSlice does not
+    # support float8 and would fail with 507018); the strided NPU views are
+    # fed only to the kernel under test.
+    raw_cpu = torch.arange(4 * 256, dtype=torch.int32).remainder(120).byte()
+    q_cpu = raw_cpu.reshape(4, 256)[::2, ::2].view(torch.float8_e4m3fn)
+    s_cpu = torch.ones((4, 4), dtype=torch.float16)[::2, ::2]
+    raw = raw_cpu.npu()
     q = raw.reshape(4, 256)[::2, ::2].view(torch.float8_e4m3fn)
     s = torch.ones((4, 4), device="npu", dtype=torch.float16)[::2, ::2]
-    _check_topk(q, s, 17, out_dtype=torch.float16, sorted=False)
+    result = flag_gems.topk_w8a16_fp8(q, s, 17, out_dtype=torch.float16, sorted=False)
+    _check_topk(q_cpu, s_cpu, 17, out_dtype=torch.float16, sorted=False, result=result)
