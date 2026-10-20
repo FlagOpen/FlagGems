@@ -1646,6 +1646,7 @@ _FULL_CONFIG = (
     ("resize_", resize_),
     ("resize_as", resize_as),
     ("resize_as_", resize_as_),
+    ("resize_as_sparse_", resize_as_sparse_, None, (SPARSE_DISPATCH_KEY,)),
     ("resolve_conj", resolve_conj),
     ("resolve_neg", resolve_neg),
     ("rms_norm", rms_norm),
