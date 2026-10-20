@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -144,6 +146,49 @@ def _full(shape, value, dtype, device):
     if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
         creation_device = "cpu"
     return torch.full(shape, value, dtype=dtype, device=creation_device).to(device)
+
+
+def _skip_reference_gap(family, dtype, **params):
+    vendor = flag_gems.vendor_name
+    reason = None
+    if family == "backward":
+        if vendor in ("ascend", "kunlunxin") and dtype == torch.complex64:
+            reason = f"{vendor} native complex64 cholesky backward is unsupported"
+    elif family == "imaginary_diagonal":
+        if vendor == "iluvatar" and dtype == torch.complex64:
+            reason = "iluvatar native cholesky retains the imaginary input diagonal"
+    elif family == "non_positive_definite":
+        if vendor == "metax" and params["fixture"] == "mixed_batch":
+            reason = "metax native cholesky does not reject the invalid middle batch"
+    elif family == "special_diagonal":
+        if (
+            vendor in ("ascend", "iluvatar", "metax")
+            and params["scenario"] in ("nan", "mixed")
+            and (vendor == "metax" or dtype in (torch.float32, torch.complex64))
+        ):
+            reason = (
+                f"{vendor} native cholesky does not reject this NaN diagonal payload"
+            )
+    elif family == "non_finite_rejected":
+        value = params["value"]
+        if (
+            vendor in ("ascend", "iluvatar", "metax")
+            and math.isnan(value)
+            and (vendor == "metax" or dtype in (torch.float32, torch.complex64))
+        ) or (
+            vendor in ("ascend", "metax")
+            and dtype.is_complex
+            and params["placement"] == "hermitian_off_diagonal"
+            and value == float("inf")
+        ):
+            reason = f"{vendor} native cholesky does not reject this non-finite input"
+    elif family == "inf_diagonal":
+        if vendor == "nvidia" and utils.TO_CPU:
+            reason = "CPU and NVIDIA cholesky disagree on the +inf diagonal factor"
+        elif vendor == "kunlunxin" and dtype == torch.float32:
+            reason = "kunlunxin native float32 cholesky rejects a +inf diagonal"
+    if reason is not None:
+        pytest.skip(reason)
 
 
 def _range_upper(real_dtype, value_range):
@@ -332,6 +377,7 @@ BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,upper", BACKWARD_CASES)
 def test_cholesky_backward(dtype, upper):
+    _skip_reference_gap("backward", dtype)
     inp = _make_pd_input("gram", dtype, (4, 8, 8), ["-1", "1"])
     upstream = tu.make_input(dtype, (4, 8, 8), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
@@ -386,6 +432,7 @@ IMAGINARY_DIAGONAL_CASES = tu.selected_cases(
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype", IMAGINARY_DIAGONAL_CASES)
 def test_cholesky_imaginary_diagonal(dtype):
+    _skip_reference_gap("imaginary_diagonal", dtype)
     # Measured: only the real part of the diagonal is read, so a matrix with an
     # imaginary diagonal part is a valid input and the native result is the one of
     # the same matrix with a real diagonal (identical bitwise for complex64 and
@@ -469,6 +516,7 @@ def _make_non_pd_input(dtype, fixture):
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,fixture", NON_PD_CASES)
 def test_cholesky_non_positive_definite(dtype, fixture):
+    _skip_reference_gap("non_positive_definite", dtype, fixture=fixture)
     inp = _make_non_pd_input(dtype, fixture)
 
     with pytest.raises(RuntimeError):
@@ -491,6 +539,7 @@ DIAGONAL_PAYLOAD_CASES = [
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,scenario", DIAGONAL_PAYLOAD_CASES)
 def test_cholesky_special_values_on_diagonal(dtype, scenario):
+    _skip_reference_gap("special_diagonal", dtype, scenario=scenario)
     n = 5
     inp = 4 * torch.eye(n, dtype=dtype, device=_construction_device(dtype))
     index = torch.arange(n, device=inp.device)
@@ -522,6 +571,7 @@ NON_FINITE_REJECT_CASES = [
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype,placement,value", NON_FINITE_REJECT_CASES)
 def test_cholesky_non_finite_rejected(dtype, placement, value):
+    _skip_reference_gap("non_finite_rejected", dtype, placement=placement, value=value)
     inp = 4 * torch.eye(5, dtype=dtype, device=_construction_device(dtype))
     if placement == "diagonal":
         inp[0, 0] = value
@@ -540,6 +590,7 @@ INF_DIAGONAL_CASES = tu.selected_cases(CHOLESKY_DTYPES, quick=[])
 @pytest.mark.cholesky
 @pytest.mark.parametrize("dtype", INF_DIAGONAL_CASES)
 def test_cholesky_inf_diagonal(dtype):
+    _skip_reference_gap("inf_diagonal", dtype)
     # Measured: a +inf diagonal entry is not rejected. The native factor is nan at
     # that diagonal position and the unaffected factor elsewhere, reproducible
     # across repeated calls (verified with an equal_nan comparison), so the native
