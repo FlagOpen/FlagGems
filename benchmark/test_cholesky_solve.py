@@ -7,6 +7,7 @@ from . import base
 
 VENDOR_NAME = flag_gems.vendor_name
 IS_ASCEND = VENDOR_NAME == "ascend"
+IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 IS_THEAD = VENDOR_NAME == "thead"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
@@ -133,15 +134,12 @@ def test_cholesky_solve():
         torch_op = _composed_cholesky_solve
         gems_op = cholesky_solve
         dtypes = [torch.float32]
-    elif IS_THEAD:
-        # Thead torch.ops.aten.cholesky_solve do not support complex dtype
-        torch_op = torch.ops.aten.cholesky_solve
-        gems_op = None
-        dtypes = REAL_DTYPES
     else:
         torch_op = torch.ops.aten.cholesky_solve
         gems_op = None
-        dtypes = REAL_DTYPES + COMPLEX_DTYPES
+        dtypes = (
+            REAL_DTYPES if (IS_THEAD or IS_KUNLUNXIN) else REAL_DTYPES + COMPLEX_DTYPES
+        )
 
     bench = CholeskySolveBenchmark(
         op_name="cholesky_solve",
@@ -158,15 +156,12 @@ def test_cholesky_solve_out():
         torch_op = _composed_cholesky_solve_out
         gems_op = cholesky_solve_out
         dtypes = [torch.float32]
-    elif IS_THEAD:
-        # Thead torch.cholesky_solve does not support complex dtype.
-        torch_op = torch.cholesky_solve
-        gems_op = None
-        dtypes = REAL_DTYPES
     else:
         torch_op = torch.cholesky_solve
         gems_op = None
-        dtypes = REAL_DTYPES + COMPLEX_DTYPES
+        dtypes = (
+            REAL_DTYPES if (IS_THEAD or IS_KUNLUNXIN) else REAL_DTYPES + COMPLEX_DTYPES
+        )
 
     bench = CholeskySolveOutBenchmark(
         op_name="cholesky_solve_out",

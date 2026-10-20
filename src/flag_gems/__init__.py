@@ -592,6 +592,12 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    (
+        "_values",
+        values,
+        None,
+        (AUTOGRAD_DISPATCH_KEY,),
+    ),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
@@ -1832,6 +1838,7 @@ _FULL_CONFIG = (
     ("special_zeta.out", special_zeta_out),
     ("special_zeta.self_scalar", special_zeta_scalar_tensor),
     ("special_zeta.self_scalar_out", special_zeta_scalar_tensor_out),
+    ("split_copy.Tensor", split_copy),
     ("split_with_sizes", split_with_sizes),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),
@@ -1993,6 +2000,7 @@ _FULL_CONFIG = (
     ("var_mean.correction", var_mean),
     ("vdot", vdot),
     ("view_as_complex", view_as_complex),
+    ("view_as_real_copy", view_as_real_copy),
     ("view_copy", view_copy),
     ("vsplit.array", vsplit),
     ("vsplit.int", vsplit),
