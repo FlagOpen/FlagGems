@@ -19996,7 +19996,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5'
+  - alpha: '5.5.0'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
