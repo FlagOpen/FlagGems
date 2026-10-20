@@ -601,6 +601,9 @@ def _launch_group(
     # three separate tensors and slicing them in measured noticeably slower,
     # because each slice assignment is its own copy.
     #
+    # An in-place call passes the same list object as both sources and
+    # destinations, so the pointer run is read once instead of twice.
+    #
     # A pinned staging pool was tried here and rejected.  In isolation the pinned
     # copy is 1.7-3.8x faster than this pageable one, but reusing pinned buffers
     # without ordering the host refill against the outstanding device read is a
@@ -608,10 +611,12 @@ def _launch_group(
     # calls).  Making it safe needs a CUDA event per call, and allocating plus
     # recording that event costs more than the pageable copy saves: end to end it
     # measured 93us per call against 46us for this version.
-    meta = _device_meta(
-        [t.data_ptr() for t in srcs] + [t.data_ptr() for t in dsts] + numels,
-        device,
-    )
+    ptrs = [t.data_ptr() for t in srcs]
+    if dsts is srcs:
+        values = ptrs + ptrs + numels
+    else:
+        values = ptrs + [t.data_ptr() for t in dsts] + numels
+    meta = _device_meta(values, device)
 
     grid = (nt, triton.cdiv(max_numel, block))
     if is_complex:
@@ -710,6 +715,105 @@ def foreach_unary(
     tensors = check_tensor_list(tensors)
     _STATS.reset()
 
+    # Fast path: one device, one dtype.  Bucketing exists for the mixed case,
+    # and its dict/tuple bookkeeping is the largest per-tensor cost in this
+    # walk; every unary operator here is normally called that way, so pay for
+    # the general machinery only when the list actually mixes.
+    first = tensors[0]
+    device = first.device
+    dtype = first.dtype
+    if allowed_dtypes is not None and dtype not in allowed_dtypes:
+        check_dtype_supported(dtype, allowed_dtypes)
+    if dtype.is_complex and complex_fn is None:
+        raise NotImplementedError(
+            f"foreach executor has no complex kernel for {dtype}"
+        )
+    out_dtype = out_dtype_fn(dtype)
+    if inplace and out_dtype != dtype:
+        # Same refusal as ATen: an in-place op may not silently narrow its
+        # promoted result back into the input's dtype.
+        raise RuntimeError(
+            f"result type {str(out_dtype).replace('torch.', '').capitalize()}"
+            " can't be cast to the desired output type "
+            f"{str(dtype).replace('torch.', '').capitalize()}"
+        )
+    is_complex = dtype.is_complex
+    kernel_fn = complex_fn if is_complex else fn
+    results: List[torch.Tensor] = []
+    srcs: List[torch.Tensor] = []
+    dsts: List[torch.Tensor] = []
+    writebacks: List[Tuple[torch.Tensor, torch.Tensor]] = []
+
+    for t in tensors:
+        if t.dtype != dtype or t.device != device:
+            # Mixed list: redo the call through the bucketing path.  The
+            # counters are reset so staging done above is not counted twice.
+            _STATS.reset()
+            return _foreach_unary_grouped(
+                tensors,
+                fn,
+                complex_fn=complex_fn,
+                out_dtype_fn=out_dtype_fn,
+                inplace=inplace,
+                allowed_dtypes=allowed_dtypes,
+            )
+        flat = is_flat_addressable(t)
+        if inplace:
+            # A flat-addressable tensor is non-overlapping-and-dense by
+            # definition, so the dispatcher-backed probe cannot change the
+            # answer there; skipping it saves a dispatch per tensor.
+            if not flat and has_internal_overlap(t):
+                raise RuntimeError(
+                    "unsupported operation: more than one element of the "
+                    "written-to tensor refers to a single memory location. "
+                    "Please clone() the tensor before performing the operation."
+                )
+            if flat:
+                src = t
+            else:
+                # Gappy view: compute on a dense copy, then scatter back.
+                src = t.contiguous()
+                writebacks.append((t, src))
+                _STATS.staged_inputs += 1
+            results.append(t)
+        else:
+            src = t if flat else t.contiguous()
+            if src is not t:
+                _STATS.staged_inputs += 1
+            # empty_like reproduces PyTorch's foreach output stride policy: it
+            # keeps a dense tensor's stride (so transposed inputs give
+            # transposed outputs) and normalizes everything else to contiguous.
+            dst = torch.empty_like(src, dtype=out_dtype)
+            results.append(dst)
+            dsts.append(dst)
+        srcs.append(src)
+
+    if inplace:
+        # Same list object: ``_launch_group`` then knows the pointers occur
+        # twice in a row and reads each ``data_ptr`` once.
+        dsts = srcs
+    _launch_group(srcs, dsts, kernel_fn, dtype, device, is_complex)
+
+    for dst_view, staged in writebacks:
+        dst_view.copy_(staged)
+        _STATS.writebacks += 1
+
+    return results
+
+
+def _foreach_unary_grouped(
+    tensors: Sequence[torch.Tensor],
+    fn: Callable,
+    *,
+    complex_fn: Optional[Callable] = None,
+    out_dtype_fn: Callable[[torch.dtype], torch.dtype] = same_dtype,
+    inplace: bool = False,
+    allowed_dtypes: Optional[frozenset] = None,
+) -> List[torch.Tensor]:
+    """Bucketing path for a TensorList that mixes devices or dtypes.
+
+    ``tensors`` is already validated and normalised to a list.
+    """
     results: List[Optional[torch.Tensor]] = [None] * len(tensors)
     # Buckets keyed by (device, input dtype); values are aligned src/dst lists.
     buckets: Dict[Tuple[Any, torch.dtype], Tuple[List, List]] = {}
