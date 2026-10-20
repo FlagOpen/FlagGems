@@ -26,10 +26,21 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
-_ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot construct channels-last input layouts",
-)
+
+def _copy_layout_to(inp, device):
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    out = torch.empty(0, dtype=inp.dtype, device=raw.device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    assert out.dtype == inp.dtype and out.device == raw.device
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    return out
+
 
 CORE_SHAPES = list(
     dict.fromkeys(
@@ -100,7 +111,11 @@ def _case_fn(shape, dtype, input_layout=None):
 def _build_layout(layout, shape, dtype, device):
     # generate_tensor_input cannot express views or memory formats, so the
     # tested layout is applied on top of it.
-    inp = torch.empty(shape, dtype=dtype, device=device)
+    stage_on_cpu = flag_gems.vendor_name == "ascend" and layout in (
+        "channels_last",
+        "channels_last_3d",
+    )
+    inp = torch.empty(shape, dtype=dtype, device="cpu" if stage_on_cpu else device)
     if layout == "plain":
         return inp
     if layout == "transposed":
@@ -108,15 +123,24 @@ def _build_layout(layout, shape, dtype, device):
     if layout == "column_step":
         return inp[..., ::2]
     if layout == "channels_last":
-        return inp.to(memory_format=torch.channels_last)
+        out = inp.to(memory_format=torch.channels_last)
+        return _copy_layout_to(out, device) if stage_on_cpu else out
     if layout == "channels_last_3d":
-        return inp.to(memory_format=torch.channels_last_3d)
+        out = inp.to(memory_format=torch.channels_last_3d)
+        return _copy_layout_to(out, device) if stage_on_cpu else out
     raise ValueError(f"unknown layout: {layout}")
 
 
 def _build_inputs_fn(plan, dtype, device):
     layout, shape = plan.builder_args
     inp = _build_layout(layout, shape, dtype, device)
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.dtype == dtype and inp.device == expected
+    assert inp.shape == torch.Size(_view_shape(layout, tuple(shape)))
     name = plan.params["memory_format"]
     if name == "default":
         return inp, {}
@@ -142,14 +166,7 @@ class IsContiguousBenchmark(OperatorBenchmark):
 @pytest.mark.parametrize(
     "input_layout",
     [
-        pytest.param(
-            input_layout,
-            marks=(
-                _ASCEND_LAYOUT_SKIP
-                if input_layout in ("channels_last", "channels_last_3d")
-                else ()
-            ),
-        )
+        pytest.param(input_layout)
         for input_layout in [
             "plain",
             "transposed",
