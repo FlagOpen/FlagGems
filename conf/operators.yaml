@@ -21741,7 +21741,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5'
+  - alpha: '5.5.0'
 - id: values_copy
   description: 'Returns a fresh non-aliasing copy of the stored values of a
     compressed sparse tensor (CSR/CSC/BSR/BSC).
