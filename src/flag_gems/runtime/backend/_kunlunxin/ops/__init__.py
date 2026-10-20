@@ -28,6 +28,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -353,6 +354,7 @@ from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
 from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
+from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
 from .i0 import i0, i0_out  # noqa: F401
@@ -373,6 +375,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_scalar import ior_scalar
 from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -781,6 +784,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_addcmul_ScalarList",
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_neg",
@@ -1105,6 +1109,7 @@ __all__ = [
     "hardsigmoid_",
     "hardsigmoid_out",
     "histc",
+    "hsplit",
     "hstack",
     "hypot",
     "hypot_",
@@ -1126,6 +1131,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_scalar",
     "ior_tensor",
     "isclose",
     "isfinite",
