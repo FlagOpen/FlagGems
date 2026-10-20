@@ -30,24 +30,3 @@
 原始本地记录：`/data/akg_kernel_bench_lite/kernelgen/runs/generated-operator-pytests-20260924/ce0451ead1e3.json`。测试源码 tree 为 `ce0451ead1e31b06232631dfdab6d5e1a980a076`，随后只补充本段验证说明；远端对应目录保留 JUnit、日志和 case-list JSON。
 
 状态可变算子的多次 Profile capture 还要求消费 hook 的外部 profiler 支持重复采样范围；本次测试文件迁移不修改 KGS 的 capture 次数约束，也不宣称完成这类 KGS 集成验证。
-
-## 原始 297 算子中的下划线 marker
-
-原始 297 算子清单以 `004cfea77b0fd2e0392fbfcbbf33e66489d646c5` 的
-`definitions/*.json` 文件名为准。其中 132 个以下划线开头的算子统一使用
-`pytest.mark.underscore_XXX`，例如 `_assert_scalar` 对应
-`pytest.mark.underscore_assert_scalar`。算子 ID、Definition 和 override 名称保留原名。
-
-`conf/operator_marker_overrides.json` 是这 132 个映射的唯一来源，供调度器与 CI
-选择工具共享。范围外算子继续使用原有 marker。CI 对映射中的算子同时检查
-`tests/` 和 `benchmark/`，即使该算子尚未列入 `conf/operators.yaml`。
-修改配置后可运行 CPU-only 回归：
-
-```sh
-python -m unittest discover -s tools/tests -p test_operator_markers.py
-```
-
-实际验证使用 `pytest tests/test_<op>.py -m <marker> --override <op>:<path>:<function>`
-运行完整默认参数集，并另跑添加 `--ref cpu` 的模式。性能测试使用对应的
-`benchmark/test_<op>.py`、相同 marker 和 override，以及 `--level core --mode operator`；
-case-list 只用于核对覆盖范围，不能代替实际计时。

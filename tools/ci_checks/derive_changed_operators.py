@@ -35,10 +35,6 @@ from pathlib import Path
 
 import yaml
 
-# Support direct script execution as well as module imports.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.operator_markers import marker_overrides, operator_marker  # noqa: E402
-
 # Paths relative to repo root
 OPERATORS_YAML = "conf/operators.yaml"
 OPS_DIR = "src/flag_gems/ops"
@@ -55,12 +51,29 @@ OPS_FILE_RE = re.compile(r"^src/flag_gems/ops/(.+)\.py$")
 BACKEND_OPS_FILE_RE = re.compile(
     r"^src/flag_gems/runtime/backend/_[^/]+/(?:[^/]+/)*ops/(.+)\.py$"
 )
-TEST_FILE_RE = re.compile(r"^(?:tests|benchmark)/test_(.+)\.py$")
+TEST_FILE_RE = re.compile(r"^tests/test_(.+)\.py$")
 
 
 def expected_marker(op_id: str, all_op_ids: set) -> str:
-    """Resolve the shared override/legacy pytest marker convention."""
-    return operator_marker(op_id, all_op_ids)
+    """Return the pytest marker name for an operator id.
+
+    Mirrors ``tools/run_tests.py:op_marker`` and
+    ``tools/ci_checks/check_operator_markers.py:expected_marker`` so all callers
+    agree on how an operator maps to its marker (the #6359 convention):
+
+      1. Non-underscore ids are used verbatim (``abs`` -> ``abs``).
+      2. Ids with a leading underscore drop it (``_pad_enum`` -> ``pad_enum``),
+         because ``pytest.mark._pad_enum`` is rejected by attribute access.
+      3. If the stripped name collides with a distinct operator id (``_stack``
+         vs the separate ``stack`` op), prefix ``underscore_`` instead
+         (``_stack`` -> ``underscore_stack``).
+    """
+    if not op_id.startswith("_"):
+        return op_id
+    stripped = op_id.lstrip("_")
+    if stripped in all_op_ids:
+        return f"underscore_{stripped}"
+    return stripped
 
 
 def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
@@ -121,10 +134,6 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
 
     for filepath in changed_files:
         # Case 1: operators.yaml itself changed -> check all operators in diff
-        if filepath == "conf/operator_marker_overrides.json":
-            changed_ops.update(marker_overrides())
-            continue
-
         if filepath == OPERATORS_YAML:
             # When operators.yaml changes, we flag all operators for full check
             # In practice, individual checks will determine what to validate
@@ -204,7 +213,7 @@ def main():
         action="store_true",
         help="Print only the derived pytest markers (one per line) to stdout, "
         "with no diagnostics. Intended for shell consumption. Markers follow "
-        "the shared override/legacy convention (e.g. _add_batch_dim -> underscore_add_batch_dim).",
+        "the #6359 convention (e.g. _pad_enum -> pad_enum).",
     )
     args = parser.parse_args()
 
