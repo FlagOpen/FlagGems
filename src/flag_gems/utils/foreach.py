@@ -1651,6 +1651,85 @@ def _ternary_homogeneous(
     return dtype
 
 
+_TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+
+
+def _launch_ternary_kernel(
+    grid: Tuple[int, int],
+    nt: int,
+    meta: torch.Tensor,
+    scalar_buf: torch.Tensor,
+    scalar_value: float,
+    fn: Callable,
+    dt_in: Any,
+    dt_out: Any,
+    s_dt: Any,
+    by_value: bool,
+    block: int,
+) -> None:
+    """``foreach_ternary_kernel[grid](...)`` with a cached launcher.
+
+    Everything except the metadata pointer, the scalar buffer and the scalar
+    value is a ``tl.constexpr``, so the key identifies the compiled variant
+    exactly and a replay only hands over the runtime arguments.  Same contract
+    as ``_launch_executor_kernel``: no device-visible buffer is cached, and a
+    miss, an installed launch hook, or a launcher that raises all take
+    Triton's normal dispatch.
+    """
+    key = (
+        meta.device,
+        nt,
+        fn,
+        dt_in,
+        dt_out,
+        s_dt,
+        by_value,
+        block,
+        not (meta.data_ptr() & 15),
+    )
+    entry = _TERNARY_LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                scalar_buf,
+                scalar_value,
+                fn,
+                nt,
+                dt_in,
+                dt_out,
+                s_dt,
+                by_value,
+                block,
+            )
+            return
+        except Exception:
+            _TERNARY_LAUNCH_CACHE.pop(key, None)
+    compiled = foreach_ternary_kernel[grid](
+        meta, scalar_buf, scalar_value, fn, nt, dt_in, dt_out, s_dt, by_value, block
+    )
+    if compiled is not None:
+        _TERNARY_LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
+
+
 def _launch_ternary_group(
     a_l: List[torch.Tensor],
     b_l: List[torch.Tensor],
@@ -1691,12 +1770,13 @@ def _launch_ternary_group(
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
     grid = (nt, triton.cdiv(max_numel, block))
-    foreach_ternary_kernel[grid](
+    _launch_ternary_kernel(
+        grid,
+        nt,
         meta,
         scalar_buf,
         scalar_value,
         fn,
-        nt,
         tl_dtype(in_dt),
         tl_dtype(out_dt),
         tl_dtype(s_dtype),
