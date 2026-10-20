@@ -805,6 +805,10 @@ def foreach_unary(
             # empty_like reproduces PyTorch's foreach output stride policy: it
             # keeps a dense tensor's stride (so transposed inputs give
             # transposed outputs) and normalizes everything else to contiguous.
+            # One allocation per tensor, not one packed buffer plus unbind, is
+            # also what keeps aliasing observable-equivalent to ATen: no two
+            # outputs of a call share a storage (checked on two 4x4,
+            # mixed-shape, transposed, zero-dim and one-element lists).
             dst = torch.empty_like(src, dtype=out_dtype)
             results.append(dst)
             dsts.append(dst)
@@ -812,7 +816,9 @@ def foreach_unary(
 
     if inplace:
         # Same list object: ``_launch_group`` then knows the pointers occur
-        # twice in a row and reads each ``data_ptr`` once.
+        # twice in a row and reads each ``data_ptr`` once.  Returning the
+        # inputs themselves means the only aliasing is what the caller passed
+        # in (a tensor repeated twice stays shared), as with ATen.
         dsts = srcs
     _launch_group(srcs, dsts, kernel_fn, dtype, device, is_complex)
 
