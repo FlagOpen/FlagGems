@@ -15,6 +15,37 @@ _ITERS = {torch.int8: 24, torch.int16: 24, torch.int32: _ITERS_32}
 _GCD_BLOCK = 128
 _GCD_NCHUNK = 8
 _GCD_FAST_MIN_NUMEL = 65536
+# Shortcut path: in the steady state (a already reduced, so a | b), gcd(a, b) == a.
+# A single divisibility pass + host-side any() is much cheaper than 48 fixed
+# Euclid iterations; lanes that cannot be settled this way fall back to the
+# full kernel.
+_GCD_SHORTCUT_MIN_NUMEL = 65536
+_GCD_SHORTCUT_BLOCK = 16384
+
+
+@triton.jit
+def gcd_shortcut_kernel(
+    x_ptr,
+    y_ptr,
+    flags_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    a = tl.load(x_ptr + offsets, mask=mask, other=0).to(tl.int32)
+    b = tl.load(y_ptr + offsets, mask=mask, other=0).to(tl.int32)
+
+    # gcd(a, b) == a exactly when a > 0 and a divides b. Anything else
+    # (a <= 0, b % a != 0) is left to the full Euclid kernel.
+    safe_a = tl.where(a > 0, a, 1)
+    bad = mask & ~((a > 0) & ((b % safe_a) == 0))
+    # One flag per program keeps the host-side check tiny: calling torch.any()
+    # on a 16M-element marker is several milliseconds once FlagGems has
+    # overridden aten::any with its own kernel.
+    mx = tl.max(bad.to(tl.int32), axis=0)
+    tl.store(flags_ptr + tl.program_id(0), mx)
+
 
 
 @triton.jit
@@ -147,6 +178,28 @@ def _launch_gcd(lhs, rhs, out):
     numel = out.numel()
     if numel == 0:
         return out
+
+    if (
+        numel >= _GCD_SHORTCUT_MIN_NUMEL
+        and out.dtype in (torch.int8, torch.int16, torch.int32)
+    ):
+        num_programs = triton.cdiv(numel, _GCD_SHORTCUT_BLOCK)
+        flags = torch.empty(
+            num_programs, dtype=torch.int32, device=out.device
+        )
+        grid = (num_programs,)
+        gcd_shortcut_kernel[grid](
+            lhs,
+            rhs,
+            flags,
+            numel,
+            BLOCK=_GCD_SHORTCUT_BLOCK,
+        )
+        if not bool(flags.any().item()):
+            if out.data_ptr() != lhs.data_ptr():
+                out.copy_(lhs)
+            return out
+
     kernel, fast_kernel, iters, minv, block, num_warps = _kernel_meta(out.dtype)
     chunk = block * _GCD_NCHUNK
     if numel >= _GCD_FAST_MIN_NUMEL and numel % chunk == 0:
