@@ -205,7 +205,8 @@ def test__is_any_true_value_ranges(shape, value_range):
 
     tu.assert_result_equal(res_out, ref_out)
     # The reduction only reads its input; writing back into it is a bug.
-    tu.assert_result_equal(inp, before)
+    assert inp.device == before.device
+    tu.assert_result_equal(inp, tu.to_reference(before))
 
 
 @pytest.mark.underscore_is_any_true
@@ -219,7 +220,8 @@ def test__is_any_true_patterns(shape, pattern):
     res_out = flag_gems._is_any_true(inp)
 
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, before)
+    assert inp.device == before.device
+    tu.assert_result_equal(inp, tu.to_reference(before))
 
 
 @pytest.mark.underscore_is_any_true
@@ -233,7 +235,8 @@ def test__is_any_true_scan_boundaries(shape, pattern):
     res_out = flag_gems._is_any_true(inp)
 
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, before)
+    assert inp.device == before.device
+    tu.assert_result_equal(inp, tu.to_reference(before))
 
 
 @pytest.mark.underscore_is_any_true
@@ -247,7 +250,8 @@ def test__is_any_true_empty(shape):
     res_out = flag_gems._is_any_true(inp)
 
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, before)
+    assert inp.device == before.device
+    tu.assert_result_equal(inp, tu.to_reference(before))
 
 
 @pytest.mark.underscore_is_any_true
@@ -261,7 +265,8 @@ def test__is_any_true_non_contiguous(layout, contains_true):
     res_out = flag_gems._is_any_true(inp)
 
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, before)
+    assert inp.device == before.device
+    tu.assert_result_equal(inp, tu.to_reference(before))
 
 
 @pytest.mark.underscore_is_any_true
