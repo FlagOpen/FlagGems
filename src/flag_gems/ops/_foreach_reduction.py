@@ -33,6 +33,9 @@ import torch
 import triton
 import triton.language as tl
 
+from triton import knobs
+from triton.runtime import driver as _triton_driver
+
 from flag_gems.ops.zero import _launch_zero_kernel
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import _pick_block, check_tensor_list, tl_dtype
@@ -127,6 +130,85 @@ def _device_meta(values: List[int], device: torch.device) -> torch.Tensor:
         _FALLBACK_KEYSET, meta, torch.tensor(values, dtype=torch.int64), True
     )
     return meta
+
+
+# Every launch below is a two-dimensional grid whose argument list is a fixed
+# set of constexprs plus one to three pointers, so ``(kernel, device, constexpr
+# values, pointer alignment)`` identifies the compiled variant exactly.  Triton's
+# Python dispatch between the cache lookup and the actual launch -- binder,
+# cache-key hash, hook and launch-metadata checks -- measured 7.5us of the
+# 11.6us a launch costs on the host (torch.profiler CPU self time, 1024x1024
+# fp32, 16 tensors); none of it can change the result.  With one or two launches
+# per call that dispatch is a visible fraction of a call that is otherwise
+# host-bound, and a benchmark loop launches the same variant thousands of times.
+#
+# Only the *launcher* is cached.  The metadata and the partial/result buffers
+# are rebuilt on every call, so no device-visible buffer is shared across calls.
+# A miss, an installed launch hook (proton and other instrumentation install
+# one), or a launcher that raises all take the normal path, which fills the
+# cache.
+_LAUNCH_CACHE: Dict[tuple, tuple] = {}
+
+
+def _launch(
+    kernel: Any,
+    grid: tuple,
+    constexprs: tuple,
+    args: tuple,
+    pointers: tuple,
+    device: torch.device,
+) -> None:
+    """Launch ``kernel`` on ``grid`` over ``args``, replaying a cached launcher.
+
+    ``constexprs`` are the compile-time arguments in signature order (the same
+    values that appear in ``args``), ``pointers`` the tensor arguments: Triton
+    specializes a pointer on 16-byte alignment, so that bit joins the key and an
+    unusually aligned allocation gets a variant of its own rather than a
+    mismatch.  ``args`` must be the full signature in order -- a replay hands
+    them to the compiled kernel's launcher unchanged.
+    """
+    dev_index = device.index
+    key = (
+        kernel,
+        dev_index,
+        constexprs,
+        tuple(int(t.data_ptr()) & 15 for t in pointers),
+    )
+    entry = _LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
+    # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``:
+    # the chain exists whether or not anyone subscribed.  ``.calls`` is the list
+    # of registered callbacks, so an empty list is the real "no hooks" state.
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                grid[1],
+                1,
+                _triton_driver.active.get_current_stream(dev_index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                *args,
+            )
+            return
+        except Exception:
+            # A launcher that cannot be replayed this way is not a correctness
+            # problem: forget the entry and let Triton dispatch as usual.
+            _LAUNCH_CACHE.pop(key, None)
+    compiled = kernel[grid](*args)
+    if compiled is not None:
+        _LAUNCH_CACHE[key] = (
+            compiled.run,
+            compiled.function,
+            compiled.packed_metadata,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -233,13 +315,13 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
             # the result buffer (same dtype), and no second launch is needed.
             g = 1
             out = torch.empty(nt, dtype=dtype, device=device)
-            _max_stage1_kernel[(nt, g)](
-                meta,
-                out,
-                IN_DT=in_dt,
-                NEG_INF=neg_inf,
-                G=g,
-                BLOCK=1024,
+            _launch(
+                _max_stage1_kernel,
+                (nt, g),
+                (in_dt, neg_inf, g, 1024),
+                (meta, out, in_dt, neg_inf, g, 1024),
+                (meta, out),
+                device,
             )
         else:
             g = _reduction_chunks(nt, max_numel, device, 1024)
@@ -249,21 +331,21 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
             # implementations), an extra ``torch.empty`` about 2us.
             partial = torch.empty(nt * g, dtype=dtype, device=device)
             out = torch.empty(nt, dtype=dtype, device=device)
-            _max_stage1_kernel[(nt, g)](
-                meta,
-                partial,
-                IN_DT=in_dt,
-                NEG_INF=neg_inf,
-                G=g,
-                BLOCK=1024,
+            _launch(
+                _max_stage1_kernel,
+                (nt, g),
+                (in_dt, neg_inf, g, 1024),
+                (meta, partial, in_dt, neg_inf, g, 1024),
+                (meta, partial),
+                device,
             )
-            _max_stage2_kernel[(nt,)](
-                partial,
-                out,
-                IN_DT=in_dt,
-                NEG_INF=neg_inf,
-                G=g,
-                BLOCK_P=triton.next_power_of_2(g),
+            _launch(
+                _max_stage2_kernel,
+                (nt, 1),
+                (in_dt, neg_inf, g, triton.next_power_of_2(g)),
+                (partial, out, in_dt, neg_inf, g, triton.next_power_of_2(g)),
+                (partial, out),
+                device,
             )
         # ``unbind`` is registered by FlagGems itself, so inside ``use_gems`` it
         # costs a Python-level implementation (~7us more than the C++ select
@@ -443,29 +525,35 @@ def _pow_sum_list(
             partial = torch.empty(len(work) * g, dtype=torch.float32, device=device)
             out = torch.empty(len(work), dtype=in_dtype, device=device)
             in_dt = tl_dtype(in_dtype)
-            _norm_stage1_kernel[(len(work), g)](
-                meta,
-                partial,
-                out,
-                ORD=ord_key,
-                ROOT=root,
-                INF_MODE=inf_mode,
-                IN_DT=in_dt,
-                OUT_DT=in_dt,
-                G=g,
-                BLOCK=4096 if g == 1 else 1024,
-            )
-            if g > 1:
-                _norm_stage2_kernel[(len(work),)](
+            block = 4096 if g == 1 else 1024
+            _launch(
+                _norm_stage1_kernel,
+                (len(work), g),
+                (ord_key, root, inf_mode, in_dt, in_dt, g, block),
+                (
                     meta,
                     partial,
                     out,
-                    ORD=ord_key,
-                    ROOT=root,
-                    INF_MODE=inf_mode,
-                    OUT_DT=in_dt,
-                    G=g,
-                    BLOCK_P=triton.next_power_of_2(g),
+                    ord_key,
+                    root,
+                    inf_mode,
+                    in_dt,
+                    in_dt,
+                    g,
+                    block,
+                ),
+                (meta, partial, out),
+                device,
+            )
+            if g > 1:
+                block_p = triton.next_power_of_2(g)
+                _launch(
+                    _norm_stage2_kernel,
+                    (len(work), 1),
+                    (ord_key, root, inf_mode, in_dt, g, block_p),
+                    (meta, partial, out, ord_key, root, inf_mode, in_dt, g, block_p),
+                    (meta, partial, out),
+                    device,
                 )
         else:
             # Every entry is empty; the stage-two kernel would not be launched,
@@ -575,10 +663,15 @@ def _zero_list(tensors: List[torch.Tensor]) -> None:
         # count bounded when one tensor is much larger than its neighbours.
         block = _pick_block(numels)
         meta = _device_meta([w.data_ptr() for w in work] + numels, device)
-        _zero_list_kernel[(len(work), triton.cdiv(max_numel, block))](
-            meta,
-            IN_DT=tl_dtype(dtype),
-            BLOCK=block,
+        in_dt = tl_dtype(dtype)
+        grid = (len(work), triton.cdiv(max_numel, block))
+        _launch(
+            _zero_list_kernel,
+            grid,
+            (in_dt, block),
+            (meta, in_dt, block),
+            (meta,),
+            device,
         )
 
     for t in fallback:
