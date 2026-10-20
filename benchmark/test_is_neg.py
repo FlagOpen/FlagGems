@@ -28,11 +28,6 @@ import flag_gems
 
 from . import base, consts, utils
 
-_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend normal_ does not support complex input dtypes",
-)
-
 BENCH_DTYPES = consts.FLOAT_DTYPES + [torch.complex64]
 
 _VARIANTS = ("plain", "neg", "double_neg")
@@ -52,7 +47,16 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     shape, variant = plan.builder_args
-    inp = utils.generate_tensor_input(shape, dtype, device)
+    source_device = (
+        "cpu" if flag_gems.vendor_name == "ascend" and dtype.is_complex else device
+    )
+    inp = utils.generate_tensor_input(shape, dtype, source_device).to(device)
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.dtype == dtype and inp.device == expected
     if variant == "neg":
         inp = torch._neg_view(inp)
     elif variant == "double_neg":
@@ -80,10 +84,7 @@ class IsNegBenchmark(base.GenericBenchmark):
 @pytest.mark.is_neg
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in BENCH_DTYPES
-    ],
+    BENCH_DTYPES,
 )
 def test_is_neg(dtype):
 

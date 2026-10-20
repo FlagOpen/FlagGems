@@ -30,24 +30,105 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot generate nonempty FP8 test payloads",
-)
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _reference(inp):
+    return _copy_to(inp, "cpu" if utils.TO_CPU else inp.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+        if low == high:
+            value = torch.full(shape, low, dtype=torch.float32, device="cpu")
+        else:
+            value = torch.testing.make_tensor(
+                shape, dtype=torch.float32, device="cpu", low=low, high=high
+            )
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    cpu_encoding = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    if cpu_encoding:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _assert_payload_equal(result, reference):
+    # Validate the selected reference ABI before observing values on CPU.
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    expected = _device("cpu" if utils.TO_CPU else flag_gems.device)
+    assert result.device == reference.device == expected
+    torch.testing.assert_close(
+        _copy_to(result, "cpu"),
+        _copy_to(reference, "cpu"),
+        rtol=0,
+        atol=0,
+        equal_nan=True,
+    )
 
 
 def _input_marks(dtype):
-    if dtype.is_complex:
-        return (_ASCEND_COMPLEX_SKIP,)
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-        return (_ASCEND_FP8_INPUT_SKIP,)
     return ()
-
-
-_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend complex input/reference support is incomplete",
-)
 
 
 _FP64_SUPPORTED = utils.fp64_is_supported
@@ -97,10 +178,10 @@ def _with_flags(tensor, conj, neg_count, conj_first):
 def _flag_form_pair(dtype, layout, conj, neg_count, conj_first):
     # The reference operand is built independently and gets the same layout and
     # flags, so no flagged tensor ever has to cross devices.
-    plain = tu.make_input(dtype, _LAYOUT_SHAPES[layout], ["-1", "1"])
+    plain = _make_input(dtype, _LAYOUT_SHAPES[layout], ["-1", "1"])
     inp = _with_flags(_layout_view(plain, layout), conj, neg_count, conj_first)
     ref_inp = _with_flags(
-        _layout_view(tu.to_reference(plain), layout), conj, neg_count, conj_first
+        _layout_view(_reference(plain), layout), conj, neg_count, conj_first
     )
     return inp, ref_inp
 
@@ -194,8 +275,8 @@ _DTYPE_RANGE_CASES = [
     ],
 )
 def test_is_neg_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.is_neg(ref_inp)
     res_out = flag_gems.is_neg(inp)
@@ -211,9 +292,9 @@ def test_is_neg_value_ranges(shape, value_range, dtype):
     [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _DTYPES],
 )
 def test_is_neg_lazy_neg_view(shape, dtype):
-    plain = tu.make_input(dtype, shape, ["-1", "1"])
+    plain = _make_input(dtype, shape, ["-1", "1"])
     inp = torch._neg_view(plain)
-    ref_inp = torch._neg_view(tu.to_reference(plain))
+    ref_inp = torch._neg_view(_reference(plain))
 
     ref_out = torch.ops.aten.is_neg(ref_inp)
     res_out = flag_gems.is_neg(inp)
@@ -263,13 +344,13 @@ def test_is_neg_flag_forms(dtype, layout, conj, neg_count, conj_first):
     ],
 )
 def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
-    plain = tu.make_input(dtype, shape, ["-1", "1"])
+    plain = _make_input(dtype, shape, ["-1", "1"])
     if requires_grad:
         plain.requires_grad_(True)
-    ref_plain = tu.to_reference(plain)
+    ref_plain = _reference(plain)
     inp = torch._neg_view(plain) if has_flag else plain
     ref_inp = torch._neg_view(ref_plain) if has_flag else ref_plain
-    plain_before = tu.to_reference(plain.detach())
+    plain_before = _reference(plain.detach())
     stride, offset = inp.stride(), inp.storage_offset()
     storage = inp.untyped_storage().data_ptr()
     conj = inp.is_conj()
@@ -287,7 +368,8 @@ def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
     assert inp.requires_grad == requires_grad
     # The payload snapshot comes from the unflagged tensor, so comparing it does
     # not have to materialize the negation view.
-    tu.assert_result_equal(plain, plain_before)
+    _check_input(plain, dtype, shape)
+    _assert_payload_equal(_reference(plain), plain_before)
 
 
 @pytest.mark.is_neg
@@ -304,8 +386,8 @@ def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
     ],
 )
 def test_is_neg_special_values(dtype, scenario, has_flag):
-    plain = tu.make_special_input(dtype, scenario)
-    ref_plain = tu.to_reference(plain)
+    plain = _make_special_input(dtype, scenario)
+    ref_plain = _reference(plain)
     inp = torch._neg_view(plain) if has_flag else plain
     ref_inp = torch._neg_view(ref_plain) if has_flag else ref_plain
 
