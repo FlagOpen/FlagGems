@@ -1963,7 +1963,7 @@ def foreach_ternary(
     homogeneous = _ternary_homogeneous(self, tensor1, tensor2, allowed_dtypes)
     if homogeneous is not None:
         device = self[0].device
-        dsts = self if inplace else [torch.empty_like(t) for t in self]
+        dsts = self if inplace else list(map(torch.empty_like, self))
         _launch_ternary_group(
             self,
             tensor1,
