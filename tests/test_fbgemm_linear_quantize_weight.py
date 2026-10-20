@@ -325,7 +325,8 @@ def test_fbgemm_linear_quantize_weight_special_values(dtype, scenario):
 @pytest.mark.fbgemm_linear_quantize_weight
 @pytest.mark.parametrize("dtype", _REJECTED_DTYPES)
 def test_fbgemm_linear_quantize_weight_rejects_unsupported_dtype(dtype):
-    inp = tu.make_input(dtype, (4, 8), ["-1", "1"]).cpu()
+    # This CPU operator rejects the dtype before reading its payload.
+    inp = torch.empty((4, 8), dtype=dtype, device="cpu")
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.fbgemm_linear_quantize_weight(inp)

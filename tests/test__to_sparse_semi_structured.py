@@ -530,7 +530,8 @@ def test__to_sparse_semi_structured_invalid_pattern(dtype, shape, mode):
 @pytest.mark.to_sparse_semi_structured
 @pytest.mark.parametrize("dtype,shape", UNSUPPORTED_DTYPE_ROWS)
 def test__to_sparse_semi_structured_unsupported_dtype(dtype, shape):
-    inp = tu.make_input(dtype, shape, ["0", "1"])
+    # Unsupported dtypes are rejected before any payload is read.
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems._to_sparse_semi_structured(inp)
