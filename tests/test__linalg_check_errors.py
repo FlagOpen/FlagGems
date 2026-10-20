@@ -299,7 +299,16 @@ if utils.fp8_is_supported:
 def test__linalg_check_errors_rejects_non_int32_dtype(bad_dtype):
     """Only int32 reaches the kernel; any other constructible dtype is an
     invalid input."""
-    info = torch.zeros((2, 3), dtype=bad_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend" and bad_dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # NPU zero-fill does not support FP8. Encode the same positive-zero
+        # payload on CPU, then exercise the candidate with the original dtype.
+        info = torch.zeros((2, 3), dtype=torch.float32).to(bad_dtype)
+        info = info.to(flag_gems.device)
+    else:
+        info = torch.zeros((2, 3), dtype=bad_dtype, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._linalg_check_errors(info, API_NAME, is_matrix=False)
 
