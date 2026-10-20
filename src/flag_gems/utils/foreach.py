@@ -514,6 +514,21 @@ def launch_stats() -> Dict[str, int]:
 # all take the normal path, which fills the cache.
 _LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
 
+# Replay accounting.  ``replay`` counts calls served by the cached launcher,
+# ``dispatch`` counts calls that went through Triton's dispatcher (first call
+# per key, or a fallback).  Together they equal the number of group launches,
+# which is what makes a "the cache is write-only" bug visible without a probe.
+_LAUNCH_STATS: Dict[str, int] = {"replay": 0, "dispatch": 0}
+
+
+def launch_cache_stats() -> Dict[str, int]:
+    """Cumulative hits/misses of the executor launch cache (diagnostics only).
+
+    Deliberately separate from :func:`launch_stats`, which is a per-call
+    snapshot used by the tests.
+    """
+    return dict(_LAUNCH_STATS)
+
 
 def _launch_executor_kernel(
     kernel: Callable,
@@ -540,10 +555,15 @@ def _launch_executor_kernel(
     )
     entry = _LAUNCH_CACHE.get(key)
     runtime = knobs.runtime
+    # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``:
+    # the chain exists whether or not anyone subscribed.  ``.calls`` is the
+    # list of registered callbacks, so an empty list is the real "no hooks"
+    # state.  Proton and other instrumentation add to it, and a replay would
+    # then skip their notifications.
     if (
         entry is not None
-        and runtime.launch_enter_hook is None
-        and runtime.launch_exit_hook is None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
     ):
         try:
             entry[0](
@@ -563,11 +583,13 @@ def _launch_executor_kernel(
                 dt_out,
                 block,
             )
+            _LAUNCH_STATS["replay"] += 1
             return
         except Exception:
             # A launcher that cannot be replayed this way is not a correctness
             # problem: forget the entry and let Triton dispatch as usual.
             _LAUNCH_CACHE.pop(key, None)
+    _LAUNCH_STATS["dispatch"] += 1
     compiled = kernel[grid](meta, fn, nt, dt_in, dt_out, block)
     if compiled is not None:
         _LAUNCH_CACHE[key] = (
