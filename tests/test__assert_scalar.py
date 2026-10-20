@@ -159,7 +159,8 @@ TENSOR_SELF_CASES = [
 ]
 
 # Only numpy scalars of the native-accepted types are numbers to this schema; every other
-# numpy scalar, container, string and out-of-int64-range integer is rejected.
+# numpy scalar, container and string is rejected. Integer boundary acceptance
+# is version-dependent and checked against native in a separate matrix.
 _NUMBER_SELF_ROWS = [
     pytest.param(np.int8(1), id="numpy_int8"),
     pytest.param(np.int32(1), id="numpy_int32"),
@@ -178,6 +179,11 @@ _NUMBER_SELF_ROWS = [
     pytest.param([1], id="list_value"),
     pytest.param((1,), id="tuple_value"),
     pytest.param({1: 1}, id="dict_value"),
+]
+
+# PyTorch 2.9 accepts unsigned-64 Scalar values that older builds rejected.
+# Preserve every boundary input and compare the native acceptance/return contract.
+_INTEGER_BOUNDARY_ROWS = [
     pytest.param(2**63, id="int_above_int64_max"),
     pytest.param(2**64 - 1, id="uint64_max"),
     pytest.param(2**64, id="int_2pow64"),
@@ -264,6 +270,18 @@ def test_assert_scalar_rejects_tensor_self(shape, dtype):
 def test_assert_scalar_rejects_non_number_self(value):
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._assert_scalar(value, MSG)
+
+
+@pytest.mark.underscore_assert_scalar
+@pytest.mark.parametrize("value", _INTEGER_BOUNDARY_ROWS)
+def test_assert_scalar_integer_boundary_contract(value):
+    try:
+        ref = torch.ops.aten._assert_scalar(value, MSG)
+    except (RuntimeError, TypeError, OverflowError):
+        with pytest.raises((RuntimeError, TypeError, OverflowError)):
+            flag_gems._assert_scalar(value, MSG)
+    else:
+        assert flag_gems._assert_scalar(value, MSG) is ref
 
 
 @pytest.mark.underscore_assert_scalar
