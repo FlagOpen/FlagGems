@@ -80,8 +80,10 @@ def _batch_coordinate_overflows(shape, dtype):
 
 
 def _native_skip_reason(shape, dtype):
-    if flag_gems.vendor_name == "ascend" and _batch_coordinate_overflows(shape, dtype):
-        return "Ascend native CSR-to-COO wraps batch coordinates in the narrow input index dtype"
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and _batch_coordinate_overflows(
+        shape, dtype
+    ):
+        return f"{flag_gems.vendor_name} native CSR-to-COO wraps batch coordinates in the narrow input index dtype"
     return None
 
 
@@ -123,7 +125,11 @@ def _csr_offsets(col_shape, dtype):
     is (the grid keeps only such extents).
     """
     rows = col_shape[-1] + 1
-    if flag_gems.vendor_name == "ascend" and dtype in (torch.int8, torch.uint8):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.int8,
+        torch.uint8,
+        torch.int16,
+    ):
         # NPU arange cannot construct these otherwise valid index buffers.
         offsets = torch.arange(rows, dtype=dtype, device="cpu")
         return (
