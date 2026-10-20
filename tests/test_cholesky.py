@@ -178,6 +178,7 @@ def _skip_reference_gap(family, dtype, **params):
         ) or (
             vendor in ("ascend", "metax")
             and dtype.is_complex
+            and (vendor == "metax" or dtype == torch.complex64)
             and params["placement"] == "hermitian_off_diagonal"
             and value == float("inf")
         ):
