@@ -39,9 +39,41 @@ _BIAS_FORMS = ("broadcast", "full")
 
 
 def _input(dtype, shape, value_range):
-    # The shared generator places tensors on flag_gems.device; this operator only
-    # accepts CPU operands, so move them there.
-    return tu.make_input(dtype, shape, value_range).cpu()
+    # This is a host-only ABI. Generate on CPU directly so a device cast cannot
+    # narrow float64 or prevent valid CPU FP8 negative fixtures from being built.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if dtype == torch.bool:
+        result = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            # Older CPU stacks can encode FP8 but lack its full/fill kernel.
+            fill_dtype = torch.float32 if dtype in tu._FP8_DTYPES else dtype
+            result = torch.full(shape, low, dtype=fill_dtype, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    assert result.dtype == dtype
+    assert result.device == torch.device("cpu")
+    assert result.shape == tuple(shape)
+    return result
+
+
+def _special_input(dtype, scenario):
+    # Same payload as tu.make_special_input, encoded without a device roundtrip.
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(dtype)
 
 
 def _bias_shape(num_rows, bias_form):
@@ -180,7 +212,7 @@ _SPECIAL_ROWS = tu.selected_cases(
 
 def _special_operand(shape, dtype, scenario):
     # Reuse the shared special-value pattern, widened to the operand shape.
-    pattern = tu.make_special_input(dtype, scenario).to(_DEVICE).reshape(-1)
+    pattern = _special_input(dtype, scenario).reshape(-1)
     numel = 1
     for dim in shape:
         numel *= dim
@@ -403,5 +435,23 @@ def _invalid_call(kind, value):
 @pytest.mark.parametrize("row", _NEGATIVE_ROWS)
 def test_fbgemm_linear_fp16_weight_invalid(row):
     args, kwargs = _invalid_call(*row)
+    if row == ("bias_type", None):
+        # Some native stacks accept an undefined bias as no bias. Observe that
+        # contract with an independent activation and the native opaque handle.
+        # Candidate execution stays outside the native exception handler.
+        try:
+            ref_out = torch.ops.aten.fbgemm_linear_fp16_weight(
+                tu.to_reference(args[0]), args[1], None
+            )
+        except _INVALID_ERRORS as error:
+            with pytest.raises(type(error)):
+                flag_gems.fbgemm_linear_fp16_weight(*args, **kwargs)
+        else:
+            res_out = flag_gems.fbgemm_linear_fp16_weight(*args, **kwargs)
+            assert res_out.device == ref_out.device == _DEVICE
+            assert res_out.dtype == ref_out.dtype == _DTYPE
+            assert res_out.shape == ref_out.shape == (_ACT_SHAPE[0], _NUM_ROWS)
+            tu.assert_result_close(res_out, ref_out)
+        return
     with pytest.raises(_INVALID_ERRORS):
         flag_gems.fbgemm_linear_fp16_weight(*args, **kwargs)

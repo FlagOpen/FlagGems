@@ -80,7 +80,7 @@ def _packed_weight(k, n, value_range):
     """
     key = ("range", k, n, tuple(value_range))
     if key not in _PACKED:
-        weight = tu.make_input(torch.float32, (n, k), value_range).to(_HOST)
+        weight = _make_input(torch.float32, (n, k), value_range)
         _PACKED[key] = torch.ops.aten.fbgemm_pack_gemm_matrix_fp16(weight)
     return _PACKED[key]
 
@@ -95,7 +95,41 @@ def _constant_packed_weight(k, n, fill):
 
 
 def _make_input(dtype, shape, value_range):
-    return tu.make_input(dtype, shape, value_range).to(_HOST)
+    # This is a host-only ABI. Generate on CPU directly so a device cast cannot
+    # narrow float64 or prevent valid CPU FP8 negative fixtures from being built.
+    low = tu.resolve_bound(value_range[0], dtype)
+    high = tu.resolve_bound(value_range[1], dtype)
+    if dtype == torch.bool:
+        result = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            # Older CPU stacks can encode FP8 but lack its full/fill kernel.
+            fill_dtype = torch.float32 if dtype in tu._FP8_DTYPES else dtype
+            result = torch.full(shape, low, dtype=fill_dtype, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    assert result.dtype == dtype
+    assert result.device == torch.device("cpu")
+    assert result.shape == tuple(shape)
+    return result
+
+
+def _special_input(dtype, scenario):
+    # Same payload as tu.make_special_input, encoded without a device roundtrip.
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(dtype)
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
@@ -231,7 +265,7 @@ SPECIAL_ROWS = tu.selected_cases(
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
 @pytest.mark.parametrize("scenario,nan_weight", SPECIAL_ROWS)
 def test_fbgemm_linear_fp16_weight_fp32_activation_special_values(scenario, nan_weight):
-    payload = tu.make_special_input(ACTIVATION_DTYPE, scenario).to(_HOST)
+    payload = _special_input(ACTIVATION_DTYPE, scenario)
     # Constant rows keep the arithmetic well defined: an all-inf row times a
     # uniform positive weight is exactly +-inf, not a 0 * inf nan.
     inp = payload.reshape(payload.numel(), 1).repeat(1, SPECIAL_K)
@@ -260,7 +294,7 @@ BIAS_SPECIAL_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("dtype,scenario", BIAS_SPECIAL_ROWS)
 def test_fbgemm_linear_fp16_weight_fp32_activation_special_bias(dtype, scenario):
     # A nan/inf bias propagates straight through the trailing add.
-    payload = tu.make_special_input(dtype, scenario).to(_HOST)
+    payload = _special_input(dtype, scenario)
     # Tile the 5-value payload up to the (n,) bias length.
     bias = payload.repeat(-(-N // payload.numel()))[:N]
     inp = _make_input(ACTIVATION_DTYPE, (4, SPECIAL_K), ["-1", "1"])
@@ -389,7 +423,7 @@ def test_fbgemm_linear_fp16_weight_fp32_activation_negative_activation_dtype(dty
 def test_fbgemm_linear_fp16_weight_fp32_activation_negative_bias_dtype(dtype):
     # The trailing add rejects complex-to-float casts and float8 promotion.
     inp = _make_input(ACTIVATION_DTYPE, (4, 16), ["-1", "1"])
-    bias = torch.ones(N, dtype=dtype, device=_HOST)
+    bias = _make_input(dtype, (N,), ["1", "1"])
     packed = _packed_weight(16, N, ["-1", "1"])
     with pytest.raises(RuntimeError):
         flag_gems.fbgemm_linear_fp16_weight_fp32_activation(inp, packed, bias)
