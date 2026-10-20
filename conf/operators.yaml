@@ -4824,7 +4824,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.5'
+  - alpha: '5.5.0'
 - id: dimV
   description: 'Returns the number of dense dimensions of a sparse COO tensor.
     '
