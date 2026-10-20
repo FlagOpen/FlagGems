@@ -1595,19 +1595,31 @@ def _binary_scalar_homogeneous(
     a0 = self[0]
     dev = a0.device
     dt = a0.dtype
+    # Uniformity and contiguity are the same walk over the list, so they share
+    # one pass: ``is_contiguous`` has no side effect, and the partial answer is
+    # simply dropped when the early exit is taken.
+    conts = []
+    append = conts.append
     for t in self:
         if t.dtype is not dt or t.device != dev:
             return None
+        append(t.is_contiguous())
     # ``_promote_with_scalar`` memoises on ``(dtype, type(value), zero-dim)``,
     # so with one dtype the whole list promotes alike as soon as every entry
     # has the same class.  The broadcast forms already repeat one object, so
-    # only a real list needs to be looked at.
+    # only a real list needs to be looked at; a plain ``float`` -- the usual
+    # case -- needs no tuple build and no ``isinstance`` per entry.
     v0 = values[0]
     if vclass is None:
-        v_key = (type(v0), isinstance(v0, torch.Tensor) and v0.dim() == 0)
-        for v in values:
-            if (type(v), isinstance(v, torch.Tensor) and v.dim() == 0) != v_key:
-                return None
+        if type(v0) is float:
+            for v in values:
+                if type(v) is not float:
+                    return None
+        else:
+            v_key = (type(v0), isinstance(v0, torch.Tensor) and v0.dim() == 0)
+            for v in values:
+                if (type(v), isinstance(v, torch.Tensor) and v.dim() == 0) != v_key:
+                    return None
 
     if allowed_dtypes is not None and dt not in allowed_dtypes:
         check_dtype_supported(dt, allowed_dtypes, dtype_error, dtype_error_type)
@@ -1615,7 +1627,6 @@ def _binary_scalar_homogeneous(
     if out_dtype_fn is not None:
         out_dtype = out_dtype_fn(out_dtype)
 
-    conts = [t.is_contiguous() for t in self]
     if all(conts):
         srcs = self
     else:
