@@ -150,7 +150,8 @@ def test_igammac():
     # When the number of logical cores exceeds the number of physical cores (65,535),
     # the compiler automatically adjusts the logical core count to match the physical core count,
     # thereby reducing scheduling overhead.
-    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    if flag_gems.vendor_name == "ascend":
+        os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
 
 
@@ -163,5 +164,6 @@ def test_igammac_out():
         input_fn=_igammac_input_out,
         dtypes=_IGAMMAC_DTYPES,
     )
-    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    if flag_gems.vendor_name == "ascend":
+        os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
