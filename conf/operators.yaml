@@ -18556,34 +18556,6 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
-- id: sparse_resize_
-  description: 'Resizes a sparse COO tensor in place to the given size with the given
-    sparse/dense dim split while preserving the stored indices and values.
-
-    '
-  for:
-  - sparse_resize_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
-- id: sparse_resize_and_clear_
-  description: 'Resizes a sparse COO tensor in place to the given size and clears
-    all stored entries (nnz becomes 0).
-
-    '
-  for:
-  - sparse_resize_and_clear_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor

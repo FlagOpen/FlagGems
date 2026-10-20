@@ -43,9 +43,15 @@ kernels; the returned numerical output is produced entirely by the device
 kernels.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops._sparse_log_softmax import triton_coalesce
+
+logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
 _MAX_COORD_MAP = 1 << 24
@@ -199,6 +205,8 @@ def _sparse_strides(size, sparse_dim):
 
 
 def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
+
+    logger.debug("GEMS SPARSE_SOFTMAX_BACKWARD_DATA")
     if not torch.is_tensor(grad_output) or not grad_output.is_sparse:
         raise NotImplementedError(
             "Could not run 'aten::_sparse_softmax_backward_data' with arguments "
@@ -232,12 +240,13 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
     rank = len(size)
     k = _wrap_dim(int(dim), rank)
 
-    grad_c = grad_output.coalesce()
-    out_c = output.coalesce()
-    g_idx = grad_c._indices().contiguous()
-    g_val = grad_c._values().contiguous()
-    o_idx = out_c._indices().contiguous()
-    o_val = out_c._values().contiguous()
+    # Triton coalesce: duplicate coordinates are summed without a native call
+    g_idx, g_val, _ = triton_coalesce(grad_output)
+    o_idx, o_val, _ = triton_coalesce(output)
+    g_idx = g_idx.contiguous()
+    g_val = g_val.contiguous()
+    o_idx = o_idx.contiguous()
+    o_val = o_val.contiguous()
 
     nnz_g = int(g_idx.shape[1])
     nnz = int(o_idx.shape[1])
@@ -339,3 +348,8 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
         out.copy_(result)
         return out
     return result
+
+
+def _sparse_softmax_backward_data_out(grad_output, output, dim, self, *, out):
+    """``aten::_sparse_softmax_backward_data.out`` overload."""
+    return _sparse_softmax_backward_data(grad_output, output, dim, self, out=out)

@@ -35,7 +35,7 @@ APPLY_CASES = [
 # aten has no CPU kernel for this op, so the CPU-reference (quick-cpu) mode
 # cannot compute a reference; the suite runs in normal mode only.
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.underscore_sparse_semi_structured_apply
+@pytest.mark.sparse_semi_structured_apply
 @pytest.mark.parametrize("M,K", APPLY_CASES)
 @pytest.mark.parametrize("dtype", APPLY_DTYPES)
 def test__sparse_semi_structured_apply(M, K, dtype):
@@ -52,3 +52,13 @@ def test__sparse_semi_structured_apply(M, K, dtype):
     # selection is pure 16-bit data movement, so results must be bit-exact
     utils.gems_assert_equal(res0, ref0)
     utils.gems_assert_equal(res1, ref1)
+
+
+def test_sparse_semi_structured_apply_dispatch():
+    """Smoke-test the dispatcher path."""
+    x = torch.randn(32, 64, dtype=torch.float16, device=flag_gems.device)
+    tm = torch.randint(0, 256, (4, 8, 8), dtype=torch.uint8, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res0, res1 = torch.ops.aten._sparse_semi_structured_apply(x, tm)
+    ref0, ref1 = torch.ops.aten._sparse_semi_structured_apply(x, tm)
+    assert torch.equal(res0, ref0) and torch.equal(res1, ref1)

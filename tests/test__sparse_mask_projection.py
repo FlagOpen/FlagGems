@@ -706,3 +706,19 @@ def test_sparse_mask_projection_rejects_fp8(dtype):
     )
     with pytest.raises(RuntimeError):
         flag_gems._sparse_mask_projection(operand, mask)
+
+
+def test_sparse_mask_projection_dispatch():
+    """Smoke-test the dispatcher path (base and .out overloads)."""
+    idx = torch.tensor([[0, 1], [0, 1]], device=flag_gems.device)
+    vals = torch.randn(2, 4, device=flag_gems.device)
+    inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
+    mask = torch.ops.aten._sparse_mask_projection(inp, inp)
+    o = torch.empty_like(mask)
+    with flag_gems.use_gems():
+        res = torch.ops.aten._sparse_mask_projection(inp, inp)
+        res_out = torch.ops.aten._sparse_mask_projection.out(inp, inp, out=o)
+    ref = torch.ops.aten._sparse_mask_projection(inp, inp)
+    assert res.shape == ref.shape
+    assert torch.equal(res._values(), ref._values())
+    assert res_out is o

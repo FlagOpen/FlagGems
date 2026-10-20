@@ -136,7 +136,7 @@ def test_sparse_mask_non_contiguous(base_shape, shape, dtype):
     _assert_masked(res_out, ref_out)
 
 
-@pytest.mark.sparse_mask_out
+@pytest.mark.sparse_mask
 @pytest.mark.parametrize("shape", _SPARSE_MASK_STRUCT_SHAPES)
 @pytest.mark.parametrize("dtype", _SPARSE_MASK_DTYPES)
 def test_sparse_mask_out(shape, dtype):
@@ -208,7 +208,7 @@ def test_sparse_mask_backward(shape, dtype):
     tu.assert_result_close(res_in_grad, ref_in_grad)
 
 
-@pytest.mark.sparse_mask_negative
+@pytest.mark.sparse_mask
 def test_sparse_mask_shape_mismatch():
     self_t = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
     mask = _make_mask((4, 6))
@@ -221,7 +221,7 @@ def test_sparse_mask_shape_mismatch():
         flag_gems.sparse_mask(self_t, mask)
 
 
-@pytest.mark.sparse_mask_negative
+@pytest.mark.sparse_mask
 def test_sparse_mask_rejects_dense_mask():
     self_t = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
     dense_mask = torch.rand(4, 5, device=flag_gems.device) > 0.5
@@ -232,3 +232,18 @@ def test_sparse_mask_rejects_dense_mask():
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.sparse_mask(self_t, dense_mask)
+
+
+def test_sparse_mask_dispatch():
+    """Smoke-test the dispatcher path (base and .out overloads)."""
+    inp = tu.make_input(torch.float32, (16, 32), ["-1", "1"])
+    mask = _make_mask((16, 32))
+    o = torch.empty_like(mask)
+    with flag_gems.use_gems():
+        res = torch.ops.aten.sparse_mask(inp, mask)
+        res_out = torch.ops.aten.sparse_mask.out(inp, mask, out=o)
+    ref = torch.ops.aten.sparse_mask(inp, mask)
+    assert res.shape == ref.shape
+    assert torch.equal(res._indices(), ref._indices())
+    assert res_out is o
+    assert torch.equal(res_out._values(), ref._values())

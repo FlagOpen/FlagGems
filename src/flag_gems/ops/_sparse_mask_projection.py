@@ -48,6 +48,10 @@ Torch is used only for allocation, metadata, the zero-fill of the scratch and
 the final sparse-tensor construction / ``out`` write-through.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import torch
 import triton
 import triton.language as tl
@@ -304,6 +308,8 @@ def _key_kernel(
 
 
 def _sparse_mask_projection(self, mask, accumulate_matches=False, out=None):
+
+    logger.debug("GEMS SPARSE_MASK_PROJECTION")
     if not isinstance(self, torch.Tensor) or not isinstance(mask, torch.Tensor):
         raise TypeError("_sparse_mask_projection expects two tensors")
     if not isinstance(accumulate_matches, bool):
@@ -483,3 +489,8 @@ def _sparse_mask_projection(self, mask, accumulate_matches=False, out=None):
         )
     out.copy_(result)
     return out
+
+
+def _sparse_mask_projection_out(self, mask, accumulate_matches=False, *, out):
+    """``aten::_sparse_mask_projection.out`` overload."""
+    return _sparse_mask_projection(self, mask, accumulate_matches, out=out)

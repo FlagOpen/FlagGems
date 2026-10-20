@@ -42,9 +42,15 @@ Semantics, established by target-side probes of
   the autograd graph.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops._sparse_log_softmax import _triton_cast, triton_coalesce
+
+logger = logging.getLogger(__name__)
 
 LOG2E = tl.constexpr(1.4426950408889634)
 NEGINF = tl.constexpr(float("-inf"))
@@ -866,14 +872,15 @@ def _normalize_input(self, shape, out_dtype):
         return indices, values, nnz, tuple(values.shape[1:])
     raw = self._values()
     dense_shape = tuple(raw.shape[1:])
-    cast = raw if raw.dtype == out_dtype else raw.to(out_dtype)
-    merged = torch.sparse_coo_tensor(
+    # Duplicate coordinates are summed in the output dtype (which is also what
+    # lets fp8 payloads take part); the cast runs in a Triton kernel and the
+    # merge in the Triton coalesce -- no native compute op is called.
+    cast = _triton_cast(raw, out_dtype)
+    unmerged = torch.sparse_coo_tensor(
         indices, cast, shape, dtype=out_dtype, device=self.device
-    ).coalesce()
-    m_values = merged.values()
-    if not m_values.is_contiguous():
-        m_values = m_values.contiguous()
-    return merged._indices(), m_values, merged._nnz(), dense_shape
+    )
+    m_idx, m_values, m_nnz = triton_coalesce(unmerged)
+    return m_idx, m_values.contiguous(), m_nnz, dense_shape
 
 
 def _plan(shape, k, d, dense_shape, nnz, nc_indices, out_dtype, group_bw):
@@ -949,7 +956,19 @@ def _build_result(indices, out_values, shape, out_dtype):
     )
 
 
+def _sparse_softmax_int(self, dim, dtype=None):
+    """``aten::_sparse_softmax.int`` overload: positional dtype."""
+    return _sparse_softmax(self, dim, half_to_float=False, dtype=dtype)
+
+
+def _sparse_softmax_out(self, dim, half_to_float, out=None):
+    """``aten::_sparse_softmax.out`` overload."""
+    return _sparse_softmax(self, dim, half_to_float=half_to_float, out=out)
+
+
 def _sparse_softmax(self, dim, half_to_float=False, dtype=None, out=None):
+
+    logger.debug("GEMS SPARSE_SOFTMAX")
     if not self.is_sparse or self.layout != torch.sparse_coo:
         raise NotImplementedError(
             "aten::_sparse_softmax: only sparse COO inputs are supported"

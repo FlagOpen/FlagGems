@@ -357,11 +357,19 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
-from flag_gems.ops._sparse_log_softmax import _sparse_log_softmax
+from flag_gems.ops._sparse_log_softmax import (
+    _sparse_log_softmax,
+    _sparse_log_softmax_int,
+    _sparse_log_softmax_out,
+)
 from flag_gems.ops._sparse_log_softmax_backward_data import (
     _sparse_log_softmax_backward_data,
+    _sparse_log_softmax_backward_data_out,
 )
-from flag_gems.ops._sparse_mask_projection import _sparse_mask_projection
+from flag_gems.ops._sparse_mask_projection import (
+    _sparse_mask_projection,
+    _sparse_mask_projection_out,
+)
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
 from flag_gems.ops._sparse_semi_structured_apply_dense import (
@@ -369,9 +377,19 @@ from flag_gems.ops._sparse_semi_structured_apply_dense import (
 )
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
-from flag_gems.ops._sparse_softmax import _sparse_softmax
-from flag_gems.ops._sparse_softmax_backward_data import _sparse_softmax_backward_data
-from flag_gems.ops._sparse_sum_backward import _sparse_sum_backward
+from flag_gems.ops._sparse_softmax import (
+    _sparse_softmax,
+    _sparse_softmax_int,
+    _sparse_softmax_out,
+)
+from flag_gems.ops._sparse_softmax_backward_data import (
+    _sparse_softmax_backward_data,
+    _sparse_softmax_backward_data_out,
+)
+from flag_gems.ops._sparse_sum_backward import (
+    _sparse_sum_backward,
+    _sparse_sum_backward_out,
+)
 from flag_gems.ops._spsolve import spsolve
 from flag_gems.ops._stack import _stack
 from flag_gems.ops._standard_gamma import standard_gamma
@@ -1328,9 +1346,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
-from flag_gems.ops.sparse_mask import sparse_mask
-from flag_gems.ops.sparse_resize_ import sparse_resize_
-from flag_gems.ops.sparse_resize_and_clear_ import sparse_resize_and_clear_
+from flag_gems.ops.sparse_mask import sparse_mask, sparse_mask_out
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -1883,7 +1899,11 @@ __all__ = [
     "_sobol_engine_scramble_",
     "_sparse_log_softmax",
     "_sparse_log_softmax_backward_data",
+    "_sparse_log_softmax_backward_data_out",
+    "_sparse_log_softmax_int",
+    "_sparse_log_softmax_out",
     "_sparse_mask_projection",
+    "_sparse_mask_projection_out",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_apply_dense",
@@ -1891,7 +1911,11 @@ __all__ = [
     "_sparse_semi_structured_mm",
     "_sparse_softmax",
     "_sparse_softmax_backward_data",
+    "_sparse_softmax_backward_data_out",
+    "_sparse_softmax_int",
+    "_sparse_softmax_out",
     "_sparse_sum_backward",
+    "_sparse_sum_backward_out",
     "_stack",
     "_thnn_differentiable_gru_cell_backward",
     "_thnn_differentiable_lstm_cell_backward",
@@ -2936,8 +2960,7 @@ __all__ = [
     "sort_stable",
     "sparse_broadcast_to",
     "sparse_mask",
-    "sparse_resize_",
-    "sparse_resize_and_clear_",
+    "sparse_mask_out",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",

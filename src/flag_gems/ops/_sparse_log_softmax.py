@@ -30,10 +30,14 @@ order the native kernel uses.  A custom autograd function supplies the sparse
 backward ``dV_i = dY_i - softmax(O_i) * sum_j dY_j``.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 from triton.language.extra import libdevice as _ld
+
+logger = logging.getLogger(__name__)
 
 _BLOCK_CI = 128
 _BLOCK_D = 64
@@ -459,6 +463,143 @@ def _strides(sizes, skip=-1):
     return w
 
 
+@triton.jit
+def _cast_strided_kernel(
+    src_ptr,
+    dst_ptr,
+    numel,
+    z0,
+    z1,
+    z2,
+    z3,
+    z4,
+    z5,
+    z6,
+    z7,
+    st0,
+    st1,
+    st2,
+    st3,
+    st4,
+    st5,
+    st6,
+    st7,
+    RANK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Elementwise dtype conversion of a (possibly strided) tensor.
+
+    ``z*`` are the extents in peeling order (innermost first) and ``st*`` the
+    matching strides, so the flat offset maps to the source address without
+    requiring a contiguous input.
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < numel
+    rem = offs.to(tl.int64)
+    lin = tl.zeros([BLOCK], dtype=tl.int64)
+    if RANK >= 1:
+        lin += (rem % z0) * st0
+        rem = rem // z0
+    if RANK >= 2:
+        lin += (rem % z1) * st1
+        rem = rem // z1
+    if RANK >= 3:
+        lin += (rem % z2) * st2
+        rem = rem // z2
+    if RANK >= 4:
+        lin += (rem % z3) * st3
+        rem = rem // z3
+    if RANK >= 5:
+        lin += (rem % z4) * st4
+        rem = rem // z4
+    if RANK >= 6:
+        lin += (rem % z5) * st5
+        rem = rem // z5
+    if RANK >= 7:
+        lin += (rem % z6) * st6
+        rem = rem // z6
+    if RANK >= 8:
+        lin += (rem % z7) * st7
+    x = tl.load(src_ptr + lin, mask=mask, other=0.0)
+    tl.store(dst_ptr + offs, x.to(dst_ptr.dtype.element_ty), mask=mask)
+
+
+def _triton_cast(values, dtype):
+    """Convert ``values`` to ``dtype`` with a Triton kernel (no native compute op)."""
+    if values.dtype == dtype:
+        return values
+    out = torch.empty(values.shape, dtype=dtype, device=values.device)
+    numel = values.numel()
+    if numel == 0:
+        return out
+    rank = values.dim()
+    sizes = tuple(int(v) for v in reversed(values.shape))
+    strides = tuple(int(v) for v in reversed(values.stride()))
+    pad = (1,) * (8 - rank)
+    grid = (triton.cdiv(numel, _BLOCK_N),)
+    _cast_strided_kernel[grid](
+        values,
+        out,
+        numel,
+        *(sizes + pad),
+        *(strides + pad),
+        RANK=rank,
+        BLOCK=_BLOCK_N,
+    )
+    return out
+
+
+# dtypes whose tl.atomic_add is not supported by Triton; the duplicate-sum
+# accumulation is taken in a wider dtype and converted back afterwards.
+_ATOMIC_UNSUPPORTED = (
+    torch.bool,
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.uint16,
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+)
+
+
+def triton_coalesce(self):
+    """Coalesce a sparse COO tensor with the Triton kernels above.
+
+    Returns ``(indices, values, nnz)`` where the entries are sorted by their
+    row-major sparse key and duplicate coordinates are summed — the same
+    result as the native ``aten::coalesce`` without calling it.
+    """
+    if self.is_coalesced():
+        return self._indices().contiguous(), self._values().contiguous(), self._nnz()
+    size, sparse_dim, dense_shape, dnumel = _sparse_meta(self)
+    src = self
+    wide_dtype = None
+    if self.dtype in _ATOMIC_UNSUPPORTED:
+        # bool duplicates coalesce as a logical or; a numeric sum converted
+        # back matches that (every non-zero count becomes true).
+        is_int = self.dtype in (
+            torch.bool,
+            torch.int8,
+            torch.uint8,
+            torch.int16,
+            torch.uint16,
+        )
+        wide_dtype = torch.int64 if is_int else torch.float32
+        src = torch.sparse_coo_tensor(
+            self._indices(),
+            _triton_cast(self._values(), wide_dtype),
+            size,
+            dtype=wide_dtype,
+            device=self.device,
+        )
+    idx, vals, total = _coalesce(src, dense_shape, dnumel)
+    vals = vals.reshape((total,) + dense_shape)
+    if wide_dtype is not None:
+        vals = _triton_cast(vals, self.dtype)
+    return idx, vals, total
+
+
 def _coalesce(self, dense_shape, dnumel):
     """Device-side coalescing: histogram sort plus duplicate accumulation."""
     size = tuple(int(s) for s in self.shape)
@@ -635,10 +776,11 @@ class _SparseLogSoftmax(torch.autograd.Function):
     def backward(ctx, grad_out):
         oval = ctx.saved_tensors[0]
         nnz = oval.shape[0]
-        g = grad_out
-        if not g.is_coalesced():
-            g = g.coalesce()
-        dy = g._values().reshape(nnz, ctx.dnumel)
+        if grad_out.is_coalesced():
+            dy = grad_out._values().reshape(nnz, ctx.dnumel)
+        else:
+            _, g_vals, total = triton_coalesce(grad_out)
+            dy = g_vals.reshape(total, ctx.dnumel)
         do = torch.empty_like(dy)
         dnumel = ctx.dnumel
         f64 = ctx.in_dtype == torch.float64
@@ -693,7 +835,19 @@ def _resolve_dtype(self, dtype):
     return target
 
 
+def _sparse_log_softmax_int(self, dim, dtype=None):
+    """``aten::_sparse_log_softmax.int`` overload: positional dtype."""
+    return _sparse_log_softmax(self, dim, half_to_float=False, dtype=dtype)
+
+
+def _sparse_log_softmax_out(self, dim, half_to_float, out=None):
+    """``aten::_sparse_log_softmax.out`` overload."""
+    return _sparse_log_softmax(self, dim, half_to_float=half_to_float, out=out)
+
+
 def _sparse_log_softmax(self, dim, half_to_float=False, dtype=None, out=None):
+
+    logger.debug("GEMS SPARSE_LOG_SOFTMAX")
     if not self.is_sparse or self.layout != torch.sparse_coo:
         raise RuntimeError(
             "Could not run 'aten::_sparse_log_softmax' with arguments from the "

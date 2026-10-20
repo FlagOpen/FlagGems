@@ -44,9 +44,15 @@ duplicate coordinates, rank-0 sparse, hybrid COO, nan/inf payloads, stale
 ``out`` buffers, and the rejected dtype/dim/layout cases).
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops._sparse_log_softmax import triton_coalesce
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Validation helpers (host side: metadata and scalar work only)
@@ -100,28 +106,17 @@ def _row_key_kernel(
     idx_ptr,
     out_ptr,
     nnz,
-    s0,
-    s1,
-    s2,
-    s3,
-    s4,
-    RANK_P: tl.constexpr,
+    strides_ptr,
+    RANK: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """out[n] = sum_r idx[r, n] * s_r, i.e. torch's get_offsets."""
     n = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     m = n < nnz
     off = tl.zeros([BLOCK], dtype=tl.int64)
-    if RANK_P > 0:
-        off += tl.load(idx_ptr + 0 * nnz + n, mask=m, other=0).to(tl.int64) * s0
-    if RANK_P > 1:
-        off += tl.load(idx_ptr + 1 * nnz + n, mask=m, other=0).to(tl.int64) * s1
-    if RANK_P > 2:
-        off += tl.load(idx_ptr + 2 * nnz + n, mask=m, other=0).to(tl.int64) * s2
-    if RANK_P > 3:
-        off += tl.load(idx_ptr + 3 * nnz + n, mask=m, other=0).to(tl.int64) * s3
-    if RANK_P > 4:
-        off += tl.load(idx_ptr + 4 * nnz + n, mask=m, other=0).to(tl.int64) * s4
+    for r in tl.static_range(RANK):
+        s_r = tl.load(strides_ptr + r)
+        off += tl.load(idx_ptr + r * nnz + n, mask=m, other=0).to(tl.int64) * s_r
     tl.store(out_ptr + n, off, mask=m)
 
 
@@ -148,18 +143,10 @@ def _sparse_reduce_kernel(
     g_key_out,
     g_nnz,
     y_nnz,
-    fx0,
-    fx1,
-    fx2,
-    fx3,
-    fx4,
-    kx0,
-    kx1,
-    kx2,
-    kx3,
-    kx4,
+    fx_ptr,
+    kx_ptr,
     CN,
-    RANK_P: tl.constexpr,
+    RANK: tl.constexpr,
     STEPS: tl.constexpr,
     UNIFORM: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -178,26 +165,12 @@ def _sparse_reduce_kernel(
     rm = rows < g_nnz
     ko = tl.zeros([BLOCK_N], dtype=tl.int64)
     kk = tl.zeros([BLOCK_N], dtype=tl.int64)
-    if RANK_P > 0:
-        c = tl.load(g_idx + 0 * g_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx0
-        kk += c * kx0
-    if RANK_P > 1:
-        c = tl.load(g_idx + 1 * g_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx1
-        kk += c * kx1
-    if RANK_P > 2:
-        c = tl.load(g_idx + 2 * g_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx2
-        kk += c * kx2
-    if RANK_P > 3:
-        c = tl.load(g_idx + 3 * g_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx3
-        kk += c * kx3
-    if RANK_P > 4:
-        c = tl.load(g_idx + 4 * g_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx4
-        kk += c * kx4
+    for r in tl.static_range(RANK):
+        s_fx = tl.load(fx_ptr + r)
+        s_kx = tl.load(kx_ptr + r)
+        c = tl.load(g_idx + r * g_nnz + rows, mask=rm, other=0).to(tl.int64)
+        ko += c * s_fx
+        kk += c * s_kx
 
     tl.store(g_key_out + rows, ko, mask=rm)
 
@@ -225,18 +198,10 @@ def _sparse_write_kernel(
     s_ptr,
     y_nnz,
     g_nnz,
-    fx0,
-    fx1,
-    fx2,
-    fx3,
-    fx4,
-    kx0,
-    kx1,
-    kx2,
-    kx3,
-    kx4,
+    fx_ptr,
+    kx_ptr,
     CN,
-    RANK_P: tl.constexpr,
+    RANK: tl.constexpr,
     MATCH: tl.constexpr,
     STEPS: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -247,26 +212,12 @@ def _sparse_write_kernel(
     rm = rows < y_nnz
     ko = tl.zeros([BLOCK_N], dtype=tl.int64)
     kk = tl.zeros([BLOCK_N], dtype=tl.int64)
-    if RANK_P > 0:
-        c = tl.load(y_idx + 0 * y_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx0
-        kk += c * kx0
-    if RANK_P > 1:
-        c = tl.load(y_idx + 1 * y_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx1
-        kk += c * kx1
-    if RANK_P > 2:
-        c = tl.load(y_idx + 2 * y_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx2
-        kk += c * kx2
-    if RANK_P > 3:
-        c = tl.load(y_idx + 3 * y_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx3
-        kk += c * kx3
-    if RANK_P > 4:
-        c = tl.load(y_idx + 4 * y_nnz + rows, mask=rm, other=0).to(tl.int64)
-        ko += c * fx4
-        kk += c * kx4
+    for r in tl.static_range(RANK):
+        s_fx = tl.load(fx_ptr + r)
+        s_kx = tl.load(kx_ptr + r)
+        c = tl.load(y_idx + r * y_nnz + rows, mask=rm, other=0).to(tl.int64)
+        ko += c * s_fx
+        kk += c * s_kx
 
     if MATCH:
         src = rows
@@ -302,13 +253,9 @@ def _dense_kernel(
     D,
     INNER,
     OUTER,
-    fx0,
-    fx1,
-    fx2,
-    fx3,
-    fx4,
+    fx_ptr,
     CN,
-    RANK_P: tl.constexpr,
+    RANK: tl.constexpr,
     MATCH: tl.constexpr,
     STEPS: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -318,16 +265,9 @@ def _dense_kernel(
     rows = tl.program_id(0) * BLOCK_N + tl.arange(0, BLOCK_N)
     rm = rows < y_nnz
     ko = tl.zeros([BLOCK_N], dtype=tl.int64)
-    if RANK_P > 0:
-        ko += tl.load(y_idx + 0 * y_nnz + rows, mask=rm, other=0).to(tl.int64) * fx0
-    if RANK_P > 1:
-        ko += tl.load(y_idx + 1 * y_nnz + rows, mask=rm, other=0).to(tl.int64) * fx1
-    if RANK_P > 2:
-        ko += tl.load(y_idx + 2 * y_nnz + rows, mask=rm, other=0).to(tl.int64) * fx2
-    if RANK_P > 3:
-        ko += tl.load(y_idx + 3 * y_nnz + rows, mask=rm, other=0).to(tl.int64) * fx3
-    if RANK_P > 4:
-        ko += tl.load(y_idx + 4 * y_nnz + rows, mask=rm, other=0).to(tl.int64) * fx4
+    for r in tl.static_range(RANK):
+        s_fx = tl.load(fx_ptr + r)
+        ko += tl.load(y_idx + r * y_nnz + rows, mask=rm, other=0).to(tl.int64) * s_fx
 
     if MATCH:
         src = rows
@@ -416,23 +356,21 @@ def _keys(idx, nnz, strides, rank):
         return out
     if nnz == 0:
         return out
-    s = list(strides)[:5] + [1] * (5 - min(len(strides), 5))
+    s_t = torch.tensor(list(strides), dtype=torch.int64, device=idx.device)
     _row_key_kernel[(triton.cdiv(nnz, 1024),)](
         _flat(idx),
         out,
         nnz,
-        s[0],
-        s[1],
-        s[2],
-        s[3],
-        s[4],
-        RANK_P=min(rank, 5),
+        s_t,
+        RANK=len(strides),
         BLOCK=1024,
     )
     return out
 
 
 def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None):
+
+    logger.debug("GEMS SPARSE_LOG_SOFTMAX_BACKWARD_DATA")
     for t in (grad_output, output, self_):
         if not torch.is_tensor(t) or not t.is_sparse:
             raise RuntimeError(
@@ -455,8 +393,24 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
     if dtypes[0] not in (torch.float32, torch.float64):
         raise _unsupported_dtype_error(dtypes[0])
 
-    g = grad_output.coalesce()
-    y = output.coalesce()
+    g_idx, g_vals, g_nnz_c = triton_coalesce(grad_output)
+    y_idx, y_vals, y_nnz_c = triton_coalesce(output)
+    g = torch.sparse_coo_tensor(
+        g_idx,
+        g_vals,
+        grad_output.size(),
+        dtype=grad_output.dtype,
+        device=grad_output.device,
+        is_coalesced=True,
+    )
+    y = torch.sparse_coo_tensor(
+        y_idx,
+        y_vals,
+        output.size(),
+        dtype=output.dtype,
+        device=output.device,
+        is_coalesced=True,
+    )
     if g.sparse_dim() != y.sparse_dim():
         raise RuntimeError("grad and output sparse dimensions must be equal")
 
@@ -490,8 +444,8 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
             key, npools = _pool_key(shape, sdim, dim_raw)
             s_ptr = torch.zeros(max(npools, 1) * cnumel, dtype=y.dtype, device=y.device)
             g_key = torch.empty(max(g_nnz, 1), dtype=torch.int64, device=y.device)
-            f = list(full)[:5] + [1] * (5 - min(len(full), 5))
-            k = (list(key) + [1] * 5)[:5]
+            f_t = torch.tensor(list(full), dtype=torch.int64, device=y.device)
+            k_t = torch.tensor(list(key), dtype=torch.int64, device=y.device)
             if g_nnz > 0:
                 _sparse_reduce_kernel[(triton.cdiv(g_nnz, _BLOCK_N),)](
                     g_vals,
@@ -501,18 +455,10 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
                     g_key,
                     g_nnz,
                     y_nnz,
-                    f[0],
-                    f[1],
-                    f[2],
-                    f[3],
-                    f[4],
-                    k[0],
-                    k[1],
-                    k[2],
-                    k[3],
-                    k[4],
+                    f_t,
+                    k_t,
                     cnumel,
-                    RANK_P=min(sdim, 5),
+                    RANK=sdim,
                     STEPS=steps,
                     UNIFORM=npools == 1,
                     BLOCK_N=_BLOCK_N,
@@ -527,18 +473,10 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
                 s_ptr,
                 y_nnz,
                 g_nnz,
-                f[0],
-                f[1],
-                f[2],
-                f[3],
-                f[4],
-                k[0],
-                k[1],
-                k[2],
-                k[3],
-                k[4],
+                f_t,
+                k_t,
                 cnumel,
-                RANK_P=min(sdim, 5),
+                RANK=sdim,
                 MATCH=match,
                 STEPS=steps,
                 BLOCK_N=_BLOCK_N,
@@ -546,7 +484,7 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
             )
         else:
             full = _plain_strides(shape, sdim)
-            f = list(full)[:5] + [1] * (5 - min(len(full), 5))
+            f_t = torch.tensor(list(full), dtype=torch.int64, device=y.device)
             g_key = _keys(g_idx, g_nnz, full, sdim)
             dd = min(max(dim_raw - sdim, 0), max(len(tail) - 1, 0))
             dsize = tail[dd] if tail else 1
@@ -571,13 +509,9 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
                 dsize,
                 max(inner, 1),
                 max(outer, 1),
-                f[0],
-                f[1],
-                f[2],
-                f[3],
-                f[4],
+                f_t,
                 cnumel,
-                RANK_P=min(sdim, 5),
+                RANK=sdim,
                 MATCH=match,
                 STEPS=steps,
                 BLOCK_N=_BLOCK_N,
@@ -588,3 +522,8 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
         out.copy_(res)
         return out
     return res
+
+
+def _sparse_log_softmax_backward_data_out(grad_output, output, dim, self_, *, out):
+    """``aten::_sparse_log_softmax_backward_data.out`` overload."""
+    return _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=out)

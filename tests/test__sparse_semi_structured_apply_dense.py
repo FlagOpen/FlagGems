@@ -419,3 +419,13 @@ def test__sparse_semi_structured_apply_dense_invalid_mask(defect):
 
     with pytest.raises(RuntimeError):
         flag_gems._sparse_semi_structured_apply_dense(inp, mask)
+
+
+def test_sparse_semi_structured_apply_dense_dispatch():
+    """Smoke-test the dispatcher path."""
+    x = torch.randn(32, 64, dtype=torch.float16, device=flag_gems.device)
+    tm = torch.randint(0, 256, (4, 8, 8), dtype=torch.uint8, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res = torch.ops.aten._sparse_semi_structured_apply_dense(x, tm)
+    ref = torch.ops.aten._sparse_semi_structured_apply_dense(x, tm)
+    assert torch.equal(res, ref)

@@ -29,11 +29,9 @@ from .generated_operator_utils import OperatorBenchmark
 # (shape, nnz_ratio) workload and build_inputs_fn materializes the dense self
 # and the coalesced sparse mask lazily. The candidate is resolved at run time
 # from the process-local override (Benchmark._candidate_call) via
-# GenericBenchmark's _candidate_call; flag_gems.sparse_mask does not exist
-# yet as an attribute, so the direct-callable default is fetched with getattr and
-# may be None. The perf reference is the aten op itself
-# (torch.ops.aten.sparse_mask) and both are called with the same (self, mask)
-# signature.
+# GenericBenchmark's _candidate_call. The perf reference is the aten op
+# itself (torch.ops.aten.sparse_mask) and both are called with the same
+# (self, mask) signature.
 #
 # The benchmark work scales with the number of mask nonzeros and the size of the
 # dense self, so the shapes pair moderate square layouts with a fixed nnz ratio;

@@ -35,6 +35,10 @@ zero-copy layout view), and the 8x8 keep pattern is expanded purely with
 register shifts/compares that are hoisted out of the per-element address math.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import torch
 import triton
 import triton.language as tl
@@ -155,6 +159,8 @@ def _validate(input, thread_masks):
 
 
 def _sparse_semi_structured_apply_dense(input, thread_masks):
+
+    logger.debug("GEMS SPARSE_SEMI_STRUCTURED_APPLY_DENSE")
     rows, cols, s0, s1, m_s0 = _validate(input, thread_masks)
     out = torch.empty((rows, cols), dtype=input.dtype, device=input.device)
 

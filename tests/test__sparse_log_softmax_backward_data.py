@@ -471,3 +471,24 @@ def test__sparse_log_softmax_backward_data_rejects_mixed_dtype(
     self_ = _coo((6,), 1, 0, 3, grad_dtype, _DEFAULT_RANGE, phase=2)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._sparse_log_softmax_backward_data(grad_output, output, 0, self_)
+
+
+def test_sparse_log_softmax_backward_data_dispatch():
+    """Smoke-test the dispatcher path (base and .out overloads)."""
+    idx = torch.tensor([[0, 1], [0, 1]], device=flag_gems.device)
+    vals = torch.randn(2, 4, device=flag_gems.device)
+    inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
+    out = torch.ops.aten._sparse_log_softmax(inp, 1)
+    grad = torch.sparse_coo_tensor(idx, torch.randn(2, 4, device=flag_gems.device), (8, 8, 4), device=flag_gems.device)
+    ref = torch.ops.aten._sparse_log_softmax_backward_data(
+        utils.to_reference(grad), utils.to_reference(out), 1, utils.to_reference(inp)
+    )
+    o = torch.empty_like(ref)
+    with flag_gems.use_gems():
+        res = torch.ops.aten._sparse_log_softmax_backward_data(grad, out, 1, inp)
+        res_out = torch.ops.aten._sparse_log_softmax_backward_data.out(
+            grad, out, 1, inp, out=o
+        )
+    assert res.shape == ref.shape and res.is_coalesced() == ref.is_coalesced()
+    assert res_out is o
+    assert torch.equal(res._indices(), ref._indices())

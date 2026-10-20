@@ -31,9 +31,13 @@ The gather is one Triton kernel; every stride/size is passed as a kernel
 argument so the host wrapper performs no extra device transfers or launches.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["sparse_mask"]
 
@@ -230,6 +234,266 @@ def _axis_args(strides):
     return values + [0] * (_MAX_DIM - len(values))
 
 
+@triton.jit
+def _sparse_key_kernel(
+    idx_ptr,
+    key_ptr,
+    nnz,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    P: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Row-major linear key over the sparse dims for every stored entry."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < nnz
+    key = tl.zeros([BLOCK], dtype=tl.int64)
+    for k in tl.static_range(P):
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
+        c = tl.load(idx_ptr + k * nnz + offs, mask=m, other=0).to(tl.int64)
+        key += c * sk
+    tl.store(key_ptr + offs, key, mask=m)
+
+
+@triton.jit
+def _bsearch(needle, table, size, STEPS: tl.constexpr):
+    """Leftmost index of the sorted ``table`` whose value is >= ``needle``."""
+    lo = tl.zeros_like(needle)
+    hi = tl.zeros_like(needle) + size
+    for _ in tl.static_range(STEPS):
+        mid = (lo + hi) >> 1
+        v = tl.load(table + mid, mask=mid < size, other=tl.full([], 2**62, tl.int64))
+        lt = v < needle
+        lo = tl.where(lt & (lo < hi), mid + 1, lo)
+        hi = tl.where(lt & (lo < hi), hi, tl.where(lo < hi, mid, hi))
+    return lo
+
+
+@triton.jit
+def _sparse_lookup_gather_kernel(
+    sorted_keys_ptr,
+    perm_ptr,
+    self_vals_ptr,
+    mask_idx_ptr,
+    out_ptr,
+    hit_ptr,
+    nnz_s,
+    nnz_m,
+    D,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    P: tl.constexpr,
+    STEPS: tl.constexpr,
+    BLOCK_I: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Gather self's value rows into the mask positions via key lookup.
+
+    For each mask entry, its row-major sparse key is binary-searched in the
+    sorted keys of the (Triton-coalesced, hence unique and sorted) self tensor;
+    a hit copies self's dense value row into the mask's value row and records
+    the matched self entry in ``hit_ptr`` (used by the backward), a miss
+    stores zeros and records -1.
+    """
+    pid = tl.program_id(0)
+    offs_i = pid * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask_i = offs_i < nnz_m
+
+    key = tl.zeros([BLOCK_I], dtype=tl.int64)
+    for k in tl.static_range(P):
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
+        ck = tl.load(mask_idx_ptr + k * nnz_m + offs_i, mask=mask_i, other=0).to(
+            tl.int64
+        )
+        key += ck * sk
+
+    lo = _bsearch(key, sorted_keys_ptr, nnz_s, STEPS)
+    hit = mask_i & (lo < nnz_s)
+    key_at = tl.load(sorted_keys_ptr + lo, mask=hit, other=-1)
+    hit = hit & (key_at == key)
+    j = tl.load(perm_ptr + lo, mask=hit, other=0).to(tl.int64)
+    tl.store(hit_ptr + offs_i, tl.where(hit, j, -1), mask=mask_i)
+
+    for od in range(0, D, BLOCK_D):
+        offs_d = od + tl.arange(0, BLOCK_D)
+        mask_d = offs_d < D
+        m2 = hit[:, None] & mask_d[None, :]
+        src = j[:, None] * D + offs_d[None, :].to(tl.int64)
+        v = tl.load(self_vals_ptr + src, mask=m2, other=0.0)
+        tl.store(out_ptr + offs_i[:, None] * D + offs_d[None, :], v, mask=m2)
+
+
+@triton.jit
+def _sparse_lookup_scatter_kernel(
+    hit_ptr,
+    grad_values_ptr,
+    grad_vals_ptr,
+    nnz_m,
+    D,
+    BLOCK_I: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Scatter the incoming value gradient back onto self's stored rows."""
+    pid = tl.program_id(0)
+    offs_i = pid * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask_i = offs_i < nnz_m
+    j = tl.load(hit_ptr + offs_i, mask=mask_i, other=-1)
+    hit = mask_i & (j >= 0)
+    for od in range(0, D, BLOCK_D):
+        offs_d = od + tl.arange(0, BLOCK_D)
+        mask_d = offs_d < D
+        m2 = hit[:, None] & mask_d[None, :]
+        g = tl.load(
+            grad_values_ptr + offs_i[:, None] * D + offs_d[None, :], mask=m2, other=0.0
+        )
+        tl.atomic_add(grad_vals_ptr + j[:, None] * D + offs_d[None, :], g, mask=m2)
+
+
+class _SparseMaskGatherSparse(torch.autograd.Function):
+    """Sparse-COO ``self`` gather: looks up every mask coordinate in self's
+    (Triton-coalesced, hence sorted and unique) stored entries.
+
+    The backward scatters the incoming value gradient back onto the stored
+    positions of ``self`` (rows without a matching mask entry receive zero).
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        self_idx,
+        self_vals,
+        self_size,
+        self_coalesced,
+        indices,
+        sizes,
+        sparse_dim,
+        dense_sizes,
+    ):
+        from flag_gems.ops._sparse_log_softmax import triton_coalesce
+
+        nnz_m = int(indices.shape[1]) if indices.dim() == 2 else 0
+        nnz_s = int(self_idx.shape[1]) if self_idx.dim() == 2 else 0
+        block = 1
+        for size in dense_sizes:
+            block *= int(size)
+        values = torch.zeros(
+            (nnz_m,) + tuple(dense_sizes),
+            dtype=self_vals.dtype,
+            device=self_vals.device,
+        )
+        hit = torch.full((nnz_m,), -1, dtype=torch.int64, device=self_vals.device)
+        ctx.self_idx = self_idx
+        ctx.self_size = self_size
+        ctx.self_coalesced = self_coalesced
+        ctx.sparse_dim = sparse_dim
+        ctx.save_for_backward(indices, hit)
+        if nnz_m == 0:
+            return values
+
+        # Coalescing sums duplicate coordinates, so the coalesced entries are
+        # unique and sorted ascending by their row-major sparse key; the Triton
+        # coalesce emits entries in key order, i.e. the permutation is the
+        # identity.
+        coo = torch.sparse_coo_tensor(
+            self_idx,
+            self_vals,
+            self_size,
+            dtype=self_vals.dtype,
+            device=self_vals.device,
+        )
+        idx_c, vals_c, nnz_c = triton_coalesce(coo)
+        vals_c = vals_c.contiguous()
+        idx_c = idx_c.contiguous()
+
+        strides = [1] * sparse_dim
+        run = 1
+        for k in range(sparse_dim - 1, -1, -1):
+            strides[k] = run
+            run *= int(sizes[k])
+
+        # row-major sparse keys of the coalesced (hence key-sorted) entries;
+        # the coalesce emits entries in key order, so the permutation used to
+        # map a sorted position back to the stored row is the identity.
+        keys = torch.empty(nnz_c, dtype=torch.int64, device=self_vals.device)
+        key_grid = (triton.cdiv(nnz_c, _BLOCK_I),)
+        _sparse_key_kernel[key_grid](
+            idx_c.reshape(-1),
+            keys,
+            nnz_c,
+            *_axis_args(strides),
+            P=sparse_dim,
+            BLOCK=_BLOCK_I,
+            num_warps=_NUM_WARPS,
+        )
+
+        # lower_bound over nnz_c sorted entries needs ceil(log2(nnz_c + 1))
+        # iterations to converge in the worst case
+        STEPS = max(1, (max(nnz_c, 1) - 1).bit_length() + 1)
+
+        grid = (triton.cdiv(nnz_m, _BLOCK_I),)
+        _sparse_lookup_gather_kernel[grid](
+            keys,
+            torch.arange(nnz_c, dtype=torch.int64, device=self_vals.device),
+            vals_c,
+            indices.contiguous(),
+            values,
+            hit,
+            nnz_c,
+            nnz_m,
+            block,
+            *_axis_args(strides),
+            P=sparse_dim,
+            STEPS=STEPS,
+            BLOCK_I=_BLOCK_I,
+            BLOCK_D=_BLOCK_D,
+            num_warps=_NUM_WARPS,
+        )
+        return values
+
+    @staticmethod
+    def backward(ctx, grad_values):
+        indices, hit = ctx.saved_tensors
+        nnz_m = int(indices.shape[1]) if indices.dim() == 2 else 0
+        nnz_s = int(ctx.self_idx.shape[1]) if ctx.self_idx.dim() == 2 else 0
+        dense_sizes = tuple(int(d) for d in grad_values.shape[1:])
+        block = 1
+        for d in dense_sizes:
+            block *= d
+        grad_vals = torch.zeros(
+            (nnz_s,) + dense_sizes, dtype=grad_values.dtype, device=grad_values.device
+        )
+        if nnz_m > 0 and nnz_s > 0:
+            grad_values = grad_values.contiguous()
+            grid = (triton.cdiv(nnz_m, _BLOCK_I),)
+            _sparse_lookup_scatter_kernel[grid](
+                hit,
+                grad_values,
+                grad_vals,
+                nnz_m,
+                block,
+                BLOCK_I=_BLOCK_I,
+                BLOCK_D=_BLOCK_D,
+                num_warps=_NUM_WARPS,
+            )
+        grad = torch.sparse_coo_tensor(
+            ctx.self_idx, grad_vals, ctx.self_size, is_coalesced=ctx.self_coalesced
+        )
+        return grad, None, None, None, None, None, None
+
+
 class _SparseMaskGather(torch.autograd.Function):
     """Device gather whose backward scatters the sparse gradient back."""
 
@@ -318,6 +582,8 @@ def _dense_self(self):
 
 
 def sparse_mask(self, mask, out=None):
+
+    logger.debug("GEMS SPARSE_MASK")
     if not isinstance(self, torch.Tensor) or not isinstance(mask, torch.Tensor):
         raise TypeError("sparse_mask expects two tensors")
 
@@ -332,8 +598,6 @@ def sparse_mask(self, mask, out=None):
             f"{list(self.shape)} but mask has size {list(mask.shape)}"
         )
 
-    dense_self = _dense_self(self)
-
     indices = mask._indices()
     if indices.dim() != 2:
         indices = indices.reshape(mask.sparse_dim(), -1)
@@ -342,9 +606,26 @@ def sparse_mask(self, mask, out=None):
     sizes = tuple(mask.shape)
     dense_sizes = tuple(int(s) for s in sizes[sparse_dim:])
 
-    values = _SparseMaskGather.apply(
-        dense_self, indices, sizes, sparse_dim, dense_dim, dense_sizes
-    )
+    if self.layout == torch.sparse_coo:
+        # Sparse COO self: look the mask coordinates up in self's stored
+        # entries with Triton kernels (no ``to_dense`` materialisation).
+        values = _SparseMaskGatherSparse.apply(
+            self._indices(),
+            self._values(),
+            tuple(self.shape),
+            bool(self.is_coalesced()),
+            indices,
+            sizes,
+            sparse_dim,
+            dense_sizes,
+        )
+    else:
+        # Other sparse layouts (CSR/BSR/CSC/BSC) fall back to the dense
+        # materialisation; the COO path above is the Triton-implemented one.
+        dense_self = _dense_self(self)
+        values = _SparseMaskGather.apply(
+            dense_self, indices, sizes, sparse_dim, dense_dim, dense_sizes
+        )
 
     result = torch.sparse_coo_tensor(
         indices, values, sizes, is_coalesced=bool(mask.is_coalesced())
@@ -358,3 +639,8 @@ def sparse_mask(self, mask, out=None):
 
     out.copy_(result)
     return out
+
+
+def sparse_mask_out(self, mask, out):
+    """``aten::sparse_mask.out`` overload."""
+    return sparse_mask(self, mask, out=out)

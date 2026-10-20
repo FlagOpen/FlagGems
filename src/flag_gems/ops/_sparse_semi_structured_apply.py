@@ -47,6 +47,10 @@ Two bodies implement the same packing:
   intermediate.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import torch
 import triton
 import triton.language as tl
@@ -296,6 +300,8 @@ def _validate(input, thread_masks):
 
 
 def _sparse_semi_structured_apply(input, thread_masks):
+
+    logger.debug("GEMS SPARSE_SEMI_STRUCTURED_APPLY")
     _validate(input, thread_masks)
     M, K = input.size()
 

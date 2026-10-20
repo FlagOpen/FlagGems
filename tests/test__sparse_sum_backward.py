@@ -912,3 +912,20 @@ def test__sparse_sum_backward_negative_sparse_grad_for_summed_dims():
     grad = _make_grad(inp, (4, 5), 2, (), torch.float32, ["-1", "1"])
     with pytest.raises(_INVALID_INPUT_ERRORS):
         flag_gems._sparse_sum_backward(grad, inp, [0, 1])
+
+
+def test_sparse_sum_backward_dispatch():
+    """Smoke-test the dispatcher path (base and .out overloads)."""
+    idx = torch.tensor([[0, 1], [0, 1]], device=flag_gems.device)
+    vals = torch.randn(2, 4, device=flag_gems.device)
+    inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
+    dims = [1]
+    grad = torch.ops.aten._sparse_sum(inp, dims)
+    ref = torch.ops.aten._sparse_sum_backward(grad, inp, dims)
+    o = torch.empty_like(ref)
+    with flag_gems.use_gems():
+        res = torch.ops.aten._sparse_sum_backward(grad, inp, dims)
+        res_out = torch.ops.aten._sparse_sum_backward.out(grad, inp, dims, out=o)
+    assert res.shape == ref.shape and res.is_coalesced() == ref.is_coalesced()
+    assert res_out is o
+    assert torch.equal(res._indices(), ref._indices())

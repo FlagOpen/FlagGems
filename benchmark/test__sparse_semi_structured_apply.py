@@ -43,7 +43,7 @@ class SparseSemiStructuredApplyBenchmark(base.Benchmark):
             yield x, thread_masks
 
 
-@pytest.mark.underscore_sparse_semi_structured_apply
+@pytest.mark.sparse_semi_structured_apply
 def test__sparse_semi_structured_apply():
     """Benchmark aten::_sparse_semi_structured_apply against the native ATen op."""
     bench = SparseSemiStructuredApplyBenchmark(
