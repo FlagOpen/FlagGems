@@ -16,22 +16,18 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# ``_version`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._version`` and ``-m _version`` both
-# work.
-setattr(
-    pytest.mark,
-    "_version",
-    MarkDecorator(Mark("_version", (), {}, _ispytest=True), _ispytest=True),
-)
+# The operator id starts with an underscore, so the #6359 marker convention
+# strips it: ``@pytest.mark._version`` is refused by ``pytest.mark``'s
+# attribute access, and the derived marker that ``tools/test-op.sh`` selects
+# with (and ``check_operator_markers.py`` requires) is the stripped name
+# ``version``. That name does not collide with a distinct operator id, so no
+# ``underscore_`` variant is needed.
 
 # The version counter is O(1) TensorImpl metadata: the value depends only on
 # the tensor's mutation history, never on dtype, shape or stored data.
@@ -93,14 +89,14 @@ def _assert_version_matches_atin(inp, ref_inp=None):
     return res_out
 
 
-@pytest.mark._version
+@pytest.mark.version
 @pytest.mark.parametrize("shape", STRIDED_SHAPES)
 def test_version_fresh_tensor(shape):
     inp = torch.randn(shape, device=flag_gems.device)
     _assert_version_matches_atin(inp)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_bumps_on_inplace_ops():
     # Measured native rule: one dispatched in-place call == exactly one bump.
     inp = torch.randn(4, device=flag_gems.device)
@@ -129,7 +125,7 @@ def test_version_bumps_on_inplace_ops():
     assert flag_gems._version(inp) == len(bumps)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_inplace_under_no_grad():
     inp = torch.randn(3, device=flag_gems.device)
     ref_inp = twin((3,))
@@ -144,7 +140,7 @@ def test_version_inplace_under_no_grad():
     assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_views_share_base_counter():
     # Views/detach share the base counter: a bump through any alias is visible
     # through all of them (measured native behaviour on this build).
@@ -180,7 +176,7 @@ def test_version_views_share_base_counter():
     assert flag_gems._version(clone) == 1
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_noncontiguous_and_strided_views():
     # Non-contiguous bases answer from the same counter as their views.
     base = torch.randn(6, 6, device=flag_gems.device)[::2, ::2]
@@ -196,7 +192,7 @@ def test_version_noncontiguous_and_strided_views():
     assert flag_gems._version(base) == flag_gems._version(base[::2])
 
 
-@pytest.mark._version
+@pytest.mark.version
 @pytest.mark.parametrize(
     "dtype", [torch.float16, torch.float32, torch.bfloat16, torch.int32, torch.bool]
 )
@@ -217,7 +213,7 @@ def test_version_dtype_sweep(dtype):
     assert flag_gems._version(inp) == 1
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_sparse_layouts():
     coo = _make_coo(4, (3, 3), seed=1).to(flag_gems.device)
     hybrid = torch.sparse_coo_tensor(
@@ -263,7 +259,7 @@ def test_version_sparse_layouts():
     assert flag_gems._version(coo) == flag_gems._version(coo2)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_inference_mode_raises():
     # Inference tensors do not track a version counter, so both paths raise.
     # The impl side is pinned to its own documented class (RuntimeError is
@@ -290,7 +286,7 @@ def test_version_inference_mode_raises():
     )
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_meta_tensor():
     # meta tensors track a counter like any other tensor (measured on this
     # build: fresh meta tensor reads 0 and an in-place call bumps it to 1).
@@ -300,7 +296,7 @@ def test_version_meta_tensor():
     assert flag_gems._version(meta) == 1
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_matches_reference_table():
     # Reference values captured in a process that never imported flag_gems
     # (un-substituted environment), pinned here as literals: a fresh tensor
@@ -320,7 +316,7 @@ def test_version_matches_reference_table():
     assert flag_gems._version(coo) == 1
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_dispatch_sentinel_composite_key():
     # Poison check: the shipped arrangement registers on the
     # CompositeImplicitAutograd key, which is the only key that intercepts
@@ -364,7 +360,7 @@ def test_version_dispatch_sentinel_composite_key():
     assert torch.ops.aten._version(t) == flag_gems._version(t)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_disjoint_from_native_neighbors():
     # The implementation must not re-dispatch the operator it implements, and
     # must keep working when unrelated in-place ops bump other counters.
@@ -383,7 +379,7 @@ def test_version_disjoint_from_native_neighbors():
     assert flag_gems._version(coo) == torch.ops.aten._version(coo)
 
 
-@pytest.mark._version
+@pytest.mark.version
 def test_version_non_tensor_input():
     # A non-tensor is rejected by the python binding with AttributeError and by
     # the dispatcher's cast with RuntimeError. Pin only the impl side's own
@@ -403,7 +399,7 @@ def test_version_non_tensor_input():
     assert torch.ops.aten._version(None) == 0
 
 
-@pytest.mark._version
+@pytest.mark.version
 @pytest.mark.parametrize("shape", [(2, 3)] if QUICK_MODE else [(), (2, 3), (2, 3, 4)])
 def test_version_bump_sequence_matches_native(shape):
     # A longer mutation history: impl and a separate reference tensor receive
