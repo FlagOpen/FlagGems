@@ -104,7 +104,32 @@ def _pow_fn(a, b):
     # path: ATen computes ``bool ** float`` in floating point (``False ** -1``
     # is ``inf``), which the plain power already gives once the operand is
     # promoted.
-    return _pow(a.to(tl.float32), b.to(tl.float32))
+    af = a.to(tl.float32)
+    bf = b.to(tl.float32)
+    # ``powf`` dominates the kernel time and is itself ``exp2(y * log2 x)``
+    # plus the fixups a negative base needs.  On a block of normal, positive
+    # bases those fixups are dead code, so evaluate the cheap form instead.
+    # The guard is a block-wide ``tl.min`` (one reduction per program); a
+    # per-element ``tl.where`` executes both branches and measured 35-60%
+    # slower than the plain power.  The bound is the smallest normal fp32:
+    # a subnormal base stays > 0 but ``log2`` flushes it to zero, and
+    # ``pow(2**-149, -0.5)`` came back as ``2.7e22`` instead of ``1.3e19``
+    # (rel 2.0e3) when the fast path was allowed to see it.
+    # ``a == 1`` is pinned to 1 because ``exp2(log2(1) * inf)`` is NaN while
+    # ``pow(1, inf)`` is 1; ``b == 0`` is pinned for the same reason on an
+    # infinite base (``exp2(inf * 0)`` is NaN, ``pow(inf, 0)`` is 1).
+    # Integral results skip the fast path: the last-bit difference changes
+    # the value once truncated to an integer.
+    if a.dtype.is_floating():
+        if tl.min(af) >= 1.1754943508222875e-38:
+            r = tl.where(
+                (af == 1.0) | (bf == 0.0), 1.0, tl.exp2(tl.log2(af) * bf)
+            )
+        else:
+            r = _pow(af, bf)
+    else:
+        r = _pow(af, bf)
+    return r
 
 
 @triton.jit
@@ -113,7 +138,22 @@ def _rpow_fn(a, b):
     # relative to ``_pow_fn`` (``a`` is the exponent, ``b`` the base).  Kept at
     # module scope like every other kernel: defining it inside the wrapper
     # rebuilt the ``JITFunction`` and its caches on every call.
-    return _pow(b.to(tl.float32), a.to(tl.float32))
+    af = a.to(tl.float32)
+    bf = b.to(tl.float32)
+    # Same positive-base fast path as ``_pow_fn``.  The base is the scalar
+    # here, so the guard is the scalar condition itself -- ``tl.min`` rejects
+    # a 0-d operand in this Triton.  The smallest-normal bound and the
+    # ``exponent == 0`` pin carry over unchanged.
+    if b.dtype.is_floating():
+        if bf >= 1.1754943508222875e-38:
+            r = tl.where(
+                (bf == 1.0) | (af == 0.0), 1.0, tl.exp2(tl.log2(bf) * af)
+            )
+        else:
+            r = _pow(bf, af)
+    else:
+        r = _pow(bf, af)
+    return r
 
 
 @triton.jit
