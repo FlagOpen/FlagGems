@@ -243,12 +243,12 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
             )
         else:
             g = _reduction_chunks(nt, max_numel, device, 1024)
-            # One allocation for the partials and the results: on a list this
-            # short the per-call Python work, not the GPU, is what the user
-            # waits for.
-            buf = torch.empty(nt * g + nt, dtype=dtype, device=device)
-            partial = buf[: nt * g]
-            out = buf[nt * g :]
+            # Two allocations rather than one buffer with two slices: a
+            # ``buf[:n]``/``buf[n:]`` pair costs ~7.7us each inside ``use_gems``
+            # (FlagGems registers ``slice`` and ``narrow`` with Python-level
+            # implementations), an extra ``torch.empty`` about 2us.
+            partial = torch.empty(nt * g, dtype=dtype, device=device)
+            out = torch.empty(nt, dtype=dtype, device=device)
             _max_stage1_kernel[(nt, g)](
                 meta,
                 partial,
