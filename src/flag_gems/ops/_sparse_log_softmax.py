@@ -37,6 +37,8 @@ import triton
 import triton.language as tl
 from triton.language.extra import libdevice as _ld
 
+from flag_gems.ops.sort import sort
+
 logger = logging.getLogger(__name__)
 
 _BLOCK_CI = 128
@@ -279,36 +281,6 @@ def _key_pool(IDX, W, KEY, n, S, dim, BLOCK: tl.constexpr):
             c = tl.load(IDX + s * n + i, mask=m, other=0).to(tl.int64)
             k += c * tl.load(W + s)
     tl.store(KEY + i, k, mask=m)
-
-
-@triton.jit
-def _count_key(KEY, CNT, n, BLOCK: tl.constexpr):
-    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = i < n
-    tl.atomic_add(CNT + tl.load(KEY + i, mask=m, other=0), 1, mask=m)
-
-
-@triton.jit
-def _scan_counts(CNT, START, TOTAL, K, BLOCK: tl.constexpr):
-    run = 0
-    for k0 in range(0, K, BLOCK):
-        k = k0 + tl.arange(0, BLOCK)
-        m = k < K
-        c = tl.load(CNT + k, mask=m, other=0)
-        tl.store(START + k, run + tl.cumsum(c) - c, mask=m)
-        run += tl.sum(c, axis=0)
-    tl.store(TOTAL, run)
-    tl.store(START + K, run)
-
-
-@triton.jit
-def _place(KEY, CURSOR, ORDER, n, BLOCK: tl.constexpr):
-    """Scatter every stored row into its group's contiguous slot."""
-    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = i < n
-    k = tl.load(KEY + i, mask=m, other=0)
-    p = tl.atomic_add(CURSOR + k, 1, mask=m)
-    tl.store(ORDER + p, i, mask=m)
 
 
 @triton.jit
@@ -563,6 +535,164 @@ _ATOMIC_UNSUPPORTED = (
 )
 
 
+@triton.jit
+def _hash_slot_kernel(
+    key_ptr,
+    slot_ptr,
+    table_ptr,
+    nnz,
+    nslots,
+    SHIFT,
+    BLOCK: tl.constexpr,
+):
+    """Open-addressing hash insert: map every entry to a group slot.
+
+    ``table`` (length ``nslots``, int64) is pre-filled with -1 as the empty
+    sentinel.  Entries with the same key adopt the same slot; a slot claimed
+    by another key is skipped with linear probing.  The table load factor is
+    kept at or below 0.5 (``nslots >= 2 * nnz``) so probing terminates.
+    """
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = offs < nnz
+    key = tl.load(key_ptr + offs, mask=m, other=0)
+    pos = ((key * 6364136223846793005) >> SHIFT) & (nslots - 1)
+    slot = tl.full([BLOCK], -1, dtype=tl.int64)
+    done = tl.zeros([BLOCK], dtype=tl.int1)
+    while tl.sum((m & ~done).to(tl.int32), axis=0) > 0:
+        old = tl.atomic_cas(table_ptr + pos, -1, key)
+        ok = (old == -1) | (old == key)
+        slot = tl.where(ok & ~done, pos, slot)
+        done = done | (ok & m)
+        pos = tl.where(done, pos, (pos + 1) % nslots)
+    tl.store(slot_ptr + offs, slot, mask=m)
+
+
+def _group_slots(keys, device):
+    """Hash-group int64 keys: returns ``(slot_per_entry, nslots)``.
+
+    The group ids are only required to be consistent within one call (the
+    table is rebuilt deterministically for the same key sequence), which is
+    all the group-reduce kernels need.
+    """
+    nnz = int(keys.numel())
+    nslots = 8
+    while nslots < 2 * max(nnz, 1):
+        nslots *= 2
+    bits = max(1, (nslots - 1).bit_length())
+    table = torch.full((nslots,), -1, dtype=torch.int64, device=device)
+    slot = torch.empty(nnz, dtype=torch.int64, device=device)
+    if nnz > 0:
+        grid = (triton.cdiv(nnz, _BLOCK_N),)
+        _hash_slot_kernel[grid](
+            keys, slot, table, nnz, nslots, SHIFT=64 - bits, BLOCK=_BLOCK_N
+        )
+    return slot, table, nslots
+
+
+@triton.jit
+def _seg_scan_kernel(
+    sorted_keys,
+    gstart,
+    slots,
+    total,
+    n,
+    BLOCK: tl.constexpr,
+):
+    """Single-program walk over the sorted keys.
+
+    Emits the start offset of every group into ``gstart`` (groups are
+    contiguous runs of equal keys), the compact group id of every sorted
+    position into ``slots``, and the number of groups into ``total``.
+    """
+    run = 0
+    for start in range(0, n, BLOCK):
+        p = start + tl.arange(0, BLOCK)
+        m = p < n
+        key = tl.load(sorted_keys + p, mask=m, other=-1)
+        prev = tl.load(sorted_keys + p - 1, mask=m & (p > 0), other=-1)
+        first = (p == 0) | (key != prev)
+        f32 = first.to(tl.int32)
+        cs = tl.cumsum(f32, 0)
+        slot = run + cs - 1
+        tl.store(gstart + slot, p, mask=first & m)
+        tl.store(slots + p, slot, mask=m)
+        run += tl.sum(f32, axis=0)
+    tl.store(total, run)
+
+
+@triton.jit
+def _slot_scatter_kernel(perm, slots_sorted, slots, n, BLOCK: tl.constexpr):
+    """slots[perm[p]] = slots_sorted[p]: group ids in the original entry order."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    p = tl.load(perm + offs, mask=m, other=0)
+    v = tl.load(slots_sorted + offs, mask=m, other=0)
+    tl.store(slots + p, v, mask=m)
+
+
+def _compact_slots(keys):
+    """Compact int64 keys into group ids ``[0, ngroups)`` in ascending key order.
+
+    Returns ``(slots, ngroups)`` where ``slots[i]`` is the group id of
+    ``keys[i]``.  Scratch memory is O(nnz) (sort + boundary scan), never sized
+    by the coordinate space.
+    """
+    n = int(keys.numel())
+    if n == 0:
+        return torch.empty(0, dtype=torch.int64, device=keys.device), 0
+    sorted_keys, perm = sort(keys.contiguous())
+    slots_sorted = torch.empty(n, dtype=torch.int64, device=keys.device)
+    gstart = torch.empty(n + 1, dtype=torch.int64, device=keys.device)
+    total = torch.empty(1, dtype=torch.int32, device=keys.device)
+    _seg_scan_kernel[(1,)](sorted_keys, gstart, slots_sorted, total, n, BLOCK=_BLOCK_K)
+    ngroups = int(total.item())
+    slots = torch.empty(n, dtype=torch.int64, device=keys.device)
+    grid = (triton.cdiv(n, _BLOCK_N),)
+    _slot_scatter_kernel[grid](perm, slots_sorted, slots, n, BLOCK=_BLOCK_N)
+    return slots, ngroups
+
+
+def _seg_boundaries(sorted_keys):
+    """Group a 1-D sorted key array into contiguous compact groups.
+
+    Returns ``(slots_sorted, gstart, ngroups)``: ``slots_sorted[p]`` is the
+    group id of sorted position ``p`` and ``gstart[g]``..``gstart[g + 1]``
+    bound group ``g``'s member range.  Sorting uses the existing FlagGems
+    sort kernel; the boundary scan is the dedicated kernel above.  Scratch
+    memory is O(n) (one int32/int64 entry per sorted position), never sized
+    by the coordinate space.
+    """
+    n = int(sorted_keys.numel())
+    sorted_keys = sorted_keys.contiguous()
+    sorted_keys, perm = sort(sorted_keys)
+    slots = torch.empty(n, dtype=torch.int64, device=sorted_keys.device)
+    gstart = torch.empty(max(n, 1), dtype=torch.int64, device=sorted_keys.device)
+    total = torch.empty(1, dtype=torch.int32, device=sorted_keys.device)
+    if n > 0:
+        _seg_scan_kernel[(1,)](sorted_keys, gstart, slots, total, n, BLOCK=_BLOCK_K)
+    else:
+        return (
+            torch.empty(0, dtype=torch.int64, device=sorted_keys.device),
+            torch.zeros(1, dtype=torch.int64, device=sorted_keys.device),
+            0,
+        )
+    ngroups = int(total.item())
+    gstart_full = torch.empty(ngroups + 1, dtype=torch.int64, device=sorted_keys.device)
+    gstart_full[:ngroups] = gstart[:ngroups]
+    gstart_full[ngroups] = n
+    unique_keys = gstart_full[:ngroups].to(torch.int64)  # placeholder
+    # 唯一 key 在 group-start 位置
+    first = torch.cat(
+        [
+            torch.ones(1, dtype=torch.bool, device=sorted_keys.device),
+            sorted_keys[1:] != sorted_keys[:-1],
+        ]
+    )
+    unique_keys = sorted_keys[first]
+    return slots, gstart_full, ngroups, unique_keys
+
+
 def triton_coalesce(self):
     """Coalesce a sparse COO tensor with the Triton kernels above.
 
@@ -646,22 +776,21 @@ def _coalesce(self, dense_shape, dnumel):
     return idx_out[:, :total].contiguous(), vout[:total], total
 
 
-def _pool_key(self, dim):
+def _pool_key(self, dim, indices=None):
+    """Pool (group) keys of every entry; ``indices`` may be the coalesced
+    index matrix (required when ``self`` is uncoalesced — computing pool keys
+    over the raw stored coordinates would mismatch the coalesced values)."""
     size, sparse_dim, dense_shape, _ = _sparse_meta(self)
     device = self._indices().device
-    src = self._indices().contiguous()
-    nnz = self._nnz()
+    src = (self._indices() if indices is None else indices).contiguous()
+    nnz = src.shape[1]
     w = _strides([int(s) for s in size[:sparse_dim]], skip=dim)
     wt = torch.tensor(w, dtype=torch.int64, device=device)
-    domain = 1
-    for s in range(sparse_dim):
-        if s != dim:
-            domain *= int(size[s])
     keys = torch.empty(nnz, dtype=torch.int64, device=device)
     _key_pool[(triton.cdiv(nnz, _BLOCK_N),)](
         src, wt, keys, nnz, sparse_dim, dim, BLOCK=_BLOCK_N
     )
-    return keys, domain
+    return keys
 
 
 def _forward_core(self, dim, out_dtype):
@@ -714,21 +843,17 @@ def _forward_core(self, dim, out_dtype):
                     BLOCK_CI=bci,
                 )
         else:
-            keys, domain = _pool_key(self, dim)
-            cnt = torch.zeros(domain, dtype=torch.int32, device=device)
-            _count_key[(triton.cdiv(nnz, _BLOCK_N),)](keys, cnt, nnz, BLOCK=_BLOCK_N)
-            gstart = torch.empty(domain + 1, dtype=torch.int32, device=device)
-            total = torch.empty(1, dtype=torch.int32, device=device)
-            _scan_counts[(1,)](cnt, gstart, total, domain, BLOCK=_BLOCK_K)
-            cursor = gstart[:domain].clone()
-            order = torch.empty(nnz, dtype=torch.int32, device=device)
-            _place[(triton.cdiv(nnz, _BLOCK_N),)](
-                keys, cursor, order, nnz, BLOCK=_BLOCK_N
+            # The pool keys of the coalesced entries are compacted with the
+            # FlagGems sort kernel; the groups are contiguous runs in sorted
+            # order, replacing the dense histogram + scan + placement with an
+            # O(nnz) boundary scan.
+            keys = _pool_key(self, dim, indices)
+            sorted_keys, perm = sort(keys)
+            _, gstart, ngroups, _ = _seg_boundaries(sorted_keys)
+            _group_lse[(ngroups, triton.cdiv(dnumel, _BLOCK_D))](
+                vals, result, gstart, perm, dnumel, f64, via32, BLOCK_D=_BLOCK_D
             )
-            _group_lse[(domain, triton.cdiv(dnumel, _BLOCK_D))](
-                vals, result, gstart, order, dnumel, f64, via32, BLOCK_D=_BLOCK_D
-            )
-            ginfo = (gstart, order)
+            ginfo = (gstart, perm)
     return indices, result, size, sparse_dim, dense_shape, dnumel, ginfo
 
 

@@ -48,7 +48,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._sparse_log_softmax import _triton_cast, triton_coalesce
+from flag_gems.ops._sparse_log_softmax import (
+    _compact_slots,
+    _triton_cast,
+    triton_coalesce,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -281,66 +285,71 @@ def _normalize1_kernel(
 
 
 @triton.jit
-def _scatter_max_kernel(
-    gid_ptr, v_ptr, buf_ptr, total, m, BLOCK: tl.constexpr, ACC64: tl.constexpr
-):
+def _pair_key_kernel(gid_ptr, keys_ptr, total, m, BLOCK: tl.constexpr):
+    """Per-pair group key: (reduce group id, dense position) flattened."""
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
     msk = e < total
     r = e // m
     p = e - r * m
     g = tl.load(gid_ptr + r, mask=msk, other=0)
+    tl.store(keys_ptr + e, g * m + p, mask=msk)
+
+
+@triton.jit
+def _scatter_max_kernel(
+    slot_ptr, v_ptr, buf_ptr, total, BLOCK: tl.constexpr, ACC64: tl.constexpr
+):
+    pid = tl.program_id(0)
+    e = pid * BLOCK + tl.arange(0, BLOCK)
+    msk = e < total
+    s = tl.load(slot_ptr + e, mask=msk, other=0)
     v = tl.load(v_ptr + e, mask=msk, other=NEGINF)
     vf = v.to(tl.float64) if ACC64 else v.to(tl.float32)
-    tl.atomic_max(buf_ptr + g * m + p, vf, mask=msk)
+    tl.atomic_max(buf_ptr + s, vf, mask=msk)
 
 
 @triton.jit
 def _scatter_sum_kernel(
-    gid_ptr,
+    slot_ptr,
     v_ptr,
     mx_ptr,
     sm_ptr,
     o_ptr,
     total,
-    m,
     BLOCK: tl.constexpr,
     ACC64: tl.constexpr,
 ):
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
     msk = e < total
-    r = e // m
-    p = e - r * m
-    g = tl.load(gid_ptr + r, mask=msk, other=0)
+    s = tl.load(slot_ptr + e, mask=msk, other=0)
     v = tl.load(v_ptr + e, mask=msk, other=NEGINF)
     vf = v.to(tl.float64) if ACC64 else v.to(tl.float32)
-    mx = tl.load(mx_ptr + g * m + p, mask=msk, other=0.0)
+    mx = tl.load(mx_ptr + s, mask=msk, other=0.0)
     if ACC64:
         ev = tl.exp(vf - mx)
     else:
         ev = tl.exp2((vf - mx) * LOG2E)
     ev = tl.where(msk, ev, 0.0)
     tl.store(o_ptr + e, ev, mask=msk)
-    tl.atomic_add(sm_ptr + g * m + p, ev, mask=msk)
+    tl.atomic_add(sm_ptr + s, ev, mask=msk)
 
 
 @triton.jit
 def _normalize_kernel(
-    gid_ptr, s_ptr, o_ptr, total, m, BLOCK: tl.constexpr, ACC64: tl.constexpr
+    slot_ptr, s_ptr, o_ptr, total, BLOCK: tl.constexpr, ACC64: tl.constexpr
 ):
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
     msk = e < total
-    r = e // m
-    p = e - r * m
-    g = tl.load(gid_ptr + r, mask=msk, other=0)
-    s = tl.load(s_ptr + g * m + p, mask=msk, other=1.0)
+    s = tl.load(slot_ptr + e, mask=msk, other=0)
+    sv = tl.load(s_ptr + s, mask=msk, other=1.0)
     v = tl.load(o_ptr + e, mask=msk, other=0.0)
     if ACC64:
-        out = v.to(tl.float64) / s
+        out = v.to(tl.float64) / sv
     else:
-        out = v / s
+        out = v / sv
     tl.store(o_ptr + e, out, mask=msk)
 
 
@@ -689,6 +698,21 @@ def _case_a_forward(cfg, values, out_values):
         BLOCK = 1024
         _ones_kernel[(triton.cdiv(nnz, BLOCK),)](values, out_values, nnz, BLOCK=BLOCK)
         return
+    # The reduce-group ids are compacted into [0, ngroups) with the FlagGems
+    # sort kernel, so the group scratch buffers are O(nnz) instead of sized by
+    # the coordinate space.  Needed by every case-A path (the backward reads
+    # the same slots).
+    total = nnz * m
+    if m > 1:
+        pair_keys = torch.empty(total, dtype=torch.int64, device=values.device)
+        _pair_key_kernel[(triton.cdiv(total, 1024),)](
+            cfg["gid"], pair_keys, total, m, BLOCK=1024
+        )
+        slots, ngroups = _compact_slots(pair_keys)
+    else:
+        slots, ngroups = _compact_slots(cfg["gid"])
+    cfg["slot"] = slots
+    cfg["G"] = ngroups
     if cfg["contig"]:
         _sparse_contig_kernel[(nnz,)](
             cfg["gid"],
@@ -709,15 +733,13 @@ def _case_a_forward(cfg, values, out_values):
         # scalar atomics on a handful of slots.
         device = values.device
         duck = torch.float64 if acc64 else torch.float32
-        maxbuf = torch.full((cfg["G"],), float("-inf"), dtype=duck, device=device)
-        sumbuf = torch.zeros((cfg["G"],), dtype=duck, device=device)
+        maxbuf = torch.full((ngroups,), float("-inf"), dtype=duck, device=device)
+        sumbuf = torch.zeros((ngroups,), dtype=duck, device=device)
         BLOCK = 1024
         grid = (triton.cdiv(nnz, BLOCK),)
-        _scatter_max1_kernel[grid](
-            cfg["gid"], values, maxbuf, nnz, BLOCK=BLOCK, ACC64=acc64
-        )
+        _scatter_max1_kernel[grid](slots, values, maxbuf, nnz, BLOCK=BLOCK, ACC64=acc64)
         _scatter_sum1_kernel[grid](
-            cfg["gid"],
+            slots,
             values,
             maxbuf,
             sumbuf,
@@ -727,34 +749,28 @@ def _case_a_forward(cfg, values, out_values):
             ACC64=acc64,
         )
         _normalize1_kernel[grid](
-            cfg["gid"], sumbuf, out_values, nnz, BLOCK=BLOCK, ACC64=acc64
+            slots, sumbuf, out_values, nnz, BLOCK=BLOCK, ACC64=acc64
         )
         return
-    total = nnz * m
     duck = torch.float64 if acc64 else torch.float32
-    maxbuf = torch.full((cfg["G"] * m,), float("-inf"), dtype=duck, device=device)
-    sumbuf = torch.zeros((cfg["G"] * m,), dtype=duck, device=device)
+    maxbuf = torch.full((ngroups,), float("-inf"), dtype=duck, device=device)
+    sumbuf = torch.zeros((ngroups,), dtype=duck, device=device)
     flat_in = values.reshape(nnz, m)
     flat_out = out_values.reshape(nnz, m)
     BLOCK = 1024
     grid = (triton.cdiv(total, BLOCK),)
-    _scatter_max_kernel[grid](
-        cfg["gid"], flat_in, maxbuf, total, m, BLOCK=BLOCK, ACC64=acc64
-    )
+    _scatter_max_kernel[grid](slots, flat_in, maxbuf, total, BLOCK=BLOCK, ACC64=acc64)
     _scatter_sum_kernel[grid](
-        cfg["gid"],
+        slots,
         flat_in,
         maxbuf,
         sumbuf,
         flat_out,
         total,
-        m,
         BLOCK=BLOCK,
         ACC64=acc64,
     )
-    _normalize_kernel[grid](
-        cfg["gid"], sumbuf, flat_out, total, m, BLOCK=BLOCK, ACC64=acc64
-    )
+    _normalize_kernel[grid](slots, sumbuf, flat_out, total, BLOCK=BLOCK, ACC64=acc64)
 
 
 def _case_a_backward(cfg, grad_out, out_values, dv):
@@ -788,10 +804,10 @@ def _case_a_backward(cfg, grad_out, out_values, dv):
     )
     sbuf = torch.zeros(cfg["G"], dtype=duck, device=device)
     _bw_group_kernel[(triton.cdiv(nnz, 256),)](
-        cfg["gid"], psum, sbuf, nnz, BLOCK=256, ACC64=acc64
+        cfg["slot"], psum, sbuf, nnz, BLOCK=256, ACC64=acc64
     )
     _bw_write_kernel[grid](
-        cfg["gid"],
+        cfg["slot"],
         sbuf,
         grad_out.reshape(nnz, m),
         out_values.reshape(nnz, m),

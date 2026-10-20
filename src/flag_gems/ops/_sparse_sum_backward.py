@@ -46,11 +46,11 @@ wrapper performs allocation, metadata reads, and the in-place ``out=`` write.
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
 _WARPS = 4

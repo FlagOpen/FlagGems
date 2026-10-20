@@ -49,7 +49,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._sparse_log_softmax import triton_coalesce
+from flag_gems.ops._sparse_log_softmax import _seg_boundaries, triton_coalesce
+from flag_gems.ops.sort import sort
 
 logger = logging.getLogger(__name__)
 
@@ -76,69 +77,126 @@ def _ssbd_key_from_full(full, stride_ptr, sd):
 
 
 @triton.jit
-def _ssbd_cmap(
-    idx_ptr,
-    cmap_ptr,
-    stride_ptr,
-    nnz,
-    sd,
-    BLOCK: tl.constexpr,
-):
-    """cmap[coordinate of grad entry] = grad entry index."""
-    pid = tl.program_id(0)
-    lanes = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = lanes < nnz
-    coord = _ssbd_coord(idx_ptr, stride_ptr, nnz, sd, lanes, mask)
-    tl.store(cmap_ptr + coord, lanes, mask=mask)
-
-
-@triton.jit
-def _ssbd_accumulate(
-    oidx_ptr,
-    g_ptr,
-    cmap_ptr,
-    y_ptr,
-    s_ptr,
-    stride_ptr,
-    nnz_g,
-    nnz,
-    D,
-    sd,
-    USE_MAP: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    """S[key(output element)] += grad_value * output_value."""
+def _ssbd_pool_key(oidx_ptr, stride_ptr, keys_ptr, nnz, D, sd, BLOCK: tl.constexpr):
+    """Per-element pool key: the ``dim`` digit dropped from the full coord."""
     pid = tl.program_id(0)
     lanes = pid * BLOCK + tl.arange(0, BLOCK)
     mask = lanes < nnz * D
     e = lanes // D
     off = lanes - e * D
     coord = _ssbd_coord(oidx_ptr, stride_ptr, nnz, sd, e, mask)
-    if USE_MAP:
-        ge = tl.load(cmap_ptr + coord, mask=mask, other=-1).to(tl.int64)
-        dy = tl.load(g_ptr + ge * D + off, mask=mask & (ge >= 0), other=0.0)
-    else:
-        dy = tl.load(g_ptr + e.to(tl.int64) * D + off, mask=mask, other=0.0)
-    y = tl.load(y_ptr + lanes, mask=mask, other=0.0)
     full = coord * D + off.to(tl.int64)
     key = _ssbd_key_from_full(full, stride_ptr, sd)
-    tl.atomic_add(s_ptr + key, dy * y, mask=mask)
+    tl.store(keys_ptr + lanes, key, mask=mask)
+
+
+@triton.jit
+def _ssbd_entry_coords(
+    idx_ptr,
+    stride_ptr,
+    coords_ptr,
+    nnz,
+    D,
+    sd,
+    BLOCK: tl.constexpr,
+):
+    """Per-element full row-major coordinate of every grad entry."""
+    pid = tl.program_id(0)
+    lanes = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = lanes < nnz * D
+    e = lanes // D
+    off = lanes - e * D
+    coord = _ssbd_coord(idx_ptr, stride_ptr, nnz, sd, e, mask)
+    tl.store(coords_ptr + lanes, coord * D + off.to(tl.int64), mask=mask)
+
+
+@triton.jit
+def _ssbd_slot_scatter(perm, slots_sorted, slots, n, BLOCK: tl.constexpr):
+    """slots[perm[p]] = slots_sorted[p]: group ids in the original order."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    p = tl.load(perm + offs, mask=m, other=0)
+    s = tl.load(slots_sorted + offs, mask=m, other=0)
+    tl.store(slots + p, s, mask=m)
+
+
+@triton.jit
+def _ssbd_bsearch(needle, table, size, STEPS: tl.constexpr):
+    """Leftmost index of the sorted ``table`` whose value is >= ``needle``."""
+    lo = tl.zeros_like(needle)
+    hi = tl.zeros_like(needle) + size
+    for _ in tl.static_range(STEPS):
+        mid = (lo + hi) >> 1
+        v = tl.load(table + mid, mask=mid < size, other=2**62)
+        lt = v < needle
+        lo = tl.where(lt & (lo < hi), mid + 1, lo)
+        hi = tl.where(lt & (lo < hi), hi, tl.where(lo < hi, mid, hi))
+    return lo
+
+
+@triton.jit
+def _ssbd_accumulate(
+    oidx_ptr,
+    g_ptr,
+    gcoords_ptr,
+    gperm_ptr,
+    y_ptr,
+    s_ptr,
+    slot_ptr,
+    stride_ptr,
+    nnz_g,
+    nnz,
+    D,
+    sd,
+    SAME_SUPPORT: tl.constexpr,
+    STEPS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """S[slot(output element)] += grad_value * output_value.
+
+    The per-element group slot comes from the precomputed slot table; the grad
+    row is joined by binary search in the sorted grad coordinates when the
+    supports differ.
+    """
+    pid = tl.program_id(0)
+    lanes = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = lanes < nnz * D
+    e = lanes // D
+    off = lanes - e * D
+    coord = _ssbd_coord(oidx_ptr, stride_ptr, nnz, sd, e, mask)
+    if SAME_SUPPORT:
+        dy = tl.load(g_ptr + e.to(tl.int64) * D + off, mask=mask, other=0.0)
+    else:
+        full = coord * D + off.to(tl.int64)
+        q = _ssbd_bsearch(full, gcoords_ptr, nnz_g * D, STEPS)
+        gfull = tl.load(gcoords_ptr + q, mask=q < nnz_g * D, other=-1)
+        hit = (q < nnz_g * D) & (gfull == full)
+        ge = tl.load(gperm_ptr + q, mask=hit, other=0).to(tl.int64)
+        dy = tl.load(g_ptr + ge, mask=mask & hit, other=0.0)
+    y = tl.load(y_ptr + lanes, mask=mask, other=0.0)
+    slot = tl.load(slot_ptr + lanes, mask=mask, other=0)
+    tl.atomic_add(s_ptr + slot, dy * y, mask=mask)
 
 
 @triton.jit
 def _ssbd_apply(
     oidx_ptr,
     g_ptr,
-    cmap_ptr,
+    gcoords_ptr,
+    gperm_ptr,
     y_ptr,
     s_ptr,
     ov_ptr,
+    slot_ptr,
     stride_ptr,
+    nnz_g,
     nnz,
     D,
     sd,
-    USE_MAP: tl.constexpr,
+    SAME_SUPPORT: tl.constexpr,
     LOCAL: tl.constexpr,
+    STEPS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     """out = y * (grad_value - S) with S the group sum (LOCAL: the entry's own product)."""
@@ -147,20 +205,22 @@ def _ssbd_apply(
     mask = lanes < nnz * D
     e = lanes // D
     off = lanes - e * D
-    if USE_MAP:
-        coord = _ssbd_coord(oidx_ptr, stride_ptr, nnz, sd, e, mask)
-        ge = tl.load(cmap_ptr + coord, mask=mask, other=-1).to(tl.int64)
-        dy = tl.load(g_ptr + ge * D + off, mask=mask & (ge >= 0), other=0.0)
-    else:
+    if SAME_SUPPORT:
         dy = tl.load(g_ptr + e.to(tl.int64) * D + off, mask=mask, other=0.0)
+    else:
+        coord = _ssbd_coord(oidx_ptr, stride_ptr, nnz, sd, e, mask)
+        full = coord * D + off.to(tl.int64)
+        q = _ssbd_bsearch(full, gcoords_ptr, nnz_g * D, STEPS)
+        gfull = tl.load(gcoords_ptr + q, mask=q < nnz_g * D, other=-1)
+        hit = (q < nnz_g * D) & (gfull == full)
+        ge = tl.load(gperm_ptr + q, mask=hit, other=0).to(tl.int64)
+        dy = tl.load(g_ptr + ge, mask=mask & hit, other=0.0)
     y = tl.load(y_ptr + lanes, mask=mask, other=0.0)
+    slot = tl.load(slot_ptr + lanes, mask=mask, other=0)
     if LOCAL:
         sval = dy * y
     else:
-        coord2 = _ssbd_coord(oidx_ptr, stride_ptr, nnz, sd, e, mask)
-        full = coord2 * D + off.to(tl.int64)
-        key = _ssbd_key_from_full(full, stride_ptr, sd)
-        sval = tl.load(s_ptr + key, mask=mask, other=0.0)
+        sval = tl.load(s_ptr + slot, mask=mask, other=0.0)
     tl.store(ov_ptr + lanes, y * (dy - sval), mask=mask)
 
 
@@ -258,10 +318,6 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
     strides, numel = _row_major_strides(size)
     stride_k = strides[k] if rank else 1
     size_k = int(size[k]) if rank else 1
-    span = stride_k * size_k
-    # key < ceil(numel / span) * stride_k
-    key_space = -(-numel // span) * stride_k if span else 0
-    coord_space = numel // D if D else 0
 
     g_flat = g_val.reshape(-1)
     o_flat = o_val.reshape(-1)
@@ -274,8 +330,7 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
         and bool((g_idx == o_idx).all().item())
     )
 
-    if nnz > 0 and key_space > 0 and D > 0:
-        s_buf = torch.zeros(key_space, dtype=result_flat.dtype, device=device)
+    if nnz > 0 and D > 0:
         stride_pack = torch.tensor(
             _sparse_strides(size, sparse_dim) + [stride_k, size_k],
             dtype=torch.int64,
@@ -283,46 +338,68 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
         )
         grid_out = (triton.cdiv(nnz * D, _BLOCK),)
 
+        # All scratch buffers are O(nnz): the per-element pool keys are
+        # compacted into group slots with the Triton boundary scan (sort +
+        # cumsum), and the grad join is a binary search over the sorted grad
+        # coordinates instead of the coordinate-space cmap.
+        y_keys = torch.empty(nnz * D, dtype=torch.int64, device=device)
+        _ssbd_pool_key[grid_out](
+            o_idx, stride_pack, y_keys, nnz, D, sparse_dim, BLOCK=_BLOCK
+        )
+        sorted_y_keys, perm_y = sort(y_keys)
+        slot_sorted, _, ngroups, unique_keys = _seg_boundaries(sorted_y_keys)
+        s_buf = torch.zeros(ngroups, dtype=result_flat.dtype, device=device)
+        slots = torch.empty(nnz * D, dtype=torch.int64, device=device)
+        _ssbd_slot_scatter[grid_out](perm_y, slot_sorted, slots, nnz * D, BLOCK=_BLOCK)
+        # accumulate/apply 的 grad join 用 sorted unique keys 做 bsearch
+        g_coords = unique_keys  # placeholder, replaced below
+
         # A negative dim keeps every stored coordinate in the reduction key, so
         # the only grouping left is by the entry itself; a non-negative dim
         # drops its own digit and entries sharing a key are summed together.
         local = int(dim) < 0 and k == sparse_dim - 1
-        use_map = not same_support and coord_space <= _MAX_COORD_MAP
-        if use_map:
-            g_cmap = torch.full((coord_space,), -1, dtype=torch.int32, device=device)
-            _ssbd_cmap[(triton.cdiv(nnz_g, _BLOCK),)](
-                g_idx, g_cmap, stride_pack, nnz_g, sparse_dim, BLOCK=_BLOCK
+        g_coords = torch.zeros(max(nnz_g * D, 1), dtype=torch.int64, device=device)
+        g_perm = torch.arange(max(nnz_g * D, 1), dtype=torch.int64, device=device)
+        if not same_support:
+            _ssbd_entry_coords[grid_out](
+                g_idx, stride_pack, g_coords, nnz_g, D, sparse_dim, BLOCK=_BLOCK
             )
-        else:
-            g_cmap = torch.zeros(1, dtype=torch.int32, device=device)
+            g_coords, g_perm = sort(g_coords)
         if not local:
             _ssbd_accumulate[grid_out](
                 o_idx,
                 g_flat,
-                g_cmap,
+                g_coords,
+                g_perm,
                 o_flat,
                 s_buf,
+                slots,
                 stride_pack,
                 nnz_g,
                 nnz,
                 D,
                 sparse_dim,
-                use_map,
+                same_support,
+                STEPS=10,
                 BLOCK=_BLOCK,
             )
         _ssbd_apply[grid_out](
             o_idx,
             g_flat,
-            g_cmap,
+            g_coords,
+            g_perm,
             o_flat,
             s_buf,
             result_flat,
+            slots,
             stride_pack,
+            nnz_g,
             nnz,
             D,
             sparse_dim,
-            use_map,
+            same_support,
             local,
+            STEPS=10,
             BLOCK=_BLOCK,
         )
 
