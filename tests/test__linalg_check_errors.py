@@ -305,7 +305,7 @@ def test__linalg_check_errors_rejects_non_int32_dtype(bad_dtype):
     ):
         # NPU zero-fill does not support FP8. Encode the same positive-zero
         # payload on CPU, then exercise the candidate with the original dtype.
-        info = torch.zeros((2, 3), dtype=torch.float32).to(bad_dtype)
+        info = torch.zeros((2, 3), dtype=torch.float32, device="cpu").to(bad_dtype)
         info = info.to(flag_gems.device)
     else:
         info = torch.zeros((2, 3), dtype=bad_dtype, device=flag_gems.device)
