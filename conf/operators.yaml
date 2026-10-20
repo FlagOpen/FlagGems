@@ -8259,6 +8259,18 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: fp8_paged_mqa_logits
+  description: |
+    The `fp8_paged_mqa_logits` operator is used in the decoding phase of DeepSeek sparse attention.
+  for:
+  - vllm.utils.deep_gemm.fp8_paged_mqa_logits
+  labels:
+  - fused
+  - vLLM
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.3'
 - id: frac
   description: Computes the fractional part of each element, returning x - trunc(x).
   for:
