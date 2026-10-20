@@ -10,15 +10,24 @@ element positions:
 * ``_foreach_zero`` / ``_foreach_zero_`` write a constant and never read the
   input at all.
 
-Each delegates to a Triton kernel that reduces one tensor per program, so a
-whole TensorList costs one launch per ``(device, dtype)`` group rather than one
-launch per tensor. Looping over the list on the host and calling the
-single-tensor kernels instead measured 2.18ms for sixty-four 512x512 tensors
-against PyTorch's 0.11ms for ``max``, and 3.8ms against 0.09ms for ``norm``.
+The reductions run in two stages.  A single stage with one program per tensor
+was measured at 486us for sixteen 1024x1024 fp32 tensors against PyTorch's
+37us: sixteen CTAs on a 78-SM H20 leave the device idle while each program
+walks the whole tensor serially.  Stage one splits every tensor into ``G``
+chunks (``grid = (NT, G)``, sized from the SM count so the list launches
+roughly a dozen waves, see ``_PROGRAMS_PER_SM``) and writes one partial per
+chunk; stage two (``grid = (NT,)``) combines the partials.  The extra launch
+costs a few microseconds and buys an order of magnitude.
+
+The constant-writing ops reuse the same shape: ``meta_ptr`` holds the pointers
+and element counts, the grid is ``(NT, max chunks)``, so a whole list is zeroed
+by one launch per ``(device, dtype)`` group instead of one launch per tensor.
+Non-contiguous views still stage through a dense buffer, because the storage
+span of a gappy view is not addressable by flat indices.
 """
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import torch
 import triton
@@ -26,40 +35,108 @@ import triton.language as tl
 
 from flag_gems.ops.zero import _launch_zero_kernel
 from flag_gems.utils import tl_extra_shim
-from flag_gems.utils.foreach import check_tensor_list, tl_dtype
+from flag_gems.utils.foreach import _pick_block, check_tensor_list, tl_dtype
 
 logger = logging.getLogger(__name__)
 
+# Programs per SM targeted by the first reduction stage, i.e. roughly how many
+# waves of work the list launches.  Swept on the 78-SM H20 (1024x1024 and
+# 512x512, fp16/fp32, max and norm): 4 and 8 waves leave a long tail when one
+# program owns a large serial chunk, 12 is the flat minimum, and 16 starts to
+# lose again to the second-stage combine.  The chunk size is also clamped to
+# the block count, so a short tensor simply launches fewer programs.
+_PROGRAMS_PER_SM = 12
+
+# One driver query per device is enough; the value is static for the process.
+_SM_COUNTS: Dict[Any, int] = {}
+
+
+def _sm_count(device: torch.device) -> int:
+    """SM count for ``device``, cached to keep the query off the hot path."""
+    key = str(device)
+    if key not in _SM_COUNTS:
+        _SM_COUNTS[key] = torch.cuda.get_device_properties(
+            device
+        ).multi_processor_count
+    return _SM_COUNTS[key]
+
+
+def _reduction_chunks(
+    nt: int, max_numel: int, device: torch.device, block: int
+) -> int:
+    """Chunks per tensor for stage one, i.e. the ``G`` in ``grid=(NT, G)``.
+
+    ``nt * G`` is held near ``_PROGRAMS_PER_SM * SM`` so a short list still
+    fills the device.  ``G`` is clamped to the number of blocks in the largest
+    tensor: launching more programs than blocks would only produce fully masked
+    no-ops, and it keeps every chunk at least one block long.
+    """
+    target = _PROGRAMS_PER_SM * _sm_count(device)
+    g = max(1, target // max(nt, 1))
+    return max(1, min(g, triton.cdiv(max_numel, block)))
+
+
+# ---------------------------------------------------------------------------
+# max
+# ---------------------------------------------------------------------------
+
 
 @triton.jit
-def _max_kernel(
+def _max_stage1_kernel(
     meta_ptr,
-    out_ptr,
+    part_ptr,
     IN_DT: tl.constexpr,
     NEG_INF,
+    G: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Per-tensor maximum over a whole TensorList, one launch for the list.
+    """Partial max per ``(tensor, chunk)``, written to ``part_ptr[t * G + g]``.
 
-    The accumulator and the stored result keep the *input* dtype: casting
+    The accumulator and the stored partial keep the *input* dtype: casting
     through fp32 loses precision for fp64 and int64 inputs, and ATen keeps the
     input dtype for the zero-dimensional result. ``NEG_INF`` is the identity of
     ``max`` for the input dtype (``-inf`` for floats, the type minimum for
-    integers), so masked-out lanes cannot win the reduction.
+    integers), so both masked-out lanes and chunks past the end of a shorter
+    tensor can never win the reduction.
     """
     t = tl.program_id(0)
+    g = tl.program_id(1)
     in_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(IN_DT))
     n_elements = tl.load(meta_ptr + tl.num_programs(0) + t)
 
+    # Chunk boundaries are derived from the block count, not from an element
+    # count divided by G: every chunk then starts on a BLOCK boundary, so a
+    # chunk is a whole number of full-width loads rather than a ragged slice.
+    n_blocks = tl.cdiv(n_elements, BLOCK)
+    per_chunk = tl.cdiv(n_blocks, G)
+    first = g * per_chunk
+    last = tl.minimum(first + per_chunk, n_blocks)
+
     acc = tl.full((BLOCK,), NEG_INF, dtype=IN_DT)
-    for offset in tl.range(0, n_elements, BLOCK):
-        idx = offset + tl.arange(0, BLOCK)
+    for b in tl.range(first, last):
+        idx = b * BLOCK + tl.arange(0, BLOCK)
         mask = idx < n_elements
         x = tl.load(in_ptr + idx, mask=mask, other=NEG_INF)
         # ``tl.maximum`` widens sub-fp32 types, so the result is cast back to
         # keep the loop-carried type stable and the stored value in input dtype.
         acc = tl.maximum(acc, x).to(IN_DT)
-    tl.store(out_ptr + t, tl.max(acc))
+    tl.store(part_ptr + t * G + g, tl.max(acc))
+
+
+@triton.jit
+def _max_stage2_kernel(
+    part_ptr,
+    out_ptr,
+    IN_DT: tl.constexpr,
+    NEG_INF,
+    G: tl.constexpr,
+    BLOCK_P: tl.constexpr,
+):
+    """Combine the ``G`` partials of tensor ``t`` into ``out_ptr[t]``."""
+    t = tl.program_id(0)
+    idx = tl.arange(0, BLOCK_P)
+    partial = tl.load(part_ptr + t * G + idx, mask=idx < G, other=NEG_INF)
+    tl.store(out_ptr + t, tl.max(partial).to(IN_DT))
 
 
 def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
@@ -71,12 +148,15 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     """
     logger.debug("GEMS _FOREACH_MAX")
     tensors = check_tensor_list(self)
-    for t in tensors:
-        if t.numel() == 0:
-            raise RuntimeError(
-                "max(): Expected reduction dim to be specified for "
-                "input.numel() == 0."
-            )
+    # One ``numel()`` pass feeds both the emptiness check and the metadata; the
+    # list is walked several times below and every pass costs microseconds on a
+    # call this short.
+    numels = [t.numel() for t in tensors]
+    if 0 in numels:
+        raise RuntimeError(
+            "max(): Expected reduction dim to be specified for "
+            "input.numel() == 0."
+        )
 
     prepared = [t if t.is_contiguous() else t.contiguous() for t in tensors]
     results: List[Optional[torch.Tensor]] = [None] * len(prepared)
@@ -85,56 +165,91 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
         groups.setdefault((w.device, w.dtype), []).append(i)
 
     for (device, dtype), idxs in groups.items():
-        acc = torch.empty(len(idxs), dtype=dtype, device=device)
         work = [prepared[i] for i in idxs]
+        work_numels = [numels[i] for i in idxs]
+        g = _reduction_chunks(len(work), max(work_numels), device, 1024)
         meta = torch.tensor(
-            [w.data_ptr() for w in work] + [w.numel() for w in work],
+            [w.data_ptr() for w in work] + work_numels,
             dtype=torch.int64,
         ).to(device, non_blocking=True)
+        # One allocation for the partials and the results: on a list this short
+        # the per-call Python work, not the GPU, is what the user waits for.
+        buf = torch.empty(len(work) * g + len(work), dtype=dtype, device=device)
+        partial = buf[: len(work) * g]
+        acc = buf[len(work) * g :]
         neg_inf = (
             float("-inf") if dtype.is_floating_point else float(torch.iinfo(dtype).min)
         )
-        _max_kernel[(len(work),)](
-            meta, acc, IN_DT=tl_dtype(dtype), NEG_INF=neg_inf, BLOCK=1024
+        in_dt = tl_dtype(dtype)
+        _max_stage1_kernel[(len(work), g)](
+            meta,
+            partial,
+            IN_DT=in_dt,
+            NEG_INF=neg_inf,
+            G=g,
+            BLOCK=1024,
         )
+        _max_stage2_kernel[(len(work),)](
+            partial,
+            acc,
+            IN_DT=in_dt,
+            NEG_INF=neg_inf,
+            G=g,
+            BLOCK_P=triton.next_power_of_2(g),
+        )
+        # ``unbind`` is registered by FlagGems itself, so inside ``use_gems`` it
+        # costs a Python-level implementation (~7us more than the C++ select
+        # this loop compiles to).  ``acc[slot]`` stays on the stock kernel.
         for slot, i in enumerate(idxs):
             results[i] = acc[slot]
     return results  # type: ignore[return-value]
 
 
+# ---------------------------------------------------------------------------
+# norm
+# ---------------------------------------------------------------------------
+
+
 @triton.jit
-def _norm_kernel(
+def _norm_stage1_kernel(
     meta_ptr,
-    out_ptr,
+    part_ptr,
     ORD: tl.constexpr,
-    ROOT: tl.constexpr,
     INF_MODE: tl.constexpr,
     IN_DT: tl.constexpr,
-    OUT_DT: tl.constexpr,
+    G: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """One norm per tensor for a whole TensorList, one launch for the list.
-
-    ``meta_ptr`` holds ``NT`` input pointers followed by ``NT`` element counts,
-    all int64; program ``t`` reduces tensor ``t`` and writes ``out_ptr[t]``.
+    """Partial power sum / extremum per ``(tensor, chunk)``.
 
     ``ORD`` is a ``constexpr`` so orders 1 and 2 compile to a plain sum or a
-    multiply rather than a call to ``pow``. ``ROOT`` compiles away the final
-    root for the orders that have none. ``INF_MODE`` selects the extremum form
-    of the norm: ``1`` accumulates ``max(|x|)`` (order ``+inf``) and ``-1``
-    accumulates ``min(|x|)`` (order ``-inf``). Order ``0`` counts the nonzero
+    multiply rather than a call to ``pow``.  ``INF_MODE`` selects the extremum
+    form of the norm: ``1`` accumulates ``max(|x|)`` (order ``+inf``) and ``-1``
+    accumulates ``min(|x|)`` (order ``-inf``).  Order ``0`` counts the nonzero
     elements, which is the limit of ``sum |x|^p`` as ``p -> 0``.
 
-    The accumulation is fp32 for accuracy; the stored value is cast back to
-    ``OUT_DT``, which is the input dtype -- the dtype ATen returns.
+    The accumulation is fp32 for accuracy.  The root is *not* applied here: it
+    is applied once in the second stage, after the partials are combined.
     """
     t = tl.program_id(0)
+    g = tl.program_id(1)
     in_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(IN_DT))
     n_elements = tl.load(meta_ptr + tl.num_programs(0) + t)
 
-    acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    for offset in tl.range(0, n_elements, BLOCK):
-        idx = offset + tl.arange(0, BLOCK)
+    n_blocks = tl.cdiv(n_elements, BLOCK)
+    per_chunk = tl.cdiv(n_blocks, G)
+    first = g * per_chunk
+    last = tl.minimum(first + per_chunk, n_blocks)
+
+    # ``min`` needs the true identity (+inf), not zero: zero would clamp every
+    # positive chunk to 0.  ``max`` and the sums use 0, which is the identity
+    # there and also lets chunks past the end of a shorter tensor drop out.
+    if INF_MODE == -1:
+        acc = tl.full((BLOCK,), float("inf"), dtype=tl.float32)
+    else:
+        acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for b in tl.range(first, last):
+        idx = b * BLOCK + tl.arange(0, BLOCK)
         mask = idx < n_elements
         x = tl.load(in_ptr + idx, mask=mask, other=0).to(tl.float32)
         mag = tl.abs(x)
@@ -150,16 +265,63 @@ def _norm_kernel(
             acc += mag * mag
         else:
             acc += tl.exp(ORD * tl.log(tl.where(mag > 0, mag, 1e-30)))
-    total = tl.max(acc) if INF_MODE != 0 else tl.sum(acc)
+    if INF_MODE == 1:
+        part = tl.max(acc)
+    elif INF_MODE == -1:
+        part = tl.min(acc)
+    else:
+        part = tl.sum(acc)
+    tl.store(part_ptr + t * G + g, part)
+
+
+@triton.jit
+def _norm_stage2_kernel(
+    meta_ptr,
+    part_ptr,
+    out_ptr,
+    ORD: tl.constexpr,
+    ROOT: tl.constexpr,
+    INF_MODE: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    G: tl.constexpr,
+    BLOCK_P: tl.constexpr,
+):
+    """Combine partials and apply the root once, mirroring ATen's result.
+
+    ``ROOT`` compiles away the final root for the orders that have none.  The
+    stored value is cast back to ``OUT_DT``, which is the input dtype -- the
+    dtype ATen returns.
+
+    A zero-element tensor has no chunks; ``ATen`` returns 0 for the orders that
+    have an identity, and this operator has always returned 0 (rather than
+    leaving ``torch.empty`` garbage) for an empty entry, so that is made
+    explicit here.
+    """
+    t = tl.program_id(0)
+    n_elements = tl.load(meta_ptr + tl.num_programs(0) + t)
+
+    idx = tl.arange(0, BLOCK_P)
+    if INF_MODE == -1:
+        other = float("inf")
+    else:
+        other = 0.0
+    partial = tl.load(part_ptr + t * G + idx, mask=idx < G, other=other)
+    if INF_MODE == 1:
+        total = tl.max(partial)
+    elif INF_MODE == -1:
+        total = tl.min(partial)
+    else:
+        total = tl.sum(partial)
     if ROOT:
         total = tl.sqrt(total) if ORD == 2 else tl_extra_shim.pow(total, 1.0 / ORD)
+    total = tl.where(n_elements == 0, 0.0, total)
     tl.store(out_ptr + t, total.to(OUT_DT))
 
 
 def _pow_sum_list(
     tensors: List[torch.Tensor], ord_: Any, dtype: Optional[torch.dtype]
 ) -> List[torch.Tensor]:
-    """One launch per ``(device, dtype)`` group, mirroring the element-wise path."""
+    """Two-stage norm, one pair of launches per ``(device, dtype)`` group."""
     ord_f = float(ord_)
     inf_mode = 1 if ord_f == float("inf") else (-1 if ord_f == float("-inf") else 0)
     ord_key = 1 if ord_f == 1.0 else (2 if ord_f == 2.0 else ord_f)
@@ -181,30 +343,51 @@ def _pow_sum_list(
         groups.setdefault((w.device, w.dtype), []).append(i)
 
     for (device, in_dtype), idxs in groups.items():
-        out = torch.empty(len(idxs), dtype=in_dtype, device=device)
         work = [prepared[i] for i in idxs]
         numels = [w.numel() for w in work]
         if max(numels) > 0:
+            g = _reduction_chunks(len(work), max(numels), device, 1024)
             meta = torch.tensor(
                 [w.data_ptr() for w in work] + numels, dtype=torch.int64
             ).to(device, non_blocking=True)
-            _norm_kernel[(len(work),)](
+            # fp32 partials keep the accumulation accuracy of the single-stage
+            # kernel even though the output dtype may be fp16/bf16.
+            partial = torch.empty(len(work) * g, dtype=torch.float32, device=device)
+            out = torch.empty(len(work), dtype=in_dtype, device=device)
+            in_dt = tl_dtype(in_dtype)
+            _norm_stage1_kernel[(len(work), g)](
                 meta,
+                partial,
+                ORD=ord_key,
+                INF_MODE=inf_mode,
+                IN_DT=in_dt,
+                G=g,
+                BLOCK=1024,
+            )
+            _norm_stage2_kernel[(len(work),)](
+                meta,
+                partial,
                 out,
                 ORD=ord_key,
                 ROOT=root,
                 INF_MODE=inf_mode,
-                IN_DT=tl_dtype(in_dtype),
-                OUT_DT=tl_dtype(in_dtype),
-                BLOCK=1024,
+                OUT_DT=in_dt,
+                G=g,
+                BLOCK_P=triton.next_power_of_2(g),
             )
+        else:
+            # Every entry is empty; the stage-two kernel would not be launched,
+            # so initialize the results instead of returning uninitialized memory.
+            out = torch.zeros(len(idxs), dtype=in_dtype, device=device)
+        # Same reason as in ``_foreach_max``: plain ``select`` avoids the
+        # Python-level ``unbind`` that FlagGems registers while gems are on.
         for slot, i in enumerate(idxs):
             results[i] = out[slot]
     return results  # type: ignore[return-value]
 
 
 def _finish_list(sums: List[torch.Tensor], ord_f: float) -> List[torch.Tensor]:
-    """The norm and its root are both applied inside :func:`_norm_kernel`."""
+    """The norm and its root are both applied inside the kernels."""
     return sums
 
 
@@ -221,6 +404,33 @@ def _foreach_norm(
     tensors = check_tensor_list(self)
     sums = _pow_sum_list(tensors, ord, dtype)
     return _finish_list(sums, float(ord))
+
+
+# ---------------------------------------------------------------------------
+# zero / zero_
+# ---------------------------------------------------------------------------
+
+
+@triton.jit
+def _zero_list_kernel(
+    meta_ptr,
+    IN_DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Zero every contiguous tensor of one group in a single launch.
+
+    ``meta_ptr`` layout, all int64: ``[pointers..., element counts...]``.  The
+    grid is ``(NT, max chunks)``: axis 0 selects the tensor, axis 1 the block
+    within it, exactly like the element-wise executor.  Programs past a
+    tensor's own element count are fully masked out.
+    """
+    t = tl.program_id(0)
+    out_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(IN_DT))
+    n_elements = tl.load(meta_ptr + tl.num_programs(0) + t)
+
+    idx = tl.program_id(1) * BLOCK + tl.arange(0, BLOCK)
+    mask = idx < n_elements
+    tl.store(out_ptr + idx, tl.zeros((BLOCK,), dtype=IN_DT), mask=mask)
 
 
 def _zero_one(t: torch.Tensor) -> None:
@@ -240,16 +450,53 @@ def _zero_one(t: torch.Tensor) -> None:
     t.copy_(staged)
 
 
+def _zero_list(tensors: List[torch.Tensor]) -> None:
+    """Zero a whole list in place; one launch per ``(device, dtype)`` group."""
+    groups: dict = {}
+    fallback: List[torch.Tensor] = []
+    for t in tensors:
+        if t.is_contiguous():
+            try:
+                tl_dtype(t.dtype)
+            except NotImplementedError:
+                # A dtype the Triton pointer cast cannot name (e.g. complex)
+                # keeps the per-tensor path rather than failing the list.
+                fallback.append(t)
+            else:
+                groups.setdefault((t.device, t.dtype), []).append(t)
+        else:
+            fallback.append(t)
+
+    for (device, dtype), work in groups.items():
+        numels = [w.numel() for w in work]
+        max_numel = max(numels)
+        if max_numel == 0:
+            continue
+        # Two dimensions cost nothing for a small list and keep the program
+        # count bounded when one tensor is much larger than its neighbours.
+        block = _pick_block(numels)
+        meta = torch.tensor(
+            [w.data_ptr() for w in work] + numels, dtype=torch.int64
+        ).to(device, non_blocking=True)
+        _zero_list_kernel[(len(work), triton.cdiv(max_numel, block))](
+            meta,
+            IN_DT=tl_dtype(dtype),
+            BLOCK=block,
+        )
+
+    for t in fallback:
+        _zero_one(t)
+
+
 def _foreach_zero_(self: Sequence[torch.Tensor]) -> None:
-    """Zero every tensor in place, reusing ``ops/zero.py``'s Triton kernel.
+    """Zero every tensor in place, one launch per dtype/device group.
 
     The schema returns ``()``; handing the list back would make the dispatcher
     reject the kernel.
     """
     logger.debug("GEMS _FOREACH_ZERO_")
     tensors = check_tensor_list(self)
-    for t in tensors:
-        _zero_one(t)
+    _zero_list(tensors)
     return None
 
 
@@ -261,8 +508,7 @@ def _foreach_zero(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     """
     logger.debug("GEMS _FOREACH_ZERO")
     tensors = check_tensor_list(self)
-    for t in tensors:
-        _zero_one(t)
+    _zero_list(tensors)
     return tensors
 
 
