@@ -97,6 +97,11 @@ _TLE_NARROW_ROW_BYTES = 2048
 # grid stays wide -- on a 1G-element f32 reduce, [4096, 262144] measured 3.78ms and
 # [262144, 4096] 2.46ms against aten's 2.36ms, i.e. the same bytes at 0.64x and 0.96x.
 _TLE_FLAT_COLS = 4096
+# fp16 has half the row bytes, so a wider COLS buys a longer YBLOCK without leaving
+# the core count behind: [2048, 8192] f16 measures 31.5us against 32.6us at
+# [4096, 4096] (stage 0 of a 16.8M flat reduce). bf16 has the same element size but
+# loses on the wider shape (30.1us against 29.3us), so keep this f16-only.
+_TLE_FLAT_COLS_F16 = 8192
 # What one program's loop finishes on its own. A [1, n] reduce leaves 63 of the 64
 # cores idle, so it is only worth it when staging would cost more than it saves: below
 # this, a stage plus its partial buffer plus a second launch is the slower half of a
@@ -243,6 +248,47 @@ def _tle_sum_row_kernel(
         acc = acc + tl.sum(tl.load(a_ptrs).to(ACC_DTYPE), axis=1)
     tl.store(c_ptrs, (acc * SCALE).to(OUT_DTYPE))
     tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+
+
+@triton.jit(
+    do_not_specialize=["n"],
+    do_not_specialize_on_alignment=["x_ptr", "out_ptr"],
+)
+def _tle_sum_small_kernel(
+    x_ptr,
+    out_ptr,
+    n,
+    BLOCK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+):
+    """Finish a flat reduce that is already down to <= 8192 elements.
+
+    A `[1, n]` row-reduce is a single program: 63 cores idle and one DMA loop for
+    what is at most 32 KB. On the benchmark shapes that last stage measured ~10 us
+    against aten's whole 7 us `sum.out` for a 64x64 input. A single pointer tile is
+    launch-bound instead: 5.5-6.1 us for n in 1024..8192 across f16/f32/bf16.
+
+    Masking is safe here: the file-level constraints put single-shot masked tiles
+    at <= 8192 lanes on the reliable side (and `tl.sum` is exact at that size).
+    """
+    offs = tl.arange(0, BLOCK)
+    mask = offs < n
+    v = tl.load(x_ptr + offs, mask=mask, other=0).to(ACC_DTYPE)
+    tl.store(out_ptr, tl.sum(v, axis=0).to(OUT_DTYPE))
+
+
+def _tle_sum_small(cur, out):
+    """Reduce `cur` (<= _TLE_FLAT_ONESHOT elements) into 0-d/(1,) `out`."""
+    n = cur.numel()
+    _tle_sum_small_kernel[(1,)](
+        cur,
+        out.view(-1),
+        n,
+        BLOCK=_npo2(n),
+        ACC_DTYPE=_TLE_ACC_DTYPE[cur.dtype],
+        OUT_DTYPE=_TLE_TL_DTYPE[out.dtype],
+    )
 
 
 def _tle_row_geom(M, N, itemsize):
@@ -418,9 +464,14 @@ def _tle_sum_flat(inp, out, acc_dtype):
             n = cur.numel()
             # Wide tiles while there is a lot left; once the tensor is within a couple of
             # tiles, narrow them so the grid still covers the cores.
+            base_cols = (
+                _TLE_FLAT_COLS_F16
+                if cur.dtype is torch.float16
+                else _TLE_FLAT_COLS
+            )
             cols = (
-                _TLE_FLAT_COLS
-                if n >= 2 * _TLE_FLAT_COLS
+                base_cols
+                if n >= 2 * base_cols
                 else max(2, _npo2(n) // _TLE_CORE_NUM)
             )
             rows = n // cols
@@ -441,9 +492,7 @@ def _tle_sum_flat(inp, out, acc_dtype):
             # A single element (or none) is a copy; `out` is 0-d or (1,).
             out.view(-1).copy_(cur.view(-1))
             return True
-        geom = _tle_row_geom(1, n, cur.element_size())
-        plan = _tle_row_plan(1, n, n, cur.dtype, out.dtype, geom)
-        _tle_row_reduce(cur.view(1, n), out.view(1), plan)
+        _tle_sum_small(cur, out)
     return True
 
 
