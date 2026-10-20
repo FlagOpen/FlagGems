@@ -3934,6 +3934,18 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_sparse_to_sparse_
+  description: |
+    Copy COO indices, values, and coalesced metadata into a sparse destination in place.
+  for:
+    - copy_sparse_to_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
@@ -5298,7 +5310,7 @@ ops:
     [B, bag_size] index matrix, returning a [B, D] tensor.
     '
   for:
-  - None
+  - GenerateEmbeddingSpMDM
   labels:
   - fused
   - Reduction
@@ -5306,6 +5318,8 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.5'
+  source:
+  - fbgemm
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -14446,6 +14460,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: new_zeros_with_same_feature_meta
+  description: |
+    Create zeros preserving the feature tensor dtype, device, strides, and storage offset.
+  for:
+    - _new_zeros_with_same_feature_meta
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: nextafter
   description: Return the next floating-point value after input towards other, elementwise.
   for:
