@@ -45,10 +45,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_ERFC" record under
-# the generic logger name (see tests/test_foreach_unary.py); this vendor
-# override emits the vendor-prefixed "GEMS_KUNLUNXIN _FOREACH_ERFC" instead.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # The unmasked fast path is only for the benchmark/real floating dtypes; fp64
 # device tensors silently degrade to fp32 on this backend anyway, and

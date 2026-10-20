@@ -44,9 +44,7 @@ from flag_gems.ops._foreach_binary import (
 )
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
-# Same logger as the generic implementation; the registration-liveness test
-# probes "GEMS _FOREACH_ADDCDIV" through the generic wrapper.
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 

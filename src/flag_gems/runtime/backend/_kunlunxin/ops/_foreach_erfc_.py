@@ -34,10 +34,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_ERFC_" record under
-# the generic logger name (see tests/test_foreach_unary.py); this vendor
-# override emits the vendor-prefixed "GEMS_KUNLUNXIN _FOREACH_ERFC_" instead.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 

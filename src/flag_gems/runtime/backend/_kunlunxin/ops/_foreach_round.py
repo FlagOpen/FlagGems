@@ -37,7 +37,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -131,7 +131,7 @@ def _try_fast(tensors):
 
 
 def _foreach_round(self):
-    logger.debug("GEMS _FOREACH_ROUND")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ROUND")
     tensors = check_tensor_list(self)
     outs = _try_fast(tensors)
     if outs is not None:
