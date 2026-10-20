@@ -48,7 +48,17 @@ def test_validate_sparse_coo_tensor_args(dtype, nnz, rank, coalesced):
 @pytest.mark.validate_sparse_coo_tensor_args
 @pytest.mark.underscore_validate_sparse_coo_tensor_args
 @pytest.mark.parametrize(
-    "case", ["bounds", "negative", "duplicate", "unsorted", "rank", "dtype", "layout"]
+    "case",
+    [
+        "bounds",
+        "negative",
+        "duplicate",
+        "unsorted",
+        "rank",
+        "dtype",
+        "layout",
+        "nnz_mismatch",
+    ],
 )
 def test_validate_sparse_coo_tensor_args_invalid(case):
     indices = torch.tensor([[0, 1], [0, 0]], device=flag_gems.device)
@@ -67,6 +77,8 @@ def test_validate_sparse_coo_tensor_args_invalid(case):
         indices = indices.to(torch.int32)
     elif case == "layout":
         indices = indices.to_sparse()
+    elif case == "nnz_mismatch":
+        indices = indices[:, :1]
     with pytest.raises(RuntimeError):
         torch.ops.aten._validate_sparse_coo_tensor_args.default(
             indices, values, (2, 2), True

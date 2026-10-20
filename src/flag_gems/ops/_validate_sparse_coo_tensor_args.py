@@ -180,6 +180,11 @@ def _validate_sparse_coo_tensor_args(
     if sparse_dim == 0 or nnz == 0:
         return None
 
+    if do_coalesced and nnz == 1:
+        raise RuntimeError(
+            "coalesced ordering cannot be reduced for a singleton index with multiple values"
+        )
+
     # ---- Layer 2: coordinate validation on the target device ----
     device = indices.device
     flag = torch.zeros(1, dtype=_INT32, device=device)
