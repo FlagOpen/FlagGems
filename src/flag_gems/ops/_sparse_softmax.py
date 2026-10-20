@@ -876,13 +876,10 @@ def _normalize_input(self, shape, out_dtype):
     indices = self._indices()
     if nnz == 0:
         raw = self._values()
-        if raw.dtype != out_dtype:
-            raw = raw.to(out_dtype)
+        raw = _triton_cast(raw, out_dtype)
         return indices, raw.contiguous(), 0, tuple(raw.shape[1:])
     if self.is_coalesced():
-        values = self.values()
-        if values.dtype != out_dtype:
-            values = values.to(out_dtype)
+        values = _triton_cast(self.values(), out_dtype)
         if not values.is_contiguous():
             values = values.contiguous()
         return indices, values, nnz, tuple(values.shape[1:])
@@ -1035,8 +1032,7 @@ def _sparse_softmax(self, dim, half_to_float=False, dtype=None, out=None):
 
     shape = self.shape
     indices, values, nnz, dense_shape = _normalize_input(self, shape, out_dtype)
-    if values.dtype != out_dtype:
-        values = values.to(out_dtype)
+    values = _triton_cast(values, out_dtype)
     cfg = _plan(shape, k, d, dense_shape, nnz, indices, out_dtype, group_bw)
     out_values = _SparseSoftmax.apply(values, cfg)
 

@@ -50,6 +50,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops._sparse_log_softmax import _seg_scan_kernel
+from flag_gems.ops.sort import sort
+
 logger = logging.getLogger(__name__)
 
 _BLOCK = 1024
@@ -212,46 +215,46 @@ def _ssb_hist(
 
 
 @triton.jit
-def _ssb_scan_slots(
-    cnt_ptr,
-    slot_ptr,
-    tot_ptr,
-    nkeys,
+def _ssb_key_kernel(
+    sidx_ptr,
+    key_ptr,
+    nnz,
+    sidx_s0,
+    sidx_s1,
+    SD: tl.constexpr,
+    SSTRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    prefix = tl.zeros([], tl.int32)
-    for start in range(0, nkeys, BLOCK):
-        idx = start + tl.arange(0, BLOCK)
-        m = idx < nkeys
-        c = tl.load(cnt_ptr + idx, mask=m, other=0)
-        valid = c > 0
-        v32 = valid.to(tl.int32)
-        local = tl.cumsum(v32, 0) - v32
-        slot = prefix + local
-        tl.store(slot_ptr + idx, tl.where(valid, slot.to(tl.int64), -1), mask=m)
-        prefix += tl.sum(v32, 0)
-    tl.store(tot_ptr, prefix)
+    """Pack each stored entry's sparse coordinates into a row-major key."""
+    pid = tl.program_id(0)
+    i = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    mask = i < nnz
+    key = tl.zeros([BLOCK], tl.int64)
+    for d in tl.static_range(SD):
+        v = tl.load(sidx_ptr + d * sidx_s0 + i * sidx_s1, mask=mask, other=0).to(
+            tl.int64
+        )
+        key += v * SSTRIDES[d]
+    tl.store(key_ptr + i, key, mask=mask)
 
 
 @triton.jit
-def _ssb_scatter(
-    slot_ptr,
+def _ssb_coords_kernel(
+    keys_ptr,
     out_ptr,
     nnz_out,
-    nkeys,
     SD: tl.constexpr,
     SIZES: tl.constexpr,
     SSTRIDES: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    k = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    m = k < nkeys
-    slot = tl.load(slot_ptr + k, mask=m, other=-1)
-    m2 = m & (slot >= 0) & (slot < nnz_out)
+    """Decompose each unique sparse key into its per-axis coordinates."""
+    u = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = u < nnz_out
+    key = tl.load(keys_ptr + u, mask=m, other=0)
     for d in tl.static_range(SD):
-        c = (k // SSTRIDES[d]) % SIZES[d]
-        tl.store(out_ptr + d * nnz_out + slot, c, mask=m2)
+        c = (key // SSTRIDES[d]) % SIZES[d]
+        tl.store(out_ptr + d * nnz_out + u, c, mask=m)
 
 
 # --------------------------------------------------------------------------- #
@@ -280,36 +283,49 @@ def _elem_strides(t):
 
 
 def _sparsify(k, sidx, sparse_sizes, device):
-    """Sorted-unique self columns over the k sparse axes, computed on device."""
-    nkeys = max(_prod(sparse_sizes), 1)
+    """Sorted-unique self columns over the k sparse axes, computed on device.
+
+    Entries are packed into row-major keys and compacted with the FlagGems
+    sort kernel plus the shared boundary scan; the unique keys are decomposed
+    back into coordinates, so the scratch memory is O(nnz) instead of the
+    coordinate space.
+    """
     nnz = int(sidx.shape[1])
     sstr = _rowmajor(sparse_sizes)
     s0, s1 = _elem_strides(sidx)
-    cnt = torch.zeros(nkeys, dtype=torch.int32, device=device)
-    slot = torch.empty(nkeys, dtype=torch.int64, device=device)
+    if k == 0 or nnz == 0:
+        return torch.empty((k, 0), dtype=torch.long, device=device), 0
+    keys = torch.empty(nnz, dtype=torch.int64, device=device)
+    _ssb_key_kernel[(triton.cdiv(nnz, _AUX_BLOCK),)](
+        sidx,
+        keys,
+        nnz,
+        s0,
+        s1,
+        SD=k,
+        SSTRIDES=tuple(sstr),
+        BLOCK=_AUX_BLOCK,
+        num_warps=_WARPS,
+    )
+    sorted_keys, _ = sort(keys)
+    slot_sorted = torch.empty(nnz, dtype=torch.int64, device=device)
     tot = torch.zeros(1, dtype=torch.int32, device=device)
-    if k > 0 and nnz > 0:
-        _ssb_hist[(triton.cdiv(nnz, _AUX_BLOCK),)](
-            sidx,
-            cnt,
-            nnz,
-            s0,
-            s1,
-            SD=k,
-            SSTRIDES=tuple(sstr),
-            BLOCK=_AUX_BLOCK,
-            num_warps=_WARPS,
-        )
-    _ssb_scan_slots[(1,)](cnt, slot, tot, nkeys, BLOCK=_AUX_BLOCK, num_warps=_WARPS)
+    _seg_scan_kernel[(1,)](sorted_keys, slot_sorted, keys, tot, nnz, BLOCK=_AUX_BLOCK)
     nnz_out = int(tot.item())
     if nnz_out == 0:
         return torch.empty((k, 0), dtype=torch.long, device=device), 0
+    first = torch.cat(
+        [
+            torch.ones(1, dtype=torch.bool, device=device),
+            sorted_keys[1:] != sorted_keys[:-1],
+        ]
+    )
+    unique_keys = sorted_keys[first]
     out_idx = torch.empty((k, nnz_out), dtype=torch.long, device=device)
-    _ssb_scatter[(triton.cdiv(nkeys, _AUX_BLOCK),)](
-        slot,
+    _ssb_coords_kernel[(triton.cdiv(nnz_out, _AUX_BLOCK),)](
+        unique_keys,
         out_idx,
         nnz_out,
-        nkeys,
         SD=k,
         SIZES=tuple(sparse_sizes),
         SSTRIDES=tuple(sstr),

@@ -423,7 +423,12 @@ def _sparse_log_softmax_backward_data(grad_output, output, dim, self_, out=None)
 
     o_vals = torch.empty((y._nnz(),) + tail, dtype=y.dtype, device=y.device)
     res = torch.sparse_coo_tensor(
-        y._indices().detach().clone(), o_vals, y.shape, device=y.device
+        y._indices().detach().clone(),
+        o_vals,
+        y.shape,
+        dtype=y.dtype,
+        device=y.device,
+        is_coalesced=True,
     )
     if y._nnz() > 0:
         y_idx = _flat(y._indices())
