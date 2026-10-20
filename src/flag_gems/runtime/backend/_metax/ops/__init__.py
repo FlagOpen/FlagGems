@@ -27,6 +27,7 @@ from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
+from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
@@ -93,8 +94,6 @@ from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
-from .scaled_grouped_mm_w8a16_fp8 import scaled_grouped_mm_w8a16_fp8
-from .scaled_grouped_mm_w8a16_int8 import scaled_grouped_mm_w8a16_int8
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
@@ -259,8 +258,7 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
-    "scaled_grouped_mm_w8a16_fp8",
-    "scaled_grouped_mm_w8a16_int8",
+    "grouped_mm_w8a8",
     "segment_reduce",
     "segment_reduce_out",
     "sigmoid",

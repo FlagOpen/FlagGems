@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Private MetaX implementation shared by the named FP8/INT8 entry points.
+"""MetaX W8A8 grouped GEMM with matching INT8 or E4M3 inputs.
 
 Offsets stay on the device. Small ragged-M workloads map CTAs directly to
 groups; other ragged M/N groups use a parallel prefix sum. Neither path uses
@@ -300,7 +300,7 @@ def _scaled_grouped_mm_kernel(
         tl.store(c_ptrs, value, (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size))
 
 
-def _scaled_grouped_mm_w8a16(
+def grouped_mm_w8a8(
     self: torch.Tensor,
     mat2: torch.Tensor,
     scale_a: torch.Tensor,
@@ -324,7 +324,7 @@ def _scaled_grouped_mm_w8a16(
     if not is_int8 and self.dtype not in _E4M3_DTYPES:
         raise TypeError("the quantized grouped GEMM requires INT8 or E4M3 inputs")
 
-    logger.debug("GEMS_METAX SCALED_GROUPED_MM_W8A16")
+    logger.debug("GEMS_METAX GROUPED_MM_W8A8")
     if scale_result is not None:
         raise RuntimeError("scale_result is not supported for quantized grouped GEMM")
     output_dtype = torch.bfloat16 if out_dtype is None else out_dtype

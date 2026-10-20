@@ -16421,30 +16421,13 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
-- id: scaled_grouped_mm_w8a16_fp8
+- id: grouped_mm_w8a8
   description: |
-    MetaX grouped E4M3FN/FNUZ matrix multiplication with FP32 row/column
-    scales and floating output. The w8a16 API name retains the existing
-    double-8-bit input contract: both operands have the same FP8 dtype,
-    with BF16 default output and optional FP16 or FP32 output.
+    MetaX grouped matrix multiplication with matching signed INT8 or E4M3FN/FNUZ
+    operands, FP32 row/column scales, optional bias and floating output.
+    Output defaults to BF16; FP16 and FP32 are also supported.
   for:
-  - scaled_grouped_mm_w8a16_fp8
-  labels:
-  - non-aten
-  - MoE
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5.0'
-- id: scaled_grouped_mm_w8a16_int8
-  description: |
-    MetaX grouped signed INT8 matrix multiplication with FP32 row/column
-    scales and floating output. The w8a16 API name retains the existing
-    double-8-bit input contract: both operands are INT8, with INT32 dot
-    accumulation and BF16 default output (FP16 and FP32 are also supported).
-  for:
-  - scaled_grouped_mm_w8a16_int8
+  - grouped_mm_w8a8
   labels:
   - non-aten
   - MoE

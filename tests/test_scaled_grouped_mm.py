@@ -50,11 +50,7 @@ def _generic_operator():
 def _quantized_operator(dtype: torch.dtype, entrypoint: str = "named"):
     if entrypoint == "generic":
         return _generic_operator()
-    name = (
-        "scaled_grouped_mm_w8a16_int8"
-        if dtype == torch.int8
-        else "scaled_grouped_mm_w8a16_fp8"
-    )
+    name = "grouped_mm_w8a8"
     if not hasattr(flag_gems, name):
         if flag_gems.vendor_name == "metax":
             pytest.fail(f"MetaX must export flag_gems.{name}")
@@ -300,7 +296,7 @@ def test_scaled_grouped_mm(case_name, dtype, use_bias):
 
 
 @pytest.mark.scaled_grouped_mm
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("entrypoint", ["generic", "named"])
 @pytest.mark.parametrize("dtype", _float8_dtypes(), ids=str)
 @pytest.mark.parametrize(
@@ -352,7 +348,7 @@ def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype, entrypoint
 
 
 @pytest.mark.scaled_grouped_mm
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize(
     "dtype,entrypoint",
     [(dtype, "generic") for dtype in _float8_dtypes()]
@@ -381,8 +377,7 @@ def test_scaled_grouped_mm_fp8_encodings(dtype, entrypoint):
 
 
 @pytest.mark.scaled_grouped_mm
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize(
     "dtype,entrypoint",
     [(torch.float16, "generic")]
@@ -576,7 +571,7 @@ def _assert_quantized_accuracy(
     torch.testing.assert_close(result.cpu(), ref, rtol=0, atol=0)
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying", "batch"])
 @pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
 @pytest.mark.parametrize("strided", [False, True])
@@ -600,7 +595,7 @@ def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided):
     )
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
 @pytest.mark.parametrize(
     "case_name,out_dtype,a_layout,b_layout",
@@ -618,8 +613,7 @@ def test_scaled_grouped_mm_fp8_group_addressing(
     _assert_quantized_accuracy(cpu_inputs, out_dtype, a_layout, b_layout)
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying"])
 def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype):
@@ -627,8 +621,7 @@ def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype):
     _assert_quantized_accuracy(cpu_inputs, torch.float32)
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize(
     "case_name,zero_axis",
@@ -645,8 +638,7 @@ def test_scaled_grouped_mm_quantized_zero_extents(case_name, zero_axis, dtype):
     _assert_quantized_accuracy(cpu_inputs, torch.float32)
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize(
     "lengths,n,k",
@@ -689,7 +681,7 @@ def test_scaled_grouped_mm_quantized_skewed_ragged_tiles(dtype, lengths, n, k):
     )
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
 def test_scaled_grouped_mm_fp8_nan(dtype):
     operator = _quantized_operator(dtype)
@@ -707,7 +699,7 @@ def test_scaled_grouped_mm_fp8_nan(dtype):
     torch.testing.assert_close(result, expected, rtol=0, atol=0, equal_nan=True)
 
 
-@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize(
     "n,k",
     [(512, 512), (1024, 1024), (256, 513), (1025, 1025)],
