@@ -183,6 +183,7 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          XPU_EVENT_KL3_ENABLE: "1"
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
 
