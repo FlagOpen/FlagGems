@@ -37,6 +37,14 @@ _LU_BATCH_MAX_MN = 1024
 
 if _HAS_TLE:
     try:
+        # Payload ABI, both entries:
+        #   lu(m, n) fp32 row-major, factorized in place (LAPACK getrf layout:
+        #   unit-diagonal L below, U on and above the diagonal);
+        #   pivots(k) int32, written 1-BASED -- the same index space as the
+        #   pointer path's `tl.store(PIVOTS + ..., row + 1)` and as
+        #   torch.linalg.lu_factor, so `lu_unpack` consumes either one
+        #   unchanged. Partial pivoting is always on (pivot=False is rejected
+        #   before either payload is reached).
         _LU_SMALL_OBJ = os.path.join(
             os.path.dirname(_HERE), "payload", "obj", "lu_small.o"
         )
@@ -148,7 +156,16 @@ def _lu_finish_pivot_kernel(
 
 @triton.jit
 def _lu_swap_rows_kernel(
-    LU, U_SCRATCH, PIVOTS, M, N, K, J, BLOCKS, BLOCK_N: tl.constexpr
+    LU,
+    U_SCRATCH,
+    PIVOTS,
+    M,
+    N,
+    K,
+    J,
+    BLOCKS,
+    BLOCK_N: tl.constexpr,
+    WRITE_SCRATCH: tl.constexpr,
 ):
     pid = tl.program_id(0)
     batch = pid // BLOCKS
@@ -160,11 +177,24 @@ def _lu_swap_rows_kernel(
     pivot = tl.load(base + pivot_row * N + columns, mask=columns < N, other=0.0)
     tl.store(base + J * N + columns, pivot, mask=columns < N)
     tl.store(base + pivot_row * N + columns, current, mask=columns < N)
-    tl.store(U_SCRATCH + batch * N + columns, pivot, mask=columns < N)
+    # The pivot row / scaled column are only republished for the tle trailing
+    # update, which reads them from LM; on the pointer path nothing reads them,
+    # so the store is compiled out instead of costing GM traffic per step.
+    if WRITE_SCRATCH:
+        tl.store(U_SCRATCH + batch * N + columns, pivot, mask=columns < N)
 
 
 @triton.jit
-def _lu_scale_column_kernel(LU, L_SCRATCH, M, N, J, BLOCKS, BLOCK_M: tl.constexpr):
+def _lu_scale_column_kernel(
+    LU,
+    L_SCRATCH,
+    M,
+    N,
+    J,
+    BLOCKS,
+    BLOCK_M: tl.constexpr,
+    WRITE_SCRATCH: tl.constexpr,
+):
     pid = tl.program_id(0)
     batch = pid // BLOCKS
     block = pid % BLOCKS
@@ -174,11 +204,12 @@ def _lu_scale_column_kernel(LU, L_SCRATCH, M, N, J, BLOCKS, BLOCK_M: tl.constexp
     values = tl.load(base + rows * N + J, mask=rows < M, other=0.0)
     scaled = values / pivot
     tl.store(base + rows * N + J, scaled, mask=rows < M)
-    tl.store(
-        L_SCRATCH + batch * M + block * BLOCK_M + tl.arange(0, BLOCK_M),
-        scaled,
-        mask=rows < M,
-    )
+    if WRITE_SCRATCH:
+        tl.store(
+            L_SCRATCH + batch * M + block * BLOCK_M + tl.arange(0, BLOCK_M),
+            scaled,
+            mask=rows < M,
+        )
 
 
 @triton.jit
@@ -322,16 +353,19 @@ def _linalg_lu_factor(input, pivot):
         and batch == 1
         and m * n >= 262144
     )
-    l_scratch = torch.empty(
-        (batch, m), device=input.device, dtype=input_contiguous.dtype
-    )
-    u_scratch = torch.empty(
-        (batch, n), device=input.device, dtype=input_contiguous.dtype
-    )
     lu_desc = None
     l_desc = None
     u_desc = None
     if use_tle:
+        # Only the tle trailing update reads these; on the pointer path they are
+        # neither allocated nor written (the kernels take LU as a placeholder
+        # pointer and compile the store out via WRITE_SCRATCH=False).
+        l_scratch = torch.empty(
+            (batch, m), device=input.device, dtype=input_contiguous.dtype
+        )
+        u_scratch = torch.empty(
+            (batch, n), device=input.device, dtype=input_contiguous.dtype
+        )
         lu_desc = TensorDescriptor.from_tensor(
             lu.view(batch * m, n), block_shape=[64, 128]
         )
@@ -341,6 +375,9 @@ def _linalg_lu_factor(input, pivot):
         u_desc = TensorDescriptor.from_tensor(
             u_scratch.view(batch * n), block_shape=[128]
         )
+    else:
+        l_scratch = lu
+        u_scratch = lu
 
     with torch_device_fn.device(input.device):
         for j in range(k):
@@ -392,6 +429,7 @@ def _linalg_lu_factor(input, pivot):
                 j,
                 BLOCKS=swap_blocks,
                 BLOCK_N=64,
+                WRITE_SCRATCH=use_tle,
                 num_warps=4,
             )
             if j + 1 < m:
@@ -404,6 +442,7 @@ def _linalg_lu_factor(input, pivot):
                     j,
                     BLOCKS=scale_blocks,
                     BLOCK_M=64,
+                    WRITE_SCRATCH=use_tle,
                     num_warps=4,
                 )
             if j + 1 < m and j + 1 < n:
