@@ -50,6 +50,26 @@ _PROGRAMS_PER_SM = 12
 # One driver query per device is enough; the value is static for the process.
 _SM_COUNTS: Dict[Any, int] = {}
 
+# Largest per-tensor element count for which ``_foreach_max`` uses a single
+# launch (``G == 1``, stage one writes the final result itself) instead of the
+# two-stage split.  Below this size the serial walk in one program costs less
+# than the second launch and its allocation; the comparison is on the largest
+# tensor of the group, which bounds that serial walk.
+#
+# Measured on the 78-SM H20 (list of 16, 1-D tensors of the stated numel,
+# fp16/bf16/fp32, ``do_bench`` median, two rounds, medians across dtypes): the
+# two-stage path is flat at 91us from 16K to 1M elements, while the single
+# launch grows with the serial walk -- 50us at 65536 (1.8x faster), 68us at
+# 131072 (1.3x faster), 95us at 196608 (4% slower, inside the +-7% single-row
+# noise) and 124us at 262144 (1.4x slower).  The crossover therefore lies
+# between 128K and 192K elements, and the gate sits on the 2**17 rung: the
+# largest size with a win well outside that noise band.  This is one rung above
+# the Kunlunxin ``_pick_block`` ladder's 65536 step (which shrinks the block
+# size once the *multi-program* fast path reaches 64K elements): that path keeps
+# many programs busy, whereas ``G == 1`` leaves one program per tensor, so its
+# serial walk only becomes the bottleneck two doublings later.
+_SINGLE_LAUNCH_MAX_NUMEL = 131072
+
 
 def _sm_count(device: torch.device) -> int:
     """SM count for ``device``, cached to keep the query off the hot path."""
@@ -167,41 +187,59 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     for (device, dtype), idxs in groups.items():
         work = [prepared[i] for i in idxs]
         work_numels = [numels[i] for i in idxs]
-        g = _reduction_chunks(len(work), max(work_numels), device, 1024)
+        nt = len(work)
+        max_numel = max(work_numels)
         meta = torch.tensor(
             [w.data_ptr() for w in work] + work_numels,
             dtype=torch.int64,
         ).to(device, non_blocking=True)
-        # One allocation for the partials and the results: on a list this short
-        # the per-call Python work, not the GPU, is what the user waits for.
-        buf = torch.empty(len(work) * g + len(work), dtype=dtype, device=device)
-        partial = buf[: len(work) * g]
-        acc = buf[len(work) * g :]
         neg_inf = (
             float("-inf") if dtype.is_floating_point else float(torch.iinfo(dtype).min)
         )
         in_dt = tl_dtype(dtype)
-        _max_stage1_kernel[(len(work), g)](
-            meta,
-            partial,
-            IN_DT=in_dt,
-            NEG_INF=neg_inf,
-            G=g,
-            BLOCK=1024,
-        )
-        _max_stage2_kernel[(len(work),)](
-            partial,
-            acc,
-            IN_DT=in_dt,
-            NEG_INF=neg_inf,
-            G=g,
-            BLOCK_P=triton.next_power_of_2(g),
-        )
+        if max_numel <= _SINGLE_LAUNCH_MAX_NUMEL:
+            # ``G == 1`` makes the chunk the whole tensor, so stage one's
+            # ``part_ptr[t * G + g]`` is ``out_ptr[t]``: the partial buffer *is*
+            # the result buffer (same dtype), and no second launch is needed.
+            g = 1
+            out = torch.empty(nt, dtype=dtype, device=device)
+            _max_stage1_kernel[(nt, g)](
+                meta,
+                out,
+                IN_DT=in_dt,
+                NEG_INF=neg_inf,
+                G=g,
+                BLOCK=1024,
+            )
+        else:
+            g = _reduction_chunks(nt, max_numel, device, 1024)
+            # One allocation for the partials and the results: on a list this
+            # short the per-call Python work, not the GPU, is what the user
+            # waits for.
+            buf = torch.empty(nt * g + nt, dtype=dtype, device=device)
+            partial = buf[: nt * g]
+            out = buf[nt * g :]
+            _max_stage1_kernel[(nt, g)](
+                meta,
+                partial,
+                IN_DT=in_dt,
+                NEG_INF=neg_inf,
+                G=g,
+                BLOCK=1024,
+            )
+            _max_stage2_kernel[(nt,)](
+                partial,
+                out,
+                IN_DT=in_dt,
+                NEG_INF=neg_inf,
+                G=g,
+                BLOCK_P=triton.next_power_of_2(g),
+            )
         # ``unbind`` is registered by FlagGems itself, so inside ``use_gems`` it
         # costs a Python-level implementation (~7us more than the C++ select
-        # this loop compiles to).  ``acc[slot]`` stays on the stock kernel.
+        # this loop compiles to).  ``out[slot]`` stays on the stock kernel.
         for slot, i in enumerate(idxs):
-            results[i] = acc[slot]
+            results[i] = out[slot]
     return results  # type: ignore[return-value]
 
 
