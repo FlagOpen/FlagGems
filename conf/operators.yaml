@@ -13543,6 +13543,24 @@ ops:
   - MoE
   stages:
   - stable: '4.2'
+- id: moveaxis
+  description: 'Returns a view of the original tensor with the axes in `source` moved
+    to the positions in `destination`.
+
+    This is a zero-copy view operation that only reorders sizes and strides, sharing
+    storage with the input.
+
+    '
+  for:
+  - moveaxis.int
+  - moveaxis.intlist
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: mse_loss
   description: Compute the element-wise mean squared error, with optional weighting.
   for:
