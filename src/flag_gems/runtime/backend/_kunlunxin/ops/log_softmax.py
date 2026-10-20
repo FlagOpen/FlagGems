@@ -73,10 +73,11 @@ _TLE_NARROW_ROW_BYTES = 2048
 #     M, which already measures fine for (100, 65536) / (64, 65536).
 _TLE_MIN_N = 8192
 _TLE_MIN_M = 1024
-# FG_LOGSOFTMAX_MIN_N_FUSED overrides the medium-N gate for A/B routing
-# comparisons (e.g. "8192" reproduces the pre-medium-N behavior where only
-# N >= 8192 rows took the fused kernel). Production default is 256.
-_TLE_MIN_N_FUSED = int(os.environ.get("FG_LOGSOFTMAX_MIN_N_FUSED", "256"))
+# Lower bound of the medium-N gate: below this the tle row tiling loses to the
+# pointer path. Was an env knob for A/B routing comparisons; a module-scope
+# `os.environ` read is a trap (setting it after `import flag_gems` does nothing),
+# so the measured production value is inlined.
+_TLE_MIN_N_FUSED = 256
 
 _TLE_TL_DTYPE = {
     torch.float16: tl.float16,
@@ -325,7 +326,15 @@ def _tle_logsoftmax_fused_kernel(
         tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, c])
         x = tl.load(a0_ptrs).to(tl.float32)
         m_new = tl.maximum(m, tl.max(x, 1))
-        z = z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1)
+        # Lanes whose running max is still -inf (an all--inf row, or a row whose
+        # leading chunks are all -inf) would compute `m - m_new == nan` and
+        # poison z for the rest of the row; leave their accumulator alone. The
+        # condition is a [XBLOCK] vector, so the guard is per row, not per tile.
+        z = tl.where(
+            m_new == float("-inf"),
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
         m = m_new
     if NEED_ZERO:
         tl.store(
@@ -334,7 +343,11 @@ def _tle_logsoftmax_fused_kernel(
         tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, full_n])
         x = tl.load(a0_ptrs).to(tl.float32)
         m_new = tl.maximum(m, tl.max(x, 1))
-        z = z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1)
+        z = tl.where(
+            m_new == float("-inf"),
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
         m = m_new
     log_z = tl.log(z)
 
