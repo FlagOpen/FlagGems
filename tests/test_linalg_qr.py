@@ -371,6 +371,8 @@ def test_linalg_qr_empty(shape, mode):
     """Degenerate (zero-size) inputs return torch-compatible empty factors."""
     inp = torch.randn(shape, device=DEVICE)
 
+    # MUSA native QR still calls muSOLVER geqrf for empty inputs; that API
+    # rejects m=0 or n=0. Move the reference to CPU so LAPACK can produce it.
     ref_inp = inp.cpu() if DEVICE == "musa" else inp
     ref_Q, ref_R = torch.linalg.qr(ref_inp, mode=mode)
     res_Q, res_R = flag_gems.linalg_qr(inp, mode=mode)
