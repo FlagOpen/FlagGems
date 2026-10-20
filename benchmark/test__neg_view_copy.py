@@ -21,6 +21,9 @@ import flag_gems
 
 from . import base, consts
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_neg_view_copy
+
 # _neg_view_copy materializes a fresh copy (negated values) of the input, so
 # each case needs input + output (2x one tensor's memory per case). The default
 # shape set contains 1G-element core shapes whose fp32 input+output would need
@@ -68,6 +71,7 @@ def test__neg_view_copy():
 
 
 @pytest.mark.neg_view_copy_out
+@pytest.mark.underscore_neg_view_copy
 def test__neg_view_copy_out():
     bench = NegViewCopyOutBenchmark(
         op_name="_neg_view_copy",

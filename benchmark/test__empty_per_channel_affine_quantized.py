@@ -21,6 +21,9 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_empty_per_channel_affine_quantized
+
 # aten::_empty_per_channel_affine_quantized is a quantized-tensor factory whose
 # cost is dominated by storage allocation. The default shape set contains a
 # 1-B-element 1-D tensor whose allocation would dominate the measurement, so the
@@ -124,6 +127,7 @@ def test__empty_per_channel_affine_quantized():
 
 
 @pytest.mark.empty_per_channel_affine_quantized_out
+@pytest.mark.underscore_empty_per_channel_affine_quantized
 def test__empty_per_channel_affine_quantized_out():
     bench = EmptyPerChannelAffineQuantizedBenchmark(
         op_name="_empty_per_channel_affine_quantized",

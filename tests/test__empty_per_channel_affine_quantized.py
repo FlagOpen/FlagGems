@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_empty_per_channel_affine_quantized
+
 # Allocate uninitialized quantized storage; compare layout and per-channel qparams.
 QINT_DTYPES = [torch.qint8, torch.quint8, torch.qint32, torch.quint4x2, torch.quint2x4]
 

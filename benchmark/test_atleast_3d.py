@@ -20,6 +20,9 @@ import flag_gems
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_3d
+
 # aten::atleast_3d is a pure view/identity op (0-dim -> (1, 1, 1), 1-dim ->
 # (1, N, 1), 2-dim -> (M, N, 1); ndim >= 3 returned unchanged) with two
 # overloads (Tensor and Tensor[]). No public Benchmark family models a view
@@ -92,8 +95,8 @@ def _sequence_build_inputs_fn(plan, dtype, device):
     return inp, {}
 
 
-@pytest.mark.atleast_3d
 @pytest.mark.atleast_3d_benchmark
+@pytest.mark.atleast_3d
 def test_atleast_3d():
     bench = Atleast3DBenchmark(
         op_name="atleast_3d",
@@ -108,6 +111,7 @@ def test_atleast_3d():
 
 @pytest.mark.atleast_3d_sequence
 @pytest.mark.atleast_3d_benchmark
+@pytest.mark.atleast_3d
 def test_atleast_3d_sequence():
     bench = Atleast3DBenchmark(
         op_name="atleast_3d",

@@ -20,6 +20,9 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_efficientzerotensor
+
 # aten::_efficientzerotensor is a factory that allocates a real, zero-filled
 # tensor on the active device. The default shape set contains a 1-B-element
 # 1-D tensor whose cost would be dominated by allocation rather than by the
@@ -85,6 +88,7 @@ def test__efficientzerotensor():
 
 
 @pytest.mark.efficientzerotensor_out
+@pytest.mark.underscore_efficientzerotensor
 def test__efficientzerotensor_out():
     bench = EfficientZeroTensorBenchmark(
         op_name="_efficientzerotensor",

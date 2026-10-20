@@ -28,6 +28,9 @@ import flag_gems
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_2d
+
 # View op: the benchmark allocates the full input, so keep shapes bounded while
 # still covering the dim boundary (0-dim / 1-dim) and regular ranks.
 _ATLEAST_2D_SHAPES = [
@@ -107,6 +110,7 @@ def test_atleast_2d():
 
 
 @pytest.mark.atleast_2d_sequence
+@pytest.mark.atleast_2d
 def test_atleast_2d_sequence():
     bench = Atleast2DBenchmark(
         op_name="atleast_2d",

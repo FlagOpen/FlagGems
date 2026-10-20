@@ -23,6 +23,9 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.sparse_coo_tensor
+
 # Exercise explicit/inferred size, size-only and size_out COO construction.
 # Preserve the stored entries and coalesced flag; pass dtype/device explicitly.
 _COO_DTYPES = tu.REQUIRED_DTYPES + [torch.float64, torch.int16, torch.bool]

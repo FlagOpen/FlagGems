@@ -22,6 +22,9 @@ import flag_gems
 from . import conftest as cfg
 from . import test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.underscore_make_per_tensor_quantized_tensor
+
 # Copy integer storage and attach per-tensor scale/zero-point metadata.
 _MAKE_PERTENSOR_INPUT_DTYPES = [torch.int8, torch.uint8, torch.int32]
 
