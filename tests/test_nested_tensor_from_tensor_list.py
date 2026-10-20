@@ -73,12 +73,12 @@ def test_nested_tensor_from_tensor_list(shapes, dtype):
 @pytest.mark.nested_tensor_from_tensor_list
 def test_dispatch_reaches_gems_impl():
     # Calling the wrapper directly only proves the wrapper runs; this case
-    # proves the dispatcher path: with FlagGems enabled (use_gems()), calling
-    # the aten operator must invoke the registered Gems implementation. The
-    # Gems impl the registrar binds is read from _FULL_CONFIG at registration
-    # time, so the structural proof swaps the config entry for a spy and
-    # asserts the aten call lands there (a plain fallback to aten would skip
-    # the spy entirely).
+    # proves the dispatcher path. Enabling the operator via
+    # ``only_enable`` (the sanctioned registration API; ``use_gems()`` is
+    # forbidden in tests) registers the impl that the registrar resolves
+    # through ``FULL_CONFIG_BY_FUNC``. The structural proof swaps that
+    # mapping's entry for a spy and asserts the aten call lands there — a
+    # plain fallback to aten would skip the spy entirely.
     calls = {"count": 0}
     real_impl = flag_gems._nested_tensor_from_tensor_list
 
@@ -86,17 +86,17 @@ def test_dispatch_reaches_gems_impl():
         calls["count"] += 1
         return real_impl(*args, **kwargs)
 
-    new_entries = [
-        (entry[0], spy) if entry[0] == "_nested_tensor_from_tensor_list" else entry
-        for entry in flag_gems._FULL_CONFIG
+    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
+    mapping["_nested_tensor_from_tensor_list"] = [
+        ("_nested_tensor_from_tensor_list", spy)
     ]
     tensor_list = [
         torch.randn(3, 8, device=flag_gems.device),
         torch.randn(2, 8, device=flag_gems.device),
     ]
-    with unittest.mock.patch.object(flag_gems, "_FULL_CONFIG", tuple(new_entries)):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten._nested_tensor_from_tensor_list(tensor_list)
+    with unittest.mock.patch.object(flag_gems, "FULL_CONFIG_BY_FUNC", mapping):
+        flag_gems.only_enable(include=["_nested_tensor_from_tensor_list"])
+        res_out = torch.ops.aten._nested_tensor_from_tensor_list(tensor_list)
 
     assert calls["count"] == 1, "aten dispatch did not reach the Gems implementation"
     assert res_out.is_nested
