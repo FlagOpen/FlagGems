@@ -1,4 +1,5 @@
 import math
+import os
 
 import pytest
 import torch
@@ -75,6 +76,10 @@ def test_polygamma():
         gems_op=(lambda a: flag_gems.polygamma(1, a)) if _DEVICE_REF else None,
         dtypes=consts.FLOAT_DTYPES,
     )
+    # When the number of logical cores exceeds the number of physical cores (65,535),
+    # the compiler automatically adjusts the logical core count to match the physical core count,
+    # thereby reducing scheduling overhead.
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
 
 
@@ -89,6 +94,7 @@ def test_polygamma_inplace():
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
 
 
@@ -102,4 +108,5 @@ def test_polygamma_out():
         ),
         dtypes=consts.FLOAT_DTYPES,
     )
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
