@@ -36,6 +36,7 @@ class CdistBackwardBenchmark(base.Benchmark):
             x1 = torch.randn(shape, dtype=cur_dtype, device=self.device)
             x2 = torch.randn(batch, n2, dim, dtype=cur_dtype, device=self.device)
             if flag_gems.vendor_name == "kunlunxin":
+                # XPU native cdist only supports p=1; use gems cdist (p=2) instead
                 cdist = flag_gems.cdist(x1, x2, p=2.0)
             else:
                 cdist = torch.cdist(x1, x2, p=2.0)
