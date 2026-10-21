@@ -36,6 +36,92 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: flag_gems.runtime.device.support_bf16,
     torch.float64: flag_gems.runtime.device.support_fp64,
@@ -203,7 +289,7 @@ def _make_coo(
         _distinct_flat(math.prod(sparse_shape), nnz, flag_gems.device), sparse_shape
     )
     src = _index_view(coords, index_layout)
-    values = tu.make_input(dtype, (coords.shape[1],) + tuple(dense_shape), value_range)
+    values = _make_input(dtype, (coords.shape[1],) + tuple(dense_shape), value_range)
     return _wrap_coo(sparse_shape, src, values), src
 
 
@@ -293,7 +379,7 @@ def test_indices_result_aliases_index_storage(case):
 @pytest.mark.indices
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_indices_special_values(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario)
+    values = _make_special_input(dtype, scenario)
     # One coordinate per stored value: NaN/Inf live only in the values, so they
     # must never leak into the returned coordinates.
     src = torch.arange(
@@ -341,7 +427,7 @@ def test_indices_rejects_uncoalesced():
 
 @pytest.mark.indices
 def test_indices_rejects_strided_dense():
-    inp = tu.make_input(torch.float32, (4, 4), _VALUE_RANGE)
+    inp = _make_input(torch.float32, (4, 4), _VALUE_RANGE)
 
     with pytest.raises((RuntimeError, ValueError, TypeError)):
         flag_gems.indices(inp)
@@ -351,7 +437,7 @@ def test_indices_rejects_strided_dense():
 def test_indices_rejects_sparse_csr():
     crow = torch.tensor([0, 2, 4], dtype=torch.long, device=flag_gems.device)
     col = torch.tensor([0, 1, 2, 3], dtype=torch.long, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (4,), _VALUE_RANGE)
+    values = _make_input(torch.float32, (4,), _VALUE_RANGE)
     inp = torch.sparse_csr_tensor(crow, col, values, (2, 4), device=flag_gems.device)
 
     with pytest.raises((RuntimeError, ValueError, TypeError)):
