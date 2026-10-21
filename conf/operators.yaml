@@ -8943,6 +8943,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_backward_jvp
+  description: This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu_backward`.
+  for:
+  - glu_backward_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: glu_jvp
   description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
   for:
@@ -16446,6 +16457,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: resize_as_sparse_
+  description: |
+    Resize a sparse COO tensor in place to match the shape and sparse/dense dimensions of a COO or strided template, preserving its index and value buffers.
+  for:
+    - resize_as_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: resize_output
   description: 'Resizes tensor output storage and copies overlapping elements.
 
