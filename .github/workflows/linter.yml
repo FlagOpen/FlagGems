@@ -55,7 +55,7 @@ jobs:
     # from the runner's _actions cache before any checkout. ssh-key empty on
     # fork PRs -> SSH skipped, token HTTP used. The action also registers the
     # workspace as a safe git dir (needed by pre-commit under HOME=/github/home).
-    - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
+    - uses: flagos-ai/FlagOps/actions/robust-checkout@main
       with:
         ssh-key: ${{ secrets.CI_SSH_KEY }}
         # Each round is a connect probe (fast reject of a wedged link) then a

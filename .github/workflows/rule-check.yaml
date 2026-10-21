@@ -69,7 +69,7 @@ jobs:
       # action resolves from the runner's _actions cache before any checkout.
       # fetch-depth 0 for base...head diffs; ssh-key empty on fork PRs -> SSH
       # skipped, token HTTP used.
-      - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
+      - uses: flagos-ai/FlagOps/actions/robust-checkout@main
         with:
           fetch-depth: 0
           ssh-key: ${{ secrets.CI_SSH_KEY }}
