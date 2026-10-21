@@ -23,6 +23,63 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _numeric_values(inp):
+    # Copy bytes before decoding: device FP8 casts and complex comparison may
+    # be unavailable. Rebuild the logical view and its lazy flags on CPU.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    # Decode before resolving lazy negative bits; CPU FP8 neg is unavailable.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device=None):
+    # Check the original ABI before observing values on CPU. Layout and alias
+    # assertions at each call site still inspect the original device tensors.
+    if required_device is None:
+        required_device = _expected_device()
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        # Kunlunxin typed transfer/comparison loses the lazy negative flag.
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
 
 def _to_reference(inp):
     # Copy storage before rebuilding the view: device transfers can compact
@@ -40,18 +97,10 @@ def _to_reference(inp):
     return reference.requires_grad_(inp.requires_grad)
 
 
-def _assert_result_equal(result, reference):
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
-        # Observe complex values on CPU; keep the original tensor contract checked.
-        device = torch.device(flag_gems.device)
-        if device.index is None:
-            device = torch.device(device.type, torch.npu.current_device())
-        assert result.device == device
-        assert result.dtype == reference.dtype
-        assert result.layout == reference.layout
-        assert result.shape == reference.shape
-        result, reference = result.cpu(), reference.cpu()
-    tu.assert_result_equal(result, reference)
+def _ones_like(inp):
+    if flag_gems.vendor_name == "kunlunxin" and inp.is_complex():
+        return torch.ones(inp.shape, dtype=inp.dtype, device="cpu").to(inp.device)
+    return torch.ones_like(inp)
 
 
 # aten::view_as(self, other) is the view-only sibling of reshape_as: the result
@@ -167,13 +216,20 @@ def _assert_view(res_out, ref_out, inp):
 
 
 def _assert_operands_unchanged(
-    inp, inp_before, other, other_before, base=None, base_before=None
+    inp,
+    inp_before,
+    other,
+    other_before,
+    base=None,
+    base_before=None,
+    *,
+    other_device=None,
 ):
     # Building a view never writes to its operands. Snapshots come from
     # _to_reference so they retain view metadata on the reference device, the
     # placement the shared accuracy helpers expect for the reference operand.
     _assert_result_equal(inp, inp_before)
-    _assert_result_equal(other, other_before)
+    _assert_result_equal(other, other_before, required_device=other_device)
     for operand, before in ((inp, inp_before), (other, other_before)):
         assert operand.shape == before.shape
         assert operand.stride() == before.stride()
@@ -457,6 +513,7 @@ def test_view_as_other_operand(shape, dtype, other_shape, other_dtype, other_kin
         # Only the shape of 'other' is read, so its device must not matter
         # either.
         other = other.cpu()
+    other_device = other.device
     inp_before = _to_reference(inp.detach())
     other_before = _to_reference(other.detach())
 
@@ -468,7 +525,9 @@ def test_view_as_other_operand(shape, dtype, other_shape, other_dtype, other_kin
     # instead of taking its shape.
     _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp)
-    _assert_operands_unchanged(inp, inp_before, other, other_before)
+    _assert_operands_unchanged(
+        inp, inp_before, other, other_before, other_device=other_device
+    )
 
 
 @pytest.mark.view_as
@@ -635,7 +694,7 @@ def test_view_as_other_has_no_gradient(dtype):
     _assert_result_equal(other, other_before)
 
     res_other_grad = torch.autograd.grad(
-        res_out, other, grad_outputs=torch.ones_like(res_out), allow_unused=True
+        res_out, other, grad_outputs=_ones_like(res_out), allow_unused=True
     )[0]
 
     # 'other' supplies shape only, so it stays out of the autograd graph.
@@ -683,6 +742,10 @@ def test_view_as_numel_mismatch(shape, target):
 
 
 @pytest.mark.view_as
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "metax",
+    reason="MetaX native view_as copies these unviewable layouts instead of rejecting them",
+)
 @pytest.mark.parametrize("storage,layout,expand,target", _NON_VIEWABLE_ROWS)
 def test_view_as_non_viewable_target(storage, layout, expand, target):
     # These targets share the element count of the operand but are not

@@ -20,6 +20,130 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _numeric_values(inp):
+    # Copy bytes before decoding: device FP8 casts and complex comparison may
+    # be unavailable. Rebuild the logical view and its lazy flags on CPU.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    # Decode before resolving lazy negative bits; CPU FP8 neg is unavailable.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device=None):
+    # Check the original ABI before observing values on CPU. Layout and alias
+    # assertions at each call site still inspect the original device tensors.
+    if required_device is None:
+        required_device = _expected_device()
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        # Kunlunxin typed transfer/comparison loses the lazy negative flag.
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
+def _to_reference(inp):
+    if not utils.TO_CPU:
+        return tu.to_reference(inp)
+    # Transfer storage before rebuilding the view. A typed .cpu() can compact
+    # strides, reset a slice offset, or materialize the lazy conjugate bit.
+    storage = inp.untyped_storage().cpu().clone()
+    reference = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        storage, inp.storage_offset(), inp.shape, inp.stride()
+    )
+    if inp.is_conj():
+        reference = reference.conj()
+    if inp.is_neg():
+        reference = torch._neg_view(reference)
+    return reference.requires_grad_(inp.requires_grad)
+
+
+def _fill_one(inp):
+    if (
+        (inp.device.type == "cpu" and inp.dtype in _FP8_DTYPES)
+        or (flag_gems.vendor_name == "ascend" and inp.dtype in _FP8_DTYPES)
+        or (flag_gems.vendor_name == "kunlunxin" and inp.is_complex())
+    ):
+        # Keep the write through the returned alias. Only its constant source
+        # is encoded on CPU when the local fill kernel is unavailable.
+        source = torch.ones(inp.shape, dtype=torch.float32, device="cpu")
+        inp.copy_(source.to(inp.dtype).to(inp.device))
+    else:
+        inp.fill_(1)
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: utils.bf16_is_supported,
     torch.float64: utils.fp64_is_supported,
@@ -125,15 +249,15 @@ def _assert_view_metadata(res_out, ref_out, inp, ref_inp):
 
 def _make_layout_input(kind, dtype):
     if kind == "slice_with_offset":
-        return tu.make_input(dtype, (5, 1, 6), _RANGE)[2:4]
+        return _make_input(dtype, (5, 1, 6), _RANGE)[2:4]
     if kind == "expanded":
-        return tu.make_input(dtype, (3, 1, 1), _RANGE).expand(3, 1, 5)
+        return _make_input(dtype, (3, 1, 1), _RANGE).expand(3, 1, 5)
     if kind == "permuted":
-        return tu.make_input(dtype, (2, 1, 3, 4), _RANGE).permute(2, 0, 1, 3)
+        return _make_input(dtype, (2, 1, 3, 4), _RANGE).permute(2, 0, 1, 3)
     if kind == "transposed":
-        return tu.make_input(dtype, (1, 3, 4), _RANGE).transpose(0, 1)
+        return _make_input(dtype, (1, 3, 4), _RANGE).transpose(0, 1)
     if kind == "transposed_conj":
-        return tu.make_input(dtype, (1, 3, 4), _RANGE).transpose(0, 1).conj()
+        return _make_input(dtype, (1, 3, 4), _RANGE).transpose(0, 1).conj()
     raise AssertionError("unknown layout kind: {}".format(kind))
 
 
@@ -153,13 +277,13 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_all_size_one_dims(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -167,13 +291,13 @@ def test_squeeze_all_size_one_dims(shape, value_range, dtype):
 @pytest.mark.parametrize("shape,dim", _DIM_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_dim(shape, dim, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp, dim)
     res_out = flag_gems.squeeze(inp, dim)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -181,13 +305,13 @@ def test_squeeze_dim(shape, dim, value_range, dtype):
 @pytest.mark.parametrize("shape,dims", _DIMS_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_dims(shape, dims, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp, dims)
     res_out = flag_gems.squeeze(inp, dims)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -196,24 +320,24 @@ def test_squeeze_dims(shape, dims, value_range, dtype):
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 def test_squeeze_noncontiguous_layout(kind, dtype):
     inp = _make_layout_input(kind, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
 @pytest.mark.squeeze
 def test_squeeze_keeps_conjugate_bit():
-    inp = tu.make_input(torch.complex64, (2, 1, 3), _RANGE).conj()
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.complex64, (2, 1, 3), _RANGE).conj()
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.is_conj()
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
@@ -221,19 +345,19 @@ def test_squeeze_keeps_conjugate_bit():
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 def test_squeeze_result_writes_through_to_input(dtype):
-    inp = tu.make_input(dtype, (2, 1, 3), _RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, (2, 1, 3), _RANGE)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
-    tu.assert_result_equal(res_out, ref_out)
-    res_out.fill_(1)
-    ref_out.fill_(1)
+    _assert_result_equal(res_out, ref_out)
+    _fill_one(res_out)
+    _fill_one(ref_out)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.squeeze
@@ -247,8 +371,8 @@ def test_squeeze_result_writes_through_to_input(dtype):
     ],
 )
 def test_squeeze_backward(shape, dim, dtype):
-    inp = tu.make_input(dtype, shape, _RANGE).requires_grad_(True)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, _RANGE).requires_grad_(True)
+    ref_inp = _to_reference(inp)
 
     if dim is None:
         res_out = flag_gems.squeeze(inp)
@@ -257,36 +381,36 @@ def test_squeeze_backward(shape, dim, dtype):
         res_out = flag_gems.squeeze(inp, dim)
         ref_out = torch.ops.aten.squeeze(ref_inp, dim)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     # grad_outputs must match the squeezed shape, not the input shape.
-    upstream = tu.make_input(dtype, tuple(res_out.shape), _RANGE)
+    upstream = _make_input(dtype, tuple(res_out.shape), _RANGE)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
     (ref_grad,) = torch.autograd.grad(
-        ref_out, ref_inp, grad_outputs=tu.to_reference(upstream)
+        ref_out, ref_inp, grad_outputs=_to_reference(upstream)
     )
 
     assert tuple(res_grad.shape) == tuple(inp.shape)
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_squeeze_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).reshape(5, 1, 1)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario).reshape(5, 1, 1)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dim", _NEGATIVE_DIM_CASES)
 def test_squeeze_out_of_range_dim_raises(shape, dim):
-    inp = tu.make_input(torch.float32, shape, _RANGE)
+    inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
         flag_gems.squeeze(inp, dim)
@@ -295,7 +419,7 @@ def test_squeeze_out_of_range_dim_raises(shape, dim):
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dims", _NEGATIVE_DIMS_CASES)
 def test_squeeze_out_of_range_dims_raises(shape, dims):
-    inp = tu.make_input(torch.float32, shape, _RANGE)
+    inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
         flag_gems.squeeze(inp, dims)
@@ -304,7 +428,7 @@ def test_squeeze_out_of_range_dims_raises(shape, dims):
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dims", [[1, 1], [1, -2], [0, 0, 1]])
 def test_squeeze_duplicate_dims_raises(dims):
-    inp = tu.make_input(torch.float32, (6, 1, 8), _RANGE)
+    inp = _make_input(torch.float32, (6, 1, 8), _RANGE)
 
     with pytest.raises(RuntimeError):
         flag_gems.squeeze(inp, dims)
