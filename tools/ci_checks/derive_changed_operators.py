@@ -176,9 +176,19 @@ def resolve_multi_op_impl(filepath: str, all_operators: dict) -> list[str]:
     except OSError:
         return []
     stem = Path(filepath).stem
-    m = re.search(rf"from \.{re.escape(stem)} import \((.*?)\)", src, re.DOTALL)
+    # The ops ``__init__.py`` re-exports with absolute imports
+    # (``from flag_gems.ops.<stem> import ...``); match the relative form too
+    # so both styles resolve.
+    m = re.search(
+        rf"from (?:\.|flag_gems\.ops\.){re.escape(stem)} import \((.*?)\)",
+        src,
+        re.DOTALL,
+    )
     if m is None:
-        m = re.search(rf"from \.{re.escape(stem)} import ([^\n()]+)", src)
+        m = re.search(
+            rf"from (?:\.|flag_gems\.ops\.){re.escape(stem)} import ([^\n()]+)",
+            src,
+        )
     if m is None:
         return []
     ids = []
