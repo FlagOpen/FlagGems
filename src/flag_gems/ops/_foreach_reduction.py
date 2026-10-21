@@ -58,25 +58,36 @@ _PROGRAMS_PER_SM = 12
 # One driver query per device is enough; the value is static for the process.
 _SM_COUNTS: Dict[Any, int] = {}
 
+# Block size for the ``_foreach_max`` single launch.  ``G == 1`` leaves one
+# program per tensor -- sixteen CTAs on 78 SMs -- so what that launch costs is
+# the serial walk of ``numel / BLOCK`` blocks in the one program, and the block
+# is therefore the number of loads it keeps in flight.  With the old fixed
+# BLOCK=1024 that walk was 38.7us at 65536 elements against 26.8us for the
+# two-stage split, which is what held the gate at 2**14.  Measured on the 78-SM
+# H20 (list of 16, 1-D tensors, ``do_bench`` median; single BLOCK=16384 /
+# two-stage, us): 16384 8.9/9.0, 32768 11.2/9.7, 65536 15.8/11.0.  32768 is past
+# the sweet spot as a block (33.3us at 65536 elements, register pressure), so
+# 16384 is the largest rung, and it is capped at the tensor size so a short
+# tensor does not pay for lanes that only exit on the mask.
+_MAX_SINGLE_LAUNCH_BLOCK = 16384
+
 # Largest per-tensor element count for which ``_foreach_max`` uses a single
 # launch (``G == 1``, stage one writes the final result itself) instead of the
 # two-stage split.  Below this size the serial walk in one program costs less
 # than the second launch and its allocation; the comparison is on the largest
-# tensor of the group, which bounds that serial walk.
-#
-# Measured on the 78-SM H20 (list of 16, 1-D fp16/fp32 tensors of the stated
-# numel, ``do_bench`` median; single / two-stage, us): 1024 8.2/26.5, 4096
-# 10.0/27.3, 16384 14.9/27.2, 32768 23.3/26.4, 65536 38.7/26.8, 131072
-# 69.1/27.8, 262144 130.0/27.2.  ``G == 1`` leaves one program per tensor --
-# sixteen CTAs on 78 SMs, each walking ``numel / 1024`` blocks serially -- so the
-# single launch wins only while that walk is short, and the cross-over sits
-# between 32K and 64K elements.  The gate is held one rung below it (2**14):
-# that keeps the walk at sixteen blocks, where the single launch is still ~12us
-# ahead for a sixteen-element list, and bounds the loss for a one-element list
-# to a few microseconds (13.1 vs 9.4us there).  Compared with the previous 2**17
-# rung this is -12us on the 256x256 benchmark row, which is 65536 elements per
-# tensor and used to take the single-launch path.
-_SINGLE_LAUNCH_MAX_NUMEL = 16384
+# tensor of the group, which bounds that serial walk.  16384 wins at every list
+# length measured (1 to 32 tensors).
+_SINGLE_LAUNCH_MAX_NUMEL = 1 << 14
+
+# The wider gate is only taken by a long list, because the launch that replaces
+# the second one gets exactly ``nt`` programs: on a short list it loses the
+# chunk dimension and gains nothing back, since the host saving that makes it win
+# is what a long list's result assembly costs.  Measured at 65536 elements
+# (fp32, ``do_bench`` median, wide gate against 2**14 two-stage): list of 1
+# +4.8us, 2 +4.7, 4 +4.8, 8 +1.8, 16 -10.8, 32 -15.7.  The sign flips between
+# eight and sixteen tensors, so sixteen is the smallest list allowed.
+_SINGLE_LAUNCH_MAX_NUMEL_LONG_LIST = 1 << 16
+_SINGLE_LAUNCH_MIN_TENSORS = 16
 
 
 def _sm_count(device: torch.device) -> int:
@@ -288,17 +299,25 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
             float("-inf") if dtype.is_floating_point else float(torch.iinfo(dtype).min)
         )
         in_dt = tl_dtype(dtype)
-        if max_numel <= _SINGLE_LAUNCH_MAX_NUMEL:
+        single = max_numel <= _SINGLE_LAUNCH_MAX_NUMEL or (
+            max_numel <= _SINGLE_LAUNCH_MAX_NUMEL_LONG_LIST
+            and nt >= _SINGLE_LAUNCH_MIN_TENSORS
+        )
+        if single:
             # ``G == 1`` makes the chunk the whole tensor, so stage one's
             # ``part_ptr[t * G + g]`` is ``out_ptr[t]``: the partial buffer *is*
             # the result buffer (same dtype), and no second launch is needed.
             g = 1
+            block = min(
+                _MAX_SINGLE_LAUNCH_BLOCK,
+                max(1024, triton.next_power_of_2(max_numel)),
+            )
             out = torch.empty(nt, dtype=dtype, device=device)
             _launch(
                 _max_stage1_kernel,
                 (nt, g),
-                (in_dt, neg_inf, g, 1024),
-                (meta, out, in_dt, neg_inf, g, 1024),
+                (in_dt, neg_inf, g, block),
+                (meta, out, in_dt, neg_inf, g, block),
                 (meta, out),
                 device,
             )
@@ -459,6 +478,16 @@ def _norm_stage2_kernel(
     tl.store(out_ptr + t, total.to(OUT_DT))
 
 
+# Block size for the single-launch norm.  ``G == 1`` leaves one program per
+# tensor -- sixteen CTAs on the 78-SM H20 -- so the block is also the number of
+# loads each program keeps in flight, and it is what the single launch is
+# limited by: at 65536 elements per tensor the stage-one kernel alone costs
+# 25.6us at BLOCK=4096 and 14.6us at BLOCK=16384 (fp32, list of 16, do_bench
+# median; 131072: 45.4 / 22.9).  The block is capped at the tensor size so a
+# short tensor does not pay for lanes that only exit on the mask, which is why
+# the 1024 and 4096 rungs stay at 6.3 / 7.1us.
+_NORM_SINGLE_LAUNCH_BLOCK = 16384
+
 # Below this many elements one chunk covers a whole tensor, so stage one can
 # finish the reduction itself and the second launch is pure overhead.  The
 # crossover is measured in e_gate.py, not copied from another operator.
@@ -508,7 +537,12 @@ def _pow_sum_list(
             partial = torch.empty(len(work) * g, dtype=torch.float32, device=device)
             out = torch.empty(len(work), dtype=in_dtype, device=device)
             in_dt = tl_dtype(in_dtype)
-            block = 4096 if g == 1 else 1024
+            block = (
+                min(_NORM_SINGLE_LAUNCH_BLOCK,
+                    max(1024, triton.next_power_of_2(max_numel)))
+                if g == 1
+                else 1024
+            )
             _launch(
                 _norm_stage1_kernel,
                 (len(work), g),
