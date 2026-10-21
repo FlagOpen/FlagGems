@@ -16,21 +16,10 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
-
-# ``_version`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._version`` and ``-m _version`` both
-# work.
-setattr(
-    pytest.mark,
-    "_version",
-    MarkDecorator(Mark("_version", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # 1-D sizes for the input tensor: the op is O(1) in numel (the version counter
 # is TensorImpl metadata), the sweep covers the metadata-read path across input
@@ -52,12 +41,12 @@ class VersionBenchmark(base.Benchmark):
             yield (inp,)
 
 
-@pytest.mark._version
-def test__version():
+@pytest.mark.version
+def test_version():
     bench = VersionBenchmark(
-        op_name="_version",
+        op_name="version",
         torch_op=torch.ops.aten._version,
-        gems_op=flag_gems._version,
+        gems_op=flag_gems.version,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()

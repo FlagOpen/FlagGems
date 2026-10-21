@@ -21,7 +21,7 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-def _version(self: torch.Tensor) -> int:
+def version(self: torch.Tensor) -> int:
     """Return the version counter of ``self``.
 
     Mirrors ``aten::_version(Tensor self) -> int``. The version counter is
@@ -46,5 +46,5 @@ def _version(self: torch.Tensor) -> int:
       zero-nnz / uncoalesced), CSR/CSC/BSR/BSC and meta tensors all answer
       from the same counter.
     """
-    logger.debug("GEMS _VERSION")
+    logger.debug("GEMS VERSION")
     return self._version

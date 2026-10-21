@@ -22,13 +22,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The operator id starts with an underscore, so the #6359 marker convention
-# strips it: ``@pytest.mark._version`` is refused by ``pytest.mark``'s
-# attribute access, and the derived marker that ``tools/test-op.sh`` selects
-# with (and ``check_operator_markers.py`` requires) is the stripped name
-# ``version``. That name does not collide with a distinct operator id, so no
-# ``underscore_`` variant is needed.
-
 # The version counter is O(1) TensorImpl metadata: the value depends only on
 # the tensor's mutation history, never on dtype, shape or stored data.
 # Coverage is driven by mutation sequences and aliasing instead.
@@ -83,7 +76,7 @@ def _assert_version_matches_atin(inp, ref_inp=None):
     if ref_inp is None:
         ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten._version(ref_inp)
-    res_out = flag_gems._version(inp)
+    res_out = flag_gems.version(inp)
     assert isinstance(res_out, int)
     assert res_out == ref_out, f"{res_out} != {ref_out}"
     return res_out
@@ -101,7 +94,7 @@ def test_version_bumps_on_inplace_ops():
     # Measured native rule: one dispatched in-place call == exactly one bump.
     inp = torch.randn(4, device=flag_gems.device)
     ref_inp = twin((4,))
-    assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
+    assert flag_gems.version(inp) == torch.ops.aten._version(ref_inp)
 
     bumps = {
         "add_": lambda t: t.add_(1),
@@ -112,32 +105,32 @@ def test_version_bumps_on_inplace_ops():
         "normal_": lambda t: t.normal_(),
     }
     for name, mutate in bumps.items():
-        m_impl = flag_gems._version(inp)
+        m_impl = flag_gems.version(inp)
         m_ref = torch.ops.aten._version(ref_inp)
         mutate(inp)
         mutate(ref_inp)
-        after_impl = flag_gems._version(inp)
+        after_impl = flag_gems.version(inp)
         after_ref = torch.ops.aten._version(ref_inp)
         assert after_impl - m_impl == 1, f"{name}: impl bumped {after_impl - m_impl}"
         assert after_ref - m_ref == 1, f"{name}: native bumped {after_ref - m_ref}"
         assert after_impl == after_ref, f"{name}: {after_impl} != {after_ref}"
 
-    assert flag_gems._version(inp) == len(bumps)
+    assert flag_gems.version(inp) == len(bumps)
 
 
 @pytest.mark.version
 def test_version_inplace_under_no_grad():
     inp = torch.randn(3, device=flag_gems.device)
     ref_inp = twin((3,))
-    n_impl = flag_gems._version(inp)
+    n_impl = flag_gems.version(inp)
     n_ref = torch.ops.aten._version(ref_inp)
     with torch.no_grad():
         inp.add_(1)
         ref_inp.add_(1)
     # in-place bumps under no_grad exactly like under grad mode
-    assert flag_gems._version(inp) == n_impl + 1
+    assert flag_gems.version(inp) == n_impl + 1
     assert torch.ops.aten._version(ref_inp) == n_ref + 1
-    assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
+    assert flag_gems.version(inp) == torch.ops.aten._version(ref_inp)
 
 
 @pytest.mark.version
@@ -149,47 +142,47 @@ def test_version_views_share_base_counter():
     transpose = base.t()
     detached = base.detach()
 
-    n0 = flag_gems._version(base)
+    n0 = flag_gems.version(base)
     assert n0 == 0
-    assert flag_gems._version(view) == n0
-    assert flag_gems._version(transpose) == n0
-    assert flag_gems._version(detached) == n0
+    assert flag_gems.version(view) == n0
+    assert flag_gems.version(transpose) == n0
+    assert flag_gems.version(detached) == n0
 
     view.add_(1)
-    assert flag_gems._version(base) == n0 + 1
-    assert flag_gems._version(view) == n0 + 1
-    assert flag_gems._version(transpose) == n0 + 1
-    assert flag_gems._version(detached) == n0 + 1
+    assert flag_gems.version(base) == n0 + 1
+    assert flag_gems.version(view) == n0 + 1
+    assert flag_gems.version(transpose) == n0 + 1
+    assert flag_gems.version(detached) == n0 + 1
 
     # the same history on an independent twin reaches the same counter
     ref_base = twin((4, 4))
     ref_base[1:3].add_(1)
-    assert flag_gems._version(base) == torch.ops.aten._version(ref_base)
+    assert flag_gems.version(base) == torch.ops.aten._version(ref_base)
 
     # clone gets an independent counter (fresh at 0, measured native rule) and
     # its bumps must not leak into the base
     clone = base.clone()
-    n1 = flag_gems._version(base)
-    assert flag_gems._version(clone) == 0, "clone starts a fresh counter"
+    n1 = flag_gems.version(base)
+    assert flag_gems.version(clone) == 0, "clone starts a fresh counter"
     clone.add_(1)
-    assert flag_gems._version(base) == n1, "clone bump must not leak into base"
-    assert flag_gems._version(clone) == 1
+    assert flag_gems.version(base) == n1, "clone bump must not leak into base"
+    assert flag_gems.version(clone) == 1
 
 
 @pytest.mark.version
 def test_version_noncontiguous_and_strided_views():
     # Non-contiguous bases answer from the same counter as their views.
     base = torch.randn(6, 6, device=flag_gems.device)[::2, ::2]
-    assert flag_gems._version(base) == 0
+    assert flag_gems.version(base) == 0
     base.narrow(0, 0, 2).add_(1)
-    assert flag_gems._version(base) == 1
+    assert flag_gems.version(base) == 1
 
     ref_base = twin((3, 3))
     ref_base.narrow(0, 0, 2).add_(1)
     _assert_version_matches_atin(base, ref_inp=ref_base)
 
     # a strided view and its base agree
-    assert flag_gems._version(base) == flag_gems._version(base[::2])
+    assert flag_gems.version(base) == flag_gems.version(base[::2])
 
 
 @pytest.mark.version
@@ -201,7 +194,7 @@ def test_version_dtype_sweep(dtype):
     # starts at 0, and one in-place call moves it to exactly 1.
     inp = torch.zeros(4, dtype=dtype, device=flag_gems.device)
     ref_inp = twin((4,), dtype=dtype)
-    assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
+    assert flag_gems.version(inp) == torch.ops.aten._version(ref_inp)
 
     if dtype is torch.bool:
         inp.logical_not_()
@@ -209,8 +202,8 @@ def test_version_dtype_sweep(dtype):
     else:
         inp.add_(1)
         ref_inp.add_(1)
-    assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
-    assert flag_gems._version(inp) == 1
+    assert flag_gems.version(inp) == torch.ops.aten._version(ref_inp)
+    assert flag_gems.version(inp) == 1
 
 
 @pytest.mark.version
@@ -249,14 +242,14 @@ def test_version_sparse_layouts():
         _assert_version_matches_atin(t)
 
     # sparse in-place bumps the counter by exactly one as well
-    assert flag_gems._version(coo) == 0
+    assert flag_gems.version(coo) == 0
     coo.mul_(2)
-    assert flag_gems._version(coo) == 1
+    assert flag_gems.version(coo) == 1
 
     # a second COO with the same history matches the first
     coo2 = _make_coo(4, (3, 3), seed=1).to(flag_gems.device)
     coo2.mul_(2)
-    assert flag_gems._version(coo) == flag_gems._version(coo2)
+    assert flag_gems.version(coo) == flag_gems.version(coo2)
 
 
 @pytest.mark.version
@@ -272,7 +265,7 @@ def test_version_inference_mode_raises():
         ref_inp = utils.to_reference(inp)
 
         with pytest.raises(RuntimeError) as impl_err:
-            flag_gems._version(inp)
+            flag_gems.version(inp)
         assert "version counter" in str(impl_err.value)
 
         with pytest.raises(RuntimeError):
@@ -280,8 +273,8 @@ def test_version_inference_mode_raises():
 
     # outside inference mode a tensor of the same shape works again
     outside = torch.randn(3, device=flag_gems.device)
-    assert flag_gems._version(outside) == 0
-    assert flag_gems._version(outside) == torch.ops.aten._version(
+    assert flag_gems.version(outside) == 0
+    assert flag_gems.version(outside) == torch.ops.aten._version(
         utils.to_reference(outside)
     )
 
@@ -291,9 +284,9 @@ def test_version_meta_tensor():
     # meta tensors track a counter like any other tensor (measured on this
     # build: fresh meta tensor reads 0 and an in-place call bumps it to 1).
     meta = torch.empty(3, device="meta")
-    assert flag_gems._version(meta) == 0
+    assert flag_gems.version(meta) == 0
     meta.add_(1)
-    assert flag_gems._version(meta) == 1
+    assert flag_gems.version(meta) == 1
 
 
 @pytest.mark.version
@@ -302,18 +295,18 @@ def test_version_matches_reference_table():
     # (un-substituted environment), pinned here as literals: a fresh tensor
     # reads 0 and each dispatched in-place call bumps by exactly 1.
     t = torch.randn(3, device=flag_gems.device)
-    assert flag_gems._version(t) == 0
+    assert flag_gems.version(t) == 0
     t.add_(1)
-    assert flag_gems._version(t) == 1
+    assert flag_gems.version(t) == 1
     t.mul_(2)
-    assert flag_gems._version(t) == 2
+    assert flag_gems.version(t) == 2
     t.zero_()
-    assert flag_gems._version(t) == 3
+    assert flag_gems.version(t) == 3
 
     coo = _make_coo(2, (2, 2), seed=2).to(flag_gems.device)
-    assert flag_gems._version(coo) == 0
+    assert flag_gems.version(coo) == 0
     coo.mul_(2)
-    assert flag_gems._version(coo) == 1
+    assert flag_gems.version(coo) == 1
 
 
 @pytest.mark.version
@@ -324,7 +317,7 @@ def test_version_dispatch_sentinel_composite_key():
     # sparse keys are registered natively but never selected -- measured with
     # fresh-process sentinels). torch.ops.aten._version must reach the
     # submitted implementation for dense, COO and CSR inputs.
-    from flag_gems.ops._version import _version as real_impl
+    from flag_gems.ops.version import version as real_impl
 
     lib = torch.library.Library("aten", "IMPL")
     hits = []
@@ -357,7 +350,7 @@ def test_version_dispatch_sentinel_composite_key():
     # after the sentinel is gone the dispatched call still works (registry is
     # intact and no stale state leaked)
     t = torch.randn(2, device=flag_gems.device)
-    assert torch.ops.aten._version(t) == flag_gems._version(t)
+    assert torch.ops.aten._version(t) == flag_gems.version(t)
 
 
 @pytest.mark.version
@@ -366,17 +359,17 @@ def test_version_disjoint_from_native_neighbors():
     # must keep working when unrelated in-place ops bump other counters.
     t = torch.randn(3, 4, device=flag_gems.device)
     other = torch.randn(3, device=flag_gems.device)
-    n0 = flag_gems._version(t)
+    n0 = flag_gems.version(t)
 
     for _ in range(3):
-        assert flag_gems._version(t) == torch.ops.aten._version(t)
+        assert flag_gems.version(t) == torch.ops.aten._version(t)
         other.add_(1)  # an unrelated tensor's counter moves
-        assert flag_gems._version(t) == n0
+        assert flag_gems.version(t) == n0
 
     # _version and _nnz do not interfere (both are metadata reads)
     coo = _make_coo(5, (2, 3), seed=7).to(flag_gems.device)
     assert torch.ops.aten._nnz(coo) == 5
-    assert flag_gems._version(coo) == torch.ops.aten._version(coo)
+    assert flag_gems.version(coo) == torch.ops.aten._version(coo)
 
 
 @pytest.mark.version
@@ -387,7 +380,7 @@ def test_version_non_tensor_input():
     # because both rejections go through the same schema validator (batch
     # rules A1/A3: never pin one build's message wording).
     with pytest.raises(AttributeError):
-        flag_gems._version(3)
+        flag_gems.version(3)
     with pytest.raises(RuntimeError):
         torch.ops.aten._version(3)
 
@@ -395,7 +388,7 @@ def test_version_non_tensor_input():
     # (native reads 0); the python binding raises instead, which is recorded
     # here as the documented difference between the two call forms.
     with pytest.raises(AttributeError):
-        flag_gems._version(None)
+        flag_gems.version(None)
     assert torch.ops.aten._version(None) == 0
 
 
@@ -409,5 +402,5 @@ def test_version_bump_sequence_matches_native(shape):
     for i in range(5):
         inp.add_(1)
         ref_inp.add_(1)
-        assert flag_gems._version(inp) == torch.ops.aten._version(ref_inp)
-        assert flag_gems._version(inp) == i + 1
+        assert flag_gems.version(inp) == torch.ops.aten._version(ref_inp)
+        assert flag_gems.version(inp) == i + 1
