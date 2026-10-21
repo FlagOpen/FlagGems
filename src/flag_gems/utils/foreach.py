@@ -2297,12 +2297,23 @@ def _binary_scalar_homogeneous(
     # Uniformity and contiguity are the same walk over the list, so they share
     # one pass: ``is_contiguous`` has no side effect, and the partial answer is
     # simply dropped when the early exit is taken.
+    # ``t.device`` builds a device object per tensor just to compare it; the
+    # integer index is the same test and skips the construction.  It is only
+    # available once the device has an index, which on a CUDA-only build it
+    # always has, so the device-object comparison stays as the fallback.
+    didx = dev.index
     conts = []
     append = conts.append
-    for t in self:
-        if t.dtype is not dt or t.device != dev:
-            return None
-        append(t.is_contiguous())
+    if didx is not None:
+        for t in self:
+            if t.dtype is not dt or t.get_device() != didx:
+                return None
+            append(t.is_contiguous())
+    else:
+        for t in self:
+            if t.dtype is not dt or t.device != dev:
+                return None
+            append(t.is_contiguous())
     # ``_promote_with_scalar`` memoises on ``(dtype, type(value), zero-dim)``,
     # so with one dtype the whole list promotes alike as soon as every entry
     # has the same class.  The broadcast forms already repeat one object, so
