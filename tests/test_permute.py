@@ -19,7 +19,135 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _physical_cpu(inp):
+    # Preserve independent physical storage, view geometry and lazy metadata.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.device == torch.device("cpu") and result.dtype == inp.dtype
+    assert result.shape == inp.shape and result.stride() == inp.stride()
+    assert result.storage_offset() == inp.storage_offset()
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    if inp.untyped_storage().nbytes():
+        assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    return result
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    return _physical_cpu(inp) if utils.TO_CPU else tu.to_reference(inp)
+
+
+def _numeric_values(inp):
+    result = _physical_cpu(inp.detach()).resolve_conj().resolve_neg()
+    return result.float() if result.dtype in _FP8_DTYPES else result
+
+
+def _assert_result_equal(result, reference):
+    # Check the original ABI before observing numerical values on CPU.
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if result.dtype in _FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and (
+            result.is_complex()
+            or result.is_conj()
+            or result.is_neg()
+            or reference.is_conj()
+            or reference.is_neg()
+            or (
+                flag_gems.vendor_name == "ascend"
+                and result.dtype in (torch.int64, torch.float64)
+            )
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _check_requested_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        pytest.skip(
+            "Kunlunxin tensor transfer narrows float64/complex128 to float32/complex64"
+        )
+
+
+def _cpu_encode(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES
+
+
+def _make_input(dtype, shape, value_range):
+    _check_requested_dtype(dtype)
+    if _cpu_encode(dtype):
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    _check_requested_dtype(dtype)
+    if _cpu_encode(dtype) or (
+        flag_gems.vendor_name == "ascend" and dtype == torch.float64
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
 
 # aten::permute is a metadata-only view, so every dtype the shared framework can
 # build is accepted. Probed with the real overload beyond the 9 spec dtypes:
@@ -84,15 +212,15 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_permute(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
     # Reverse permutation: [] for 0-D, [0] for 1-D, both valid natively.
     dims = list(range(len(shape) - 1, -1, -1))
 
     ref_out = torch.ops.aten.permute(ref_inp, dims)
     res_out = flag_gems.permute(inp, dims)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # dims is required and has no schema default, so it cannot be omitted in a
@@ -111,13 +239,13 @@ DIMS_ROWS = [
 @pytest.mark.parametrize("shape,dims", DIMS_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_permute_dims(shape, dims, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"])
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.permute(ref_inp, dims)
     res_out = flag_gems.permute(inp, dims)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # Source layouts: dense, offset window, column-strided slice, zero-stride expand
@@ -137,17 +265,17 @@ VIEW_ROWS = [
 def _make_view_source(shape, kind):
     """Build a permute input whose layout is not necessarily contiguous."""
     if kind == "dense":
-        return tu.make_input(torch.float32, shape, ["-1", "1"])
+        return _make_input(torch.float32, shape, ["-1", "1"])
     if kind == "window":
-        base = tu.make_input(
+        base = _make_input(
             torch.float32, (shape[0] + 3, shape[1] + 5, shape[2] + 7), ["-1", "1"]
         )
         return base[1 : 1 + shape[0], 2 : 2 + shape[1], 3 : 3 + shape[2]]
     if kind == "colstep":
-        base = tu.make_input(torch.float32, (shape[0] * 2, shape[1]), ["-1", "1"])
+        base = _make_input(torch.float32, (shape[0] * 2, shape[1]), ["-1", "1"])
         return base[::2]
     if kind == "expand":
-        base = tu.make_input(torch.float32, (1, shape[1]), ["-1", "1"])
+        base = _make_input(torch.float32, (1, shape[1]), ["-1", "1"])
         return base.expand(shape)
     raise ValueError(f"unknown source layout {kind!r}")
 
@@ -157,12 +285,12 @@ def _make_view_source(shape, kind):
 def test_permute_view_metadata(case):
     shape, dims, kind = case
     inp = _make_view_source(shape, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.permute(ref_inp, dims)
     res_out = flag_gems.permute(inp, dims)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # Metadata the shared value assertion does not cover: permute must stay a
     # view aliasing the input storage with permuted strides and the same offset.
     assert tuple(res_out.stride()) == tuple(inp.stride()[d] for d in dims)
@@ -181,18 +309,18 @@ MUTATION_ROWS = [
 @pytest.mark.parametrize("shape,dims", MUTATION_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int32])
 def test_permute_writes_through_the_view(shape, dims, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"])
+    ref_inp = _reference(inp)
 
     res_out = flag_gems.permute(inp, dims)
     ref_out = torch.ops.aten.permute(ref_inp, dims)
     res_out.fill_(3)
     ref_out.fill_(3)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # The write must land in the base tensor: a materialized copy would leave
     # inp untouched.
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 LAZY_ROWS = ["plain", "conj", "neg", "conj_neg"]
@@ -201,19 +329,19 @@ LAZY_ROWS = ["plain", "conj", "neg", "conj_neg"]
 @pytest.mark.permute
 @pytest.mark.parametrize("case", LAZY_ROWS)
 def test_permute_preserves_lazy_bits(case):
-    inp = tu.make_input(torch.complex64, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.complex64, (4, 6), ["-1", "1"])
     if case in ("conj", "conj_neg"):
         inp = inp.conj()
     if case in ("neg", "conj_neg"):
         inp = torch._neg_view(inp)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.permute(ref_inp, [1, 0])
     res_out = flag_gems.permute(inp, [1, 0])
 
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 BACKWARD_ROWS = [
@@ -227,10 +355,10 @@ BACKWARD_ROWS = [
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_permute_backward(case, dtype):
     shape, dims = case
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
-    ref_inp = tu.to_reference(inp.detach()).requires_grad_(True)
-    upstream = tu.make_input(dtype, tuple(shape[d] for d in dims), ["-1", "1"])
-    ref_upstream = tu.to_reference(upstream)
+    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    ref_inp = _reference(inp.detach()).requires_grad_(True)
+    upstream = _make_input(dtype, tuple(shape[d] for d in dims), ["-1", "1"])
+    ref_upstream = _reference(upstream)
 
     (res_grad,) = torch.autograd.grad(
         flag_gems.permute(inp, dims), inp, grad_outputs=upstream
@@ -239,7 +367,7 @@ def test_permute_backward(case, dtype):
         torch.ops.aten.permute(ref_inp, dims), ref_inp, grad_outputs=ref_upstream
     )
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.permute
@@ -249,13 +377,13 @@ def test_permute_backward(case, dtype):
 def test_permute_special_values(case):
     dtype, scenario = case
     # Reshape the shared 1-D payload so the permute performs a real dim swap.
-    inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario).reshape(1, -1)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.permute(ref_inp, [1, 0])
     res_out = flag_gems.permute(inp, [1, 0])
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 # There is no "unsupported dtype" negative: the native overload accepted every
@@ -276,8 +404,15 @@ INVALID_DIMS_ROWS = [
 @pytest.mark.permute
 @pytest.mark.parametrize("name,shape,dims", INVALID_DIMS_ROWS)
 def test_permute_invalid_dims_raise(name, shape, dims):
+    if flag_gems.vendor_name == "kunlunxin" and name in (
+        "duplicate_3d",
+        "out_of_range",
+        "wrong_arity",
+        "empty_dims_non_scalar",
+    ):
+        pytest.skip("Kunlunxin permute does not reliably reject these invalid dims")
     del name
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     with pytest.raises((RuntimeError, IndexError, ValueError)):
         flag_gems.permute(inp, dims)
 
@@ -286,6 +421,6 @@ def test_permute_invalid_dims_raise(name, shape, dims):
 # an invalid dims value.
 @pytest.mark.permute
 def test_permute_missing_dims_raises():
-    inp = tu.make_input(torch.float32, (3, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (3, 4), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems.permute(inp)
