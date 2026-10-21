@@ -272,7 +272,7 @@ def test_sparse_coo_tensor_unsafe_backward(dtype):
     size = [20, 320, 15]
     indices = _coo_indices(size, _NNZ)
     values = tu.make_input(dtype, (_NNZ,), ["-1", "1"]).requires_grad_(True)
-    ref_values = values.detach().clone().requires_grad_(True)
+    ref_values = tu.to_reference(values).detach().requires_grad_(True)
     # Distinct weights make each stored entry's gradient observable.
     weights = tu.make_input(dtype, size, ["0", "1"])
 
@@ -281,7 +281,10 @@ def test_sparse_coo_tensor_unsafe_backward(dtype):
     )
     res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
 
-    ref_grad = torch.autograd.grad((ref_out.to_dense() * weights).sum(), ref_values)[0]
+    ref_weights = tu.to_reference(weights)
+    ref_grad = torch.autograd.grad(
+        (ref_out.to_dense() * ref_weights).sum(), ref_values
+    )[0]
     res_grad = torch.autograd.grad((res_out.to_dense() * weights).sum(), values)[0]
 
     tu.assert_result_close(res_grad, ref_grad)

@@ -29,6 +29,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 _CSR = torch.sparse_csr
@@ -579,6 +580,11 @@ def test_allocation_parts_are_independent(case):
 @pytest.mark.parametrize("case", _WRITE_CASES)
 def test_written_allocation_densifies_like_reference(case):
     layout, dense_dim, size, blocksize, nnz = case
+    output_device = torch.device(flag_gems.device)
+    if output_device.type != "cpu" and output_device.index is None:
+        output_device = torch.device(
+            output_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
     ref = torch.ops.aten._sparse_compressed_tensor_with_dims(
         nnz,
         dense_dim,
@@ -587,7 +593,7 @@ def test_written_allocation_densifies_like_reference(case):
         torch.int64,
         dtype=torch.float32,
         layout=layout,
-        device=flag_gems.device,
+        device="cpu" if utils.TO_CPU else output_device,
     )
     res = flag_gems._sparse_compressed_tensor_with_dims(
         nnz,
@@ -599,6 +605,11 @@ def test_written_allocation_densifies_like_reference(case):
         layout=layout,
         device=flag_gems.device,
     )
+    assert res.device == output_device
+    assert ref.device == (torch.device("cpu") if utils.TO_CPU else output_device)
+    assert res.layout == ref.layout == layout
+    assert res.dtype == ref.dtype == torch.float32
+    assert tuple(res.shape) == tuple(ref.shape) == tuple(size)
     _fill_canonical(res)
     _fill_canonical(ref)
     tu.assert_result_equal(res.to_dense(), ref.to_dense())

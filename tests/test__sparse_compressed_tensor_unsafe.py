@@ -283,14 +283,19 @@ def test__sparse_compressed_tensor_unsafe_index_dtype(
         torch.float32,
         value_range,
     )
-    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+    ref_first, ref_second, ref_values = (
         tu.to_reference(compressed),
         tu.to_reference(plain),
         tu.to_reference(values),
+    )
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=torch.float32,
         layout=layout,
-        device=values.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed,
@@ -351,14 +356,19 @@ def test__sparse_compressed_tensor_unsafe_accepts_unchecked_descriptions(
     plain = torch.tensor(plain_data, dtype=_MAIN_INDEX_DTYPE, device=flag_gems.device)
     values = tu.make_input(torch.float32, (num_values,), value_range)
 
-    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+    ref_first, ref_second, ref_values = (
         tu.to_reference(compressed),
         tu.to_reference(plain),
         tu.to_reference(values),
+    )
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=torch.float32,
         layout=torch.sparse_csr,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed,
@@ -414,14 +424,19 @@ def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
     )
     values = buffer.reshape(2 * nnz, *block_shape)[1::2]
 
-    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+    ref_first, ref_second, ref_values = (
         tu.to_reference(compressed),
         tu.to_reference(plain),
         tu.to_reference(values),
+    )
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=torch.float32,
         layout=layout,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed,
@@ -492,12 +507,17 @@ def test__sparse_compressed_tensor_unsafe_optional_arguments(
     if pin_memory_arg is not None:
         kwargs["pin_memory"] = pin_memory_arg
 
-    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+    ref_first, ref_second, ref_values = (
         tu.to_reference(compressed),
         tu.to_reference(plain),
         tu.to_reference(values),
+    )
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
-        **kwargs,
+        **dict(kwargs, device=ref_values.device),
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed, plain, values, list(size), **kwargs
@@ -638,14 +658,19 @@ def test__sparse_compressed_tensor_unsafe_special_values(
     if layout in _BLOCKED_LAYOUTS:
         payload = payload.reshape(-1, 1, 1).expand(-1, *blocks).reshape(-1, *blocks)
 
-    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+    ref_first, ref_second, ref_values = (
         tu.to_reference(compressed),
         tu.to_reference(plain),
         tu.to_reference(payload),
+    )
+    ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=values_dtype,
         layout=layout,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed,
@@ -680,14 +705,19 @@ def test__sparse_compressed_tensor_unsafe_requires_grad_input(dtype, layout):
     values_shape = (2, 2, 2) if blocked else (2,)
     size = [4, 4] if blocked else [2, 2]
     values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(compressed),
+        tu.to_reference(plain),
+        tu.to_reference(values),
+    )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
-        compressed,
-        plain,
-        values,
+        ref_first,
+        ref_second,
+        ref_values,
         size,
         dtype=dtype,
         layout=layout,
-        device=values.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_compressed_tensor_unsafe(
         compressed,
