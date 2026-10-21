@@ -318,7 +318,7 @@ def _make_input(num_tensors, num_dims, dtype, seed=0, value_range=_DEFAULT_VALUE
 
 
 def _make_strided_view_input(dtype, device=None):
-    if flag_gems.vendor_name in ("hygon", "kunlunxin", "metax"):
+    if flag_gems.vendor_name in ("hygon", "kunlunxin"):
         pytest.skip(
             "Native nested buffer views require storage size equal to summed component sizes"
         )
