@@ -26,6 +26,8 @@ import array
 import logging
 import math
 import numbers
+from functools import reduce
+from operator import or_
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -186,9 +188,67 @@ def _pick_block(numels: Sequence[int], max_programs: int = 1 << 18) -> int:
     return 16384
 
 
+_PACK_DTYPES = frozenset((torch.float16, torch.bfloat16))
+
+# Below this element count the acceptance latency is host-bound, so the guard
+# below (one Python ``reduce`` over the metadata values, ~1.2us at this list
+# size) would show up as a regression rather than being hidden behind the
+# kernel.  At and above it the launch is bandwidth-bound and the guard is free
+# next to the access pattern it enables.
+_PACK_MIN_ELEMS = 1 << 20
+
+
+def _pack_ok(
+    dtypes: Sequence[torch.dtype], max_numel: int, values: Sequence[int]
+) -> bool:
+    """Whether the four-wide packed kernel can serve this group.
+
+    The packed kernels read every tensor through an ``int64`` pointer, so each
+    pointer must be 8-byte aligned and each element count a multiple of four --
+    a view with a non-zero element offset, or a trailing remainder, falls back
+    to the scalar kernels.  Both conditions are one bitwise-or over the metadata
+    values that are built for the transfer anyway: any value with a low bit set
+    rules the packed path out.
+    """
+    if max_numel < _PACK_MIN_ELEMS:
+        return False
+    for dt in dtypes:
+        if dt not in _PACK_DTYPES:
+            return False
+    return not (reduce(or_, values, 0) & 7)
+
+
 # ---------------------------------------------------------------------------
 # executor kernels
 # ---------------------------------------------------------------------------
+
+
+@triton.jit
+def _unpack4(v, DT: tl.constexpr):
+    """Split one ``int64`` into four bit-identical ``DT`` values."""
+    return (
+        (v & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 16) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 32) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 48) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+    )
+
+
+@triton.jit
+def _pack4(a, b, c, d):
+    """Inverse of :func:`_unpack4`; the four values must be 16 bits wide."""
+    return (
+        a.to(tl.uint16, bitcast=True).to(tl.int64)
+        | (b.to(tl.uint16, bitcast=True).to(tl.int64) << 16)
+        | (c.to(tl.uint16, bitcast=True).to(tl.int64) << 32)
+        | (d.to(tl.uint16, bitcast=True).to(tl.int64) << 48)
+    )
+
+
+@triton.jit
+def _alpha_scale(v, ALPHA: tl.constexpr, OUT_DT: tl.constexpr):
+    """``ALPHA`` scaling, identical to the expression in the scalar kernels."""
+    return (v * ALPHA).to(OUT_DT) if ALPHA != 1 else v.to(OUT_DT)
 
 
 @triton.jit
@@ -230,6 +290,54 @@ def foreach_unary_kernel(
     # would truncate the result: ``log1p`` on int64 measured 0.693 of error
     # until the promotion was moved ahead of the call.
     tl.store(out_ptr + idx, fn(x.to(OUT_DT)).to(OUT_DT), mask=mask)
+
+
+@triton.jit
+def foreach_unary_kernel_p4(
+    meta_ptr,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    IN_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Unary executor reading four 16-bit elements per lane.
+
+    A pointer that comes out of the metadata buffer carries no alignment
+    information, so Triton compiles the 16-bit loop of the kernel above into one
+    scalar ``ld.global.b16``/``st.global.b16`` per element: 2.3 TB/s against the
+    3.5 TB/s a 128-bit access reaches at the same occupancy.  Reading the same
+    memory through an ``int64`` pointer and splitting it with shifts restores
+    the wide access, and costs nothing in accuracy because the split is a pure
+    bit operation: every lane computes exactly what the scalar kernel computes
+    on its four elements.
+
+    Metadata layout and grid are unchanged from :func:`foreach_unary_kernel`.
+    A chunk is still ``BLOCK`` *elements*, which is ``BLOCK // 4`` packed words,
+    so the second grid axis keeps its meaning.  The caller only takes this path
+    when every element count is a multiple of four and every pointer is 8-byte
+    aligned, which is what makes the packed mask cover each tensor exactly.
+    """
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * (BLOCK // 4)
+
+    in_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
+    out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(tl.int64))
+    n_elements = tl.load(meta_ptr + 2 * NT + t)
+
+    idx = offset + tl.arange(0, BLOCK // 4)
+    mask = idx < n_elements // 4
+    x0, x1, x2, x3 = _unpack4(tl.load(in_ptr + idx, mask=mask, other=0), IN_DT)
+    tl.store(
+        out_ptr + idx,
+        _pack4(
+            fn(x0.to(OUT_DT)).to(OUT_DT),
+            fn(x1.to(OUT_DT)).to(OUT_DT),
+            fn(x2.to(OUT_DT)).to(OUT_DT),
+            fn(x3.to(OUT_DT)).to(OUT_DT),
+        ),
+        mask=mask,
+    )
 
 
 @triton.jit
@@ -356,6 +464,65 @@ def foreach_binary_kernel(
 
 
 @triton.jit
+def foreach_binary_kernel_p4(
+    meta_ptr,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    B_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    ALPHA: tl.constexpr,
+    B_SCALAR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Four 16-bit elements per lane; :func:`foreach_binary_kernel` semantics.
+
+    Same metadata layout, same grid, same element-wise function and the same
+    ``ALPHA``/``B_SCALAR`` handling as :func:`foreach_binary_kernel`; the only
+    difference is that each operand is read as packed ``int64`` words and split
+    with :func:`_unpack4`, so the access is wide instead of one 16-bit
+    transaction per element.  See :func:`foreach_unary_kernel_p4` for why the
+    metadata-buffer pointer loses the alignment that would otherwise let Triton
+    widen the load by itself.
+
+    The broadcast operand of the ``.Tensor`` case is a single element, so only
+    its first entry is read -- as a plain ``B_DT`` load, not as a packed word,
+    because it is not part of a run of four.
+    """
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * (BLOCK // 4)
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
+    b_raw = tl.load(meta_ptr + NT + t)
+    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(tl.int64))
+    n_elements = tl.load(meta_ptr + 3 * NT + t)
+
+    idx = offset + tl.arange(0, BLOCK // 4)
+    mask = idx < n_elements // 4
+    a0, a1, a2, a3 = _unpack4(tl.load(a_ptr + idx, mask=mask, other=0), A_DT)
+    if B_SCALAR:
+        b = _alpha_scale(tl.load(b_raw.to(tl.pointer_type(B_DT))), ALPHA, OUT_DT)
+        r0 = fn(a0.to(OUT_DT), b).to(OUT_DT)
+        r1 = fn(a1.to(OUT_DT), b).to(OUT_DT)
+        r2 = fn(a2.to(OUT_DT), b).to(OUT_DT)
+        r3 = fn(a3.to(OUT_DT), b).to(OUT_DT)
+    else:
+        b_ptr = b_raw.to(tl.pointer_type(tl.int64))
+        b0, b1, b2, b3 = _unpack4(
+            tl.load(b_ptr + idx, mask=mask, other=0), B_DT
+        )
+        b0 = _alpha_scale(b0, ALPHA, OUT_DT)
+        b1 = _alpha_scale(b1, ALPHA, OUT_DT)
+        b2 = _alpha_scale(b2, ALPHA, OUT_DT)
+        b3 = _alpha_scale(b3, ALPHA, OUT_DT)
+        r0 = fn(a0.to(OUT_DT), b0).to(OUT_DT)
+        r1 = fn(a1.to(OUT_DT), b1).to(OUT_DT)
+        r2 = fn(a2.to(OUT_DT), b2).to(OUT_DT)
+        r3 = fn(a3.to(OUT_DT), b3).to(OUT_DT)
+    tl.store(out_ptr + idx, _pack4(r0, r1, r2, r3), mask=mask)
+
+
+@triton.jit
 def foreach_binary_scalar_kernel(
     meta_ptr,
     scalar_ptr,
@@ -402,6 +569,49 @@ def foreach_binary_scalar_kernel(
     mask = idx < n_elements
     a = tl.load(a_ptr + idx, mask=mask, other=0)
     tl.store(out_ptr + idx, fn(a.to(OUT_DT), s.to(OUT_DT)).to(OUT_DT), mask=mask)
+
+
+@triton.jit
+def foreach_binary_scalar_kernel_p4(
+    meta_ptr,
+    scalar_ptr,
+    scalar_value: tl.float64,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    S_DT: tl.constexpr,
+    ALPHA: tl.constexpr,
+    SCALAR_BY_VALUE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Four 16-bit elements per lane; :func:`foreach_binary_scalar_kernel` semantics."""
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * (BLOCK // 4)
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
+    out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(tl.int64))
+    n_elements = tl.load(meta_ptr + 2 * NT + t)
+    if SCALAR_BY_VALUE:
+        s = scalar_value.to(S_DT)
+    else:
+        s = tl.load(scalar_ptr + t)
+    s = (s * ALPHA).to(S_DT) if ALPHA != 1 else s
+    s = s.to(OUT_DT)
+
+    idx = offset + tl.arange(0, BLOCK // 4)
+    mask = idx < n_elements // 4
+    a0, a1, a2, a3 = _unpack4(tl.load(a_ptr + idx, mask=mask, other=0), A_DT)
+    tl.store(
+        out_ptr + idx,
+        _pack4(
+            fn(a0.to(OUT_DT), s.to(OUT_DT)).to(OUT_DT),
+            fn(a1.to(OUT_DT), s.to(OUT_DT)).to(OUT_DT),
+            fn(a2.to(OUT_DT), s.to(OUT_DT)).to(OUT_DT),
+            fn(a3.to(OUT_DT), s.to(OUT_DT)).to(OUT_DT),
+        ),
+        mask=mask,
+    )
 
 
 @triton.jit
@@ -455,6 +665,51 @@ def foreach_ternary_kernel(
     b = tl.load(b_ptr + idx, mask=mask, other=0).to(OUT_DT)
     c = tl.load(c_ptr + idx, mask=mask, other=0).to(OUT_DT)
     tl.store(out_ptr + idx, fn(a, b, c, s.to(OUT_DT)).to(OUT_DT), mask=mask)
+
+
+@triton.jit
+def foreach_ternary_kernel_p4(
+    meta_ptr,
+    scalar_ptr,
+    scalar_value: tl.float64,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    S_DT: tl.constexpr,
+    SCALAR_BY_VALUE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Four 16-bit elements per lane; :func:`foreach_ternary_kernel` semantics."""
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * (BLOCK // 4)
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
+    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(tl.int64))
+    c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(tl.int64))
+    out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(tl.int64))
+    n_elements = tl.load(meta_ptr + 4 * NT + t)
+    if SCALAR_BY_VALUE:
+        s = scalar_value.to(S_DT)
+    else:
+        s = tl.load(scalar_ptr + t)
+    s = s.to(OUT_DT)
+
+    idx = offset + tl.arange(0, BLOCK // 4)
+    mask = idx < n_elements // 4
+    a0, a1, a2, a3 = _unpack4(tl.load(a_ptr + idx, mask=mask, other=0), A_DT)
+    b0, b1, b2, b3 = _unpack4(tl.load(b_ptr + idx, mask=mask, other=0), A_DT)
+    c0, c1, c2, c3 = _unpack4(tl.load(c_ptr + idx, mask=mask, other=0), A_DT)
+    tl.store(
+        out_ptr + idx,
+        _pack4(
+            fn(a0.to(OUT_DT), b0.to(OUT_DT), c0.to(OUT_DT), s).to(OUT_DT),
+            fn(a1.to(OUT_DT), b1.to(OUT_DT), c1.to(OUT_DT), s).to(OUT_DT),
+            fn(a2.to(OUT_DT), b2.to(OUT_DT), c2.to(OUT_DT), s).to(OUT_DT),
+            fn(a3.to(OUT_DT), b3.to(OUT_DT), c3.to(OUT_DT), s).to(OUT_DT),
+        ),
+        mask=mask,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -657,8 +912,13 @@ def _launch_group(
             kernel, grid, nt, meta, fn, tl_dtype(real_dtype), acc, block
         )
     else:
+        kernel = (
+            foreach_unary_kernel_p4
+            if _pack_ok((in_dtype, dsts[0].dtype), max_numel, values)
+            else foreach_unary_kernel
+        )
         _launch_executor_kernel(
-            foreach_unary_kernel,
+            kernel,
             grid,
             nt,
             meta,
@@ -1530,8 +1790,10 @@ def _launch_binary_kernel(
     alpha: float,
     b_scalar: bool,
     block: int,
+    kernel: Callable = foreach_binary_kernel,
 ) -> None:
     key = (
+        kernel,
         meta.device,
         nt,
         fn,
@@ -1583,9 +1845,7 @@ def _launch_binary_kernel(
             # problem: forget the entry and let Triton dispatch as usual.
             _BINARY_LAUNCH_CACHE.pop(key, None)
     _BINARY_LAUNCH_STATS["dispatch"] += 1
-    compiled = foreach_binary_kernel[grid](
-        meta, fn, nt, a_dt, b_dt, out_dt, alpha, b_scalar, block
-    )
+    compiled = kernel[grid](meta, fn, nt, a_dt, b_dt, out_dt, alpha, b_scalar, block)
     if compiled is not None:
         _BINARY_LAUNCH_CACHE[key] = (
             compiled.run,
@@ -1643,6 +1903,11 @@ def _launch_binary_group(
         else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
     )
     meta = _device_meta(values, device)
+    kernel = (
+        foreach_binary_kernel_p4
+        if _pack_ok((a_dt, b_dt, d_list[0].dtype), max_numel, values)
+        else foreach_binary_kernel
+    )
     _launch_binary_kernel(
         meta,
         grid,
@@ -1654,6 +1919,7 @@ def _launch_binary_group(
         alpha,
         b_scalar,
         block,
+        kernel,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1
@@ -1893,8 +2159,10 @@ def _launch_scalar_kernel(
     alpha: float,
     by_value: bool,
     block: int,
+    kernel: Callable = foreach_binary_scalar_kernel,
 ) -> None:
     key = (
+        kernel,
         meta.device,
         nt,
         fn,
@@ -1943,7 +2211,7 @@ def _launch_scalar_kernel(
         except Exception:
             _SCALAR_LAUNCH_CACHE.pop(key, None)
     _SCALAR_LAUNCH_STATS["dispatch"] += 1
-    compiled = foreach_binary_scalar_kernel[grid](
+    compiled = kernel[grid](
         meta,
         scalar_buf,
         scalar_value,
@@ -1984,10 +2252,8 @@ def _launch_scalar_group(
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
     ptrs = [t.data_ptr() for t in srcs]
-    meta = _device_meta(
-        ptrs + (ptrs if dsts is srcs else [t.data_ptr() for t in dsts]) + numels,
-        device,
-    )
+    values = ptrs + (ptrs if dsts is srcs else [t.data_ptr() for t in dsts]) + numels
+    meta = _device_meta(values, device)
     # The scalars ride in a device array of the *output* dtype, so integer
     # operators keep integer semantics instead of going through a float.
     #
@@ -2015,6 +2281,11 @@ def _launch_scalar_group(
     # ``triton.cdiv`` is a decorated helper and is far from free at this size;
     # plain ints give the same ceiling division.
     grid = (nt, -(-max_numel // block))
+    kernel = (
+        foreach_binary_scalar_kernel_p4
+        if _pack_ok((in_dt, out_dt), max_numel, values)
+        else foreach_binary_scalar_kernel
+    )
     _launch_scalar_kernel(
         meta,
         scalar_buf,
@@ -2028,6 +2299,7 @@ def _launch_scalar_group(
         alpha,
         by_value,
         block,
+        kernel,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1
@@ -2295,6 +2567,7 @@ def _launch_ternary_kernel(
     s_dt: Any,
     by_value: bool,
     block: int,
+    kernel: Callable = foreach_ternary_kernel,
 ) -> None:
     """``foreach_ternary_kernel[grid](...)`` with a cached launcher.
 
@@ -2306,6 +2579,7 @@ def _launch_ternary_kernel(
     Triton's normal dispatch.
     """
     key = (
+        kernel,
         meta.device,
         nt,
         fn,
@@ -2348,7 +2622,7 @@ def _launch_ternary_kernel(
             return
         except Exception:
             _TERNARY_LAUNCH_CACHE.pop(key, None)
-    compiled = foreach_ternary_kernel[grid](
+    compiled = kernel[grid](
         meta, scalar_buf, scalar_value, fn, nt, dt_in, dt_out, s_dt, by_value, block
     )
     if compiled is not None:
@@ -2390,16 +2664,14 @@ def _launch_ternary_group(
     # One list display with star-unpacking.  Four ``list``+``map`` calls and
     # the concatenations between them measured 4.28us over four sixteen-tensor
     # lists against 3.77us for this form, for the same pointer run.
-    meta = _device_meta(
-        [
-            *map(torch.Tensor.data_ptr, a_l),
-            *map(torch.Tensor.data_ptr, b_l),
-            *map(torch.Tensor.data_ptr, c_l),
-            *map(torch.Tensor.data_ptr, d_l),
-            *numels,
-        ],
-        device,
-    )
+    values = [
+        *map(torch.Tensor.data_ptr, a_l),
+        *map(torch.Tensor.data_ptr, b_l),
+        *map(torch.Tensor.data_ptr, c_l),
+        *map(torch.Tensor.data_ptr, d_l),
+        *numels,
+    ]
+    meta = _device_meta(values, device)
     s_dtype = out_dt if out_dt.is_floating_point else torch.float32
     # Same treatment as the binary scalar path: the ``.Scalar`` form supplies one
     # value for the whole list, so it travels as a kernel argument instead of a
@@ -2413,6 +2685,11 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
+    kernel = (
+        foreach_ternary_kernel_p4
+        if _pack_ok((in_dt, out_dt), max_numel, values)
+        else foreach_ternary_kernel
+    )
     _launch_ternary_kernel(
         grid,
         nt,
@@ -2425,6 +2702,7 @@ def _launch_ternary_group(
         tl_dtype(s_dtype),
         by_value,
         block,
+        kernel,
     )
     _STATS.executor_launches += 1
     _STATS.groups += 1
