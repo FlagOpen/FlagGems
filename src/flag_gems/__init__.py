@@ -65,6 +65,23 @@ aten_lib = torch.library.Library("aten", "IMPL")
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 
+
+def div_tensor_mode(A, B, rounding_mode=None):
+    return div_mode(A, B, rounding_mode=rounding_mode)
+
+
+def div_tensor_mode_(A, B, rounding_mode=None):
+    return div_mode_(A, B, rounding_mode=rounding_mode)
+
+
+def less(A, B):
+    return lt(A, B)
+
+
+def less_scalar(A, B):
+    return lt_scalar(A, B)
+
+
 registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
@@ -930,19 +947,19 @@ _FULL_CONFIG = (
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
     ("div.Tensor", true_divide),
-    ("div.Tensor_mode", div_mode),
+    ("div.Tensor_mode", div_tensor_mode),
     ("div_.Scalar", true_divide_),
     ("div_.Scalar_mode", div_mode_),
     ("div_.Tensor", true_divide_),
-    ("div_.Tensor_mode", div_mode_),
+    ("div_.Tensor_mode", div_tensor_mode_),
     ("divide.Scalar", true_divide),
     ("divide.Scalar_mode", div_mode),
     ("divide.Tensor", divide),
-    ("divide.Tensor_mode", div_mode),
+    ("divide.Tensor_mode", div_tensor_mode),
     ("divide_.Scalar", true_divide_),
     ("divide_.Scalar_mode", div_mode_),
     ("divide_.Tensor", true_divide_),
-    ("divide_.Tensor_mode", div_mode_),
+    ("divide_.Tensor_mode", div_tensor_mode_),
     ("dot", dot),
     ("dropout_", dropout_),
     ("dsplit.array", dsplit),
@@ -1218,8 +1235,8 @@ _FULL_CONFIG = (
     ("lerp.Tensor", lerp_tensor),
     ("lerp_.Scalar", lerp_scalar_),
     ("lerp_.Tensor", lerp_tensor_),
-    ("less.Scalar", lt_scalar),
-    ("less.Tensor", lt),
+    ("less.Scalar", less_scalar),
+    ("less.Tensor", less),
     ("less_.Scalar", less_scalar_),
     ("less_.Tensor", less_),
     ("less_equal.Scalar", less_equal_scalar),
@@ -1353,8 +1370,8 @@ _FULL_CONFIG = (
     ("logsumexp", logsumexp),
     ("lstm.input", lstm),
     ("lstm_cell", lstm_cell),
-    ("lt.Scalar", lt_scalar),
-    ("lt.Tensor", lt),
+    ("lt.Scalar", less_scalar),
+    ("lt.Tensor", less),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
     ("lu_unpack", lu_unpack),

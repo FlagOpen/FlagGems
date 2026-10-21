@@ -325,3 +325,11 @@ def div_mode_(A, B, rounding_mode=None):
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)
+
+
+def div_tensor_mode(A, B, rounding_mode=None):
+    return div_mode(A, B, rounding_mode=rounding_mode)
+
+
+def div_tensor_mode_(A, B, rounding_mode=None):
+    return div_mode_(A, B, rounding_mode=rounding_mode)

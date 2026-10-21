@@ -30,7 +30,7 @@ def test_lt(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.lt(ref_inp1, ref_inp2)
-    res_out = flag_gems.lt(inp1, inp2)
+    res_out = flag_gems.less(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -44,6 +44,6 @@ def test_lt_scalar(shape, dtype):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.lt(ref_inp1, inp2)
-    res_out = flag_gems.lt_scalar(inp1, inp2)
+    res_out = flag_gems.less_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

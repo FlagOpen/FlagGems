@@ -85,7 +85,7 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -103,7 +103,7 @@ def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -119,7 +119,7 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -138,7 +138,7 @@ def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_equal(res_out, ref_out)
@@ -541,7 +541,7 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
         with flag_gems.use_gems():
             res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
     else:
-        res_out = flag_gems.ops.div_mode(inp1, inp2, rounding_mode=rounding_mode)
+        res_out = flag_gems.ops.div_tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -639,7 +639,9 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
         with flag_gems.use_gems():
             res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
     else:
-        res_out = flag_gems.ops.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
+        res_out = flag_gems.ops.div_tensor_mode_(
+            inp1, inp2, rounding_mode=rounding_mode
+        )
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.

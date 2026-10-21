@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -29,6 +31,7 @@ def test_lt():
     bench = base.BinaryPointwiseBenchmark(
         op_name="lt",
         torch_op=torch.lt,
+        gems_op=flag_gems.less,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -40,6 +43,7 @@ def test_lt_scalar():
         op_name="lt_scalar",
         input_fn=_input_fn_scalar,
         torch_op=torch.lt,
+        gems_op=flag_gems.less_scalar,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
