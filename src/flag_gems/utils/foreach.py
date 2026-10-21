@@ -1882,7 +1882,7 @@ def _binary_homogeneous(
     if out_dtype_fn is not None:
         out_dtype = out_dtype_fn(out_dtype)
 
-    conts = [t.is_contiguous() for t in self]
+    conts = list(map(_IS_CONTIGUOUS, self))
     if all(conts):
         srcs_a = self
     else:
@@ -1890,7 +1890,7 @@ def _binary_homogeneous(
     if scalar_operand:
         srcs_b = other
     else:
-        bconts = [t.is_contiguous() for t in other]
+        bconts = list(map(_IS_CONTIGUOUS, other))
         srcs_b = (
             other
             if all(bconts)
