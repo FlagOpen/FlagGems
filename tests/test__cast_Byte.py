@@ -25,7 +25,116 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_CAST_DTYPE = torch.uint8
+
+
+def _copy_dense_to(inp, device):
+    # Copy storage independently and retain the view before observing values.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .to(device)
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.dtype == inp.dtype and result.shape == inp.shape
+    assert (
+        result.stride() == inp.stride()
+        and result.storage_offset() == inp.storage_offset()
+    )
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    expected_device = torch.device(device)
+    assert result.device.type == expected_device.type
+    if expected_device.index is not None:
+        assert result.device == expected_device
+    if inp.device == result.device and inp.untyped_storage().nbytes():
+        assert inp.untyped_storage().data_ptr() != result.untyped_storage().data_ptr()
+    return result
+
+
+def _skip_native_input(dtype, shape):
+    nonempty = all(extent != 0 for extent in shape)
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES and nonempty:
+        pytest.skip("Ascend _cast_Byte has no native nonempty FP8 conversion")
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_cast_abi(result, reference, inp):
+    assert inp.device == result.device == _expected_device()
+    assert result.dtype == reference.dtype == _CAST_DTYPE
+    assert result.shape == reference.shape == inp.shape
+    assert result.layout == reference.layout == inp.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+
+
+def _assert_cast_equal(result, reference, inp):
+    # Reject an incorrect original device or ABI before numerical CPU copies.
+    _check_cast_abi(result, reference, inp)
+    tu.assert_result_equal(result, reference)
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    _skip_native_input(inp.dtype, inp.shape)
+    reference = (
+        _copy_dense_to(inp, "cpu")
+        if utils.TO_CPU and inp.layout == torch.strided
+        else tu.to_reference(inp)
+    )
+    # Tensor.to has no portable floating-to-integer value outside this domain.
+    # Inspect only the input, never the candidate or the observed discrepancy.
+    if utils.TO_CPU:
+        values = (
+            reference._values() if reference.layout == torch.sparse_coo else reference
+        )
+        if values.numel() and (
+            values.dtype.is_floating_point or values.dtype.is_complex
+        ):
+            if values.is_complex():
+                values = values.real
+            values = values.to(torch.float64)
+            low, high = float(values.amin()), float(values.amax())
+            bounds = torch.iinfo(_CAST_DTYPE)
+            if (
+                not (math.isfinite(low) and math.isfinite(high))
+                or math.trunc(low) < bounds.min
+                or math.trunc(high) > bounds.max
+            ):
+                pytest.skip(
+                    "CPU/device floating-to-integer comparison has no portable value "
+                    "for nonfinite or truncated out-of-range inputs"
+                )
+    return reference
+
+
+def _make_input(dtype, shape, value_range):
+    _skip_native_input(dtype, shape)
+    return tu.make_input(dtype, shape, value_range)
+
+
+def _make_special_input(dtype, scenario):
+    _skip_native_input(dtype, (5,))
+    return tu.make_special_input(dtype, scenario)
+
 
 # Static backend capability flags: unsupported dtypes are filtered at
 # collection time instead of being probed or skipped while running.
@@ -135,13 +244,13 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_cast_byte(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte
@@ -151,46 +260,47 @@ def test_cast_byte_non_blocking(shape, non_blocking):
     # Values that are non-zero after the cast, so this parameter variant is not
     # satisfied by an all-zero result.
     inp = _cast_view_base(*shape)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp, non_blocking=non_blocking)
     res_out = flag_gems._cast_Byte(inp, non_blocking=non_blocking)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("layout", LAYOUT_CASES)
 def test_cast_byte_input_layout(layout):
     base = _cast_view_base(16, 8)
-    ref_base = tu.to_reference(base)
     if layout == "offset_only":
         # Non-zero storage offset, strides unchanged.
-        inp, ref_inp = base[1:], ref_base[1:]
+        inp = base[1:]
     elif layout == "transpose":
-        inp, ref_inp = base.t(), ref_base.t()
+        inp = base.t()
     elif layout == "strided":
-        inp, ref_inp = base[:, ::2], ref_base[:, ::2]
+        inp = base[:, ::2]
     else:
-        inp, ref_inp = base[1:, ::3], ref_base[1:, ::3]
+        inp = base[1:, ::3]
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
 
     # The cast values differ per coordinate, so a candidate that ignores the
     # view's strides or storage offset cannot match the exact comparison.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("shape", BOUNDARY_CASES)
 @pytest.mark.parametrize("dtype", BOUNDARY_DTYPES)
 def test_cast_byte_cast_boundaries(shape, dtype):
+    _skip_native_input(dtype, shape)
     numel = math.prod(shape)
     repeats = (numel + len(BOUNDARY_VALUES) - 1) // len(BOUNDARY_VALUES)
     values = (BOUNDARY_VALUES * repeats)[:numel]
     inp = torch.tensor(values, dtype=dtype, device=flag_gems.device).reshape(shape)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
@@ -198,7 +308,7 @@ def test_cast_byte_cast_boundaries(shape, dtype):
     # Out-of-range and non-finite float -> uint8 results are not fixed by the
     # operator specification, so the contract is the native result on this
     # device; it is compared in full, neither clamped nor widened.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte
@@ -209,12 +319,12 @@ def test_cast_byte_uint8_identity_alias(dtype):
     inp = (torch.arange(64, dtype=torch.int32, device=flag_gems.device) * 7 % 256).to(
         dtype
     )
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
     # Native returns the input itself for an already-uint8 input (no copy); the
     # candidate must keep that same-device identity/alias contract.
     assert res_out.device == inp.device
@@ -225,24 +335,24 @@ def test_cast_byte_uint8_identity_alias(dtype):
 @pytest.mark.parametrize("shape", EMPTY_SHAPES)
 def test_cast_byte_empty(shape):
     inp = _cast_view_base(2, 3)[:0].reshape(shape)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_cast_byte_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Byte(ref_inp)
     res_out = flag_gems._cast_Byte(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Byte

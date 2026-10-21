@@ -22,6 +22,116 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_CAST_DTYPE = torch.int32
+
+
+def _copy_dense_to(inp, device):
+    # Copy storage independently and retain the view before observing values.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .to(device)
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.dtype == inp.dtype and result.shape == inp.shape
+    assert (
+        result.stride() == inp.stride()
+        and result.storage_offset() == inp.storage_offset()
+    )
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    expected_device = torch.device(device)
+    assert result.device.type == expected_device.type
+    if expected_device.index is not None:
+        assert result.device == expected_device
+    if inp.device == result.device and inp.untyped_storage().nbytes():
+        assert inp.untyped_storage().data_ptr() != result.untyped_storage().data_ptr()
+    return result
+
+
+def _skip_native_input(dtype, shape):
+    nonempty = all(extent != 0 for extent in shape)
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES and nonempty:
+        pytest.skip("Ascend _cast_Int has no native nonempty FP8 conversion")
+    if flag_gems.vendor_name == "kunlunxin" and dtype.is_complex and nonempty:
+        pytest.skip("Kunlunxin _cast_Int has no native nonempty complex conversion")
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_cast_abi(result, reference, inp):
+    assert inp.device == result.device == _expected_device()
+    assert result.dtype == reference.dtype == _CAST_DTYPE
+    assert result.shape == reference.shape == inp.shape
+    assert result.layout == reference.layout == inp.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+
+
+def _assert_cast_equal(result, reference, inp):
+    # Reject an incorrect original device or ABI before numerical CPU copies.
+    _check_cast_abi(result, reference, inp)
+    tu.assert_result_equal(result, reference)
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    _skip_native_input(inp.dtype, inp.shape)
+    reference = (
+        _copy_dense_to(inp, "cpu")
+        if utils.TO_CPU and inp.layout == torch.strided
+        else tu.to_reference(inp)
+    )
+    # Tensor.to has no portable floating-to-integer value outside this domain.
+    # Inspect only the input, never the candidate or the observed discrepancy.
+    if utils.TO_CPU:
+        values = (
+            reference._values() if reference.layout == torch.sparse_coo else reference
+        )
+        if values.numel() and (
+            values.dtype.is_floating_point or values.dtype.is_complex
+        ):
+            if values.is_complex():
+                values = values.real
+            values = values.to(torch.float64)
+            low, high = float(values.amin()), float(values.amax())
+            bounds = torch.iinfo(_CAST_DTYPE)
+            if (
+                not (math.isfinite(low) and math.isfinite(high))
+                or math.trunc(low) < bounds.min
+                or math.trunc(high) > bounds.max
+            ):
+                pytest.skip(
+                    "CPU/device floating-to-integer comparison has no portable value "
+                    "for nonfinite or truncated out-of-range inputs"
+                )
+    return reference
+
+
+def _make_input(dtype, shape, value_range):
+    _skip_native_input(dtype, shape)
+    return tu.make_input(dtype, shape, value_range)
+
+
+def _make_special_input(dtype, scenario):
+    _skip_native_input(dtype, (5,))
+    return tu.make_special_input(dtype, scenario)
+
+
 # ``aten::_cast_Int(Tensor self, bool non_blocking=False) -> Tensor`` returns an
 # int32 tensor. Every expectation below is read from the same-device native
 # reference, so the file is device portable: the reference oracle, not a
@@ -82,8 +192,8 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__cast_Int_value_range(dtype, value_range, shape):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
@@ -91,19 +201,19 @@ def test__cast_Int_value_range(dtype, value_range, shape):
     # int32 inputs are handed back unchanged; every other dtype is cast into a
     # fresh int32 tensor on the input's device.
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Int
 @pytest.mark.parametrize("dtype,scenario", tu.selected_cases(SPECIAL_CASES, quick=[]))
 def test__cast_Int_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 def _fractional_tensor(shape, dtype=torch.float32):
@@ -143,17 +253,22 @@ _LAYOUTS = tu.selected_cases(
 @pytest.mark.parametrize("layout", _LAYOUTS)
 def test__cast_Int_strided_input(layout):
     inp = _layout_input(layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
+    metadata_reference = ref_out
+    if utils.TO_CPU and flag_gems.vendor_name == "ascend" and inp.dtype != _CAST_DTYPE:
+        # CPU supplies values; the independent target native supplies the
+        # exact backend output-layout contract for non-identity casts.
+        metadata_reference = torch.ops.aten._cast_Int(_copy_dense_to(inp, inp.device))
     res_out = flag_gems._cast_Int(inp)
 
     # Native keeps the caller's strides for some views (a transposed int32 view
     # returns transposed, a float32 offset slice keeps its strides) and compacts
     # others (float32 stride-holes (24, 3) -> (4, 1)), so a candidate is only
     # equivalent if it reproduces the reference strides exactly.
-    assert res_out.stride() == ref_out.stride()
-    tu.assert_result_equal(res_out, ref_out)
+    assert res_out.stride() == metadata_reference.stride()
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _EMPTY_SHAPES = [(0,), (2, 0, 3), (3, 0, 2)]
@@ -164,7 +279,7 @@ _EMPTY_SHAPES = [(0,), (2, 0, 3), (3, 0, 2)]
 @pytest.mark.parametrize("shape", tu.selected_cases(_EMPTY_SHAPES, quick=[(0,)]))
 def test__cast_Int_zero_extent(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
@@ -172,7 +287,7 @@ def test__cast_Int_zero_extent(dtype, shape):
     # Empty int32 is also an identity (same object); empty float dtypes are cast
     # into a fresh empty int32 tensor. Mirror whichever the reference does.
     assert (res_out is inp) == (ref_out is ref_inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _INT64_NARROWING = (
@@ -238,12 +353,12 @@ _POSITIVE_BOUNDARY_CASES = [
 def test__cast_Int_boundary_values(case_name, dtype, values):
     del case_name
     inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _IDENTITY_KINDS = ["contiguous", "transposed", "offset_row", "scalar", "empty"]
@@ -266,7 +381,7 @@ def _identity_input(kind):
 @pytest.mark.parametrize("kind", tu.selected_cases(_IDENTITY_KINDS, quick=[]))
 def test__cast_Int_int32_identity(kind):
     inp = _identity_input(kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
@@ -276,7 +391,7 @@ def test__cast_Int_int32_identity(kind):
     # data_ptr, e.g. a distinct view) is not equivalent.
     assert (res_out is inp) == (ref_out is ref_inp)
     assert res_out.stride() == ref_out.stride()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # Sparse COO coverage. The native call keeps the COO layout, the shape and the
@@ -360,6 +475,22 @@ if not utils.int64_is_supported:
 
 
 def _coo_input(dtype, shape, indices, values, coalesce, empty):
+    if flag_gems.vendor_name == "kunlunxin" and coalesce and not empty:
+        # Coalescing is input preparation; keep the requested sorted COO
+        # representation even though the device coalesce kernel is absent.
+        cpu = torch.sparse_coo_tensor(
+            torch.tensor(indices, dtype=torch.int64, device="cpu"),
+            torch.tensor(values, dtype=dtype, device="cpu"),
+            shape,
+            device="cpu",
+        ).coalesce()
+        return torch.sparse_coo_tensor(
+            cpu._indices().to(flag_gems.device),
+            cpu._values().to(flag_gems.device),
+            shape,
+            is_coalesced=True,
+            device=flag_gems.device,
+        )
     if empty:
         return torch.sparse_coo_tensor(
             torch.empty((len(shape), 0), dtype=torch.int64, device=flag_gems.device),
@@ -386,10 +517,11 @@ def test__cast_Int_sparse_coo(
 ):
     del case_name
     inp = _coo_input(dtype, shape, indices, values, coalesce, empty)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Int(ref_inp)
     res_out = flag_gems._cast_Int(inp)
+    _check_cast_abi(res_out, ref_out, inp)
 
     # Layout, shape and dtype parity come from the shared full-result
     # comparison below; what native adds on top of that, and what the shared
@@ -403,7 +535,7 @@ def test__cast_Int_sparse_coo(
     # ``_values()`` work on uncoalesced COO, unlike ``indices()``/``values()``.
     tu.assert_result_equal(res_out._indices(), ref_out._indices())
     tu.assert_result_equal(res_out._values(), ref_out._values())
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # ``non_blocking`` is the only schema parameter. Both explicit bool values are
@@ -418,7 +550,7 @@ def test__cast_Int_non_blocking_value(dtype, non_blocking, as_keyword):
     # Fractional, nonzero and coordinate-varying: the symmetric [-1,1) range
     # would truncate to all zeros and could not tell a real cast from a stub.
     inp = _fractional_tensor((20, 320, 15), dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     if as_keyword:
         ref_out = torch.ops.aten._cast_Int(ref_inp, non_blocking=non_blocking)
@@ -427,7 +559,7 @@ def test__cast_Int_non_blocking_value(dtype, non_blocking, as_keyword):
         ref_out = torch.ops.aten._cast_Int(ref_inp, non_blocking)
         res_out = flag_gems._cast_Int(inp, non_blocking)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # Negative cases for the candidate only: a wrong-typed ``non_blocking``, a

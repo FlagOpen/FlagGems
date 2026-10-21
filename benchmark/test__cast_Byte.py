@@ -52,6 +52,15 @@ BENCH_DTYPES = [
 
 # None omits the argument, so that case measures the schema default.
 NON_BLOCKING_CASES = [False, True, None]
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _unsupported_native_case(dtype, shape):
+    return (
+        flag_gems.vendor_name == "ascend"
+        and dtype in _FP8_DTYPES
+        and all(extent != 0 for extent in shape)
+    )
 
 
 def _validate_shape(shape):
@@ -67,6 +76,12 @@ def _validate_shape(shape):
 
 
 def _cast_input(shape, dtype, device):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype in _FP8_DTYPES
+        and any(extent == 0 for extent in shape)
+    ):
+        return torch.empty(shape, dtype=dtype, device=device)
     # FP8 and the integral dtypes have no randn kernel.
     if dtype.is_floating_point:
         return torch.randn(shape, dtype=torch.float32, device=device).to(dtype)
@@ -103,6 +118,19 @@ class CastByteBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return base.UnaryPointwiseBenchmark.set_more_shapes(self)
 
+    def get_case_iter(self, dtype):
+        for case in super().get_case_iter(dtype):
+            # Filter after ordinal assignment so supported custom empty
+            # shapes and all remaining public case IDs keep their identity.
+            if _unsupported_native_case(dtype, case.shape["input"]):
+                if case.case_id in (getattr(base.Config, "case_ids", None) or ()):
+                    raise ValueError(
+                        f"Unsupported benchmark case {case.case_id}: "
+                        "Ascend native _cast_Byte has no nonempty FP8 conversion"
+                    )
+                continue
+            yield case
+
 
 @pytest.mark.underscore_cast_Byte
 def test_cast_byte():
@@ -115,3 +143,14 @@ def test_cast_byte():
         dtypes=BENCH_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_cast_Byte
+@pytest.mark.parametrize(
+    "dtype", _FP8_DTYPES if flag_gems.vendor_name == "ascend" else []
+)
+def test_cast_byte_native_nonempty_fp8(dtype):
+    pytest.skip(
+        "Ascend native _cast_Byte has no nonempty FP8 conversion; "
+        "these cases are excluded from timing, while empty shapes remain supported"
+    )
