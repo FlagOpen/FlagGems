@@ -444,10 +444,12 @@ def test_swapdims_backward(shape, dim0, dim1, dtype):
 @pytest.mark.parametrize("shape,dim0,dim1", _OUT_OF_RANGE_ROWS)
 def test_swapdims_invalid_dims(shape, dim0, dim1):
     if flag_gems.vendor_name == "kunlunxin" and (shape, dim0, dim1) in (
+        ((4, 12), 2, 0),
         ((4, 12), -3, 0),
         ((4, 12), 0, -3),
         ((2, 3, 4), 0, 3),
         ((0, 3), 0, 2),
+        ((1, 1), 1, 2),
         ((256,), 0, 1),
         ((), 0, 1),
     ):
