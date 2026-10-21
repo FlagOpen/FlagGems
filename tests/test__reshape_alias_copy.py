@@ -20,6 +20,149 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_storage_view(inp):
+    # Copy bytes before decoding: target FP8 casts and complex comparisons may
+    # be absent. Retain the physical view instead of compacting its geometry.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    return torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+
+
+def _numeric_values(inp):
+    value = _cpu_storage_view(inp)
+    if inp.dtype in _FP8_DTYPES:
+        value = value.float()
+    elif inp.dtype == torch.complex32:
+        value = value.to(torch.complex64)
+    if inp.is_conj():
+        value = value.conj()
+    if inp.is_neg():
+        value = torch._neg_view(value)
+    return value.resolve_conj().resolve_neg()
+
+
+def _comparison_values(result, reference):
+    # Check the original ABI before any CPU observation can erase it.
+    assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
+    assert result.device == _expected_device()
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    if result.dtype in _FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+    ):
+        return _numeric_values(result), _numeric_values(reference)
+    return utils.to_cpu(result, reference), reference
+
+
+def _assert_result_equal(result, reference):
+    result, reference = _comparison_values(result, reference)
+    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+
+
+def _to_reference(inp):
+    if not utils.TO_CPU:
+        return tu.to_reference(inp)
+    reference = _cpu_storage_view(inp)
+    if inp.is_conj():
+        reference = reference.conj()
+    if inp.is_neg():
+        reference = torch._neg_view(reference)
+    return reference.requires_grad_(inp.requires_grad)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            value = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            value = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        value = value.to(flag_gems.device)
+    else:
+        value = tu.make_input(dtype, shape, value_range)
+    assert value.dtype == dtype and value.shape == torch.Size(shape)
+    assert value.device == _expected_device()
+    return value
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        value = tu.make_special_input(dtype, scenario)
+    assert value.dtype == dtype and value.shape == (5,)
+    assert value.device == _expected_device()
+    return value
+
+
+def _skip_native_layout(inp, size, stride):
+    vendor = flag_gems.vendor_name
+    if vendor not in ("ascend", "kunlunxin") or not isinstance(inp, torch.Tensor):
+        return
+    if not isinstance(size, (list, tuple)) or not isinstance(stride, (list, tuple)):
+        return
+    if len(size) != len(stride) or not all(isinstance(v, int) and v >= 0 for v in size):
+        return
+    # Both native implementations require a reshape-compatible input/size,
+    # even though the CPU/CUDA API permits any in-bounds as_strided read.
+    metadata = torch.empty_strided(tuple(inp.shape), tuple(inp.stride()), device="meta")
+    try:
+        viewed = metadata.view(size)
+    except RuntimeError:
+        pytest.skip(
+            "Ascend/Kunlunxin native _reshape_alias_copy requires reshape-compatible input geometry and element count"
+        )
+    if vendor == "ascend" and any(
+        extent > 1 and requested != actual
+        for extent, requested, actual in zip(size, stride, viewed.stride())
+    ):
+        pytest.skip(
+            "Ascend native _reshape_alias_copy ignores requested strides that differ from its reshape view"
+        )
+
+
+def _native_reference(inp, size, stride):
+    _skip_native_layout(inp, size, stride)
+    return torch.ops.aten._reshape_alias_copy(inp, size, stride)
+
+
+def _native_reference_out(inp, size, stride, *, out):
+    _skip_native_layout(inp, size, stride)
+    return torch.ops.aten._reshape_alias_copy.out(inp, size, stride, out=out)
+
+
 # ``_reshape_alias_copy`` is the materialising sibling of ``_reshape_alias``: it
 # reads the requested ``size`` / ``stride`` view and returns a fresh dense tensor
 # holding those values, so the result neither aliases the input storage nor keeps
@@ -130,14 +273,14 @@ _SHAPE_DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape,dtype,value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test__reshape_alias_copy_value_range(shape, value_range, dtype):
     size, stride = _permuted_spec(shape)
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _to_reference(inp)
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
@@ -181,14 +324,14 @@ _LAYOUT_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_layout(shape, size, stride, dtype):
-    inp = tu.make_input(dtype, shape, ("-1", "1"))
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ("-1", "1"))
+    ref_inp = _to_reference(inp)
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
@@ -221,19 +364,19 @@ def _view_spec(inp, mode):
 @pytest.mark.parametrize("base_shape,slicer,mode", _STRIDED_INPUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_strided_input(base_shape, slicer, mode, dtype):
-    base = tu.make_input(dtype, base_shape, ("-1", "1"))
-    ref_base = tu.to_reference(base)
+    base = _make_input(dtype, base_shape, ("-1", "1"))
+    ref_base = _to_reference(base)
     inp = base[slicer]
     ref_inp = ref_base[slicer]
     size, stride = _view_spec(inp, mode)
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # Whole-parent comparison: a write into the sliced-away padding, not just
     # into the view itself, makes the two parents differ.
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(base, ref_base)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
@@ -259,8 +402,8 @@ _EXTRA_ROWS = tu.selected_cases(
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,shape,size,stride,conj", _EXTRA_ROWS)
 def test__reshape_alias_copy_extra_dtypes(dtype, shape, size, stride, conj):
-    base = tu.make_input(dtype, shape, ("-1", "1"))
-    ref_base = tu.to_reference(base)
+    base = _make_input(dtype, shape, ("-1", "1"))
+    ref_base = _to_reference(base)
     if conj:
         # The lazy conjugate bit is data to copy, not a property of the result.
         # Building the reference view from the transferred base keeps the same
@@ -271,14 +414,14 @@ def test__reshape_alias_copy_extra_dtypes(dtype, shape, size, stride, conj):
         inp = base
         ref_inp = ref_base
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
     if conj:
         assert inp.is_conj()
         assert not res_out.is_conj()
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(base, ref_base)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
@@ -346,14 +489,14 @@ _OUT_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride,out_layout", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 def test__reshape_alias_copy_out(shape, size, stride, out_layout, dtype):
-    inp = tu.make_input(dtype, shape, ("-1", "1"))
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ("-1", "1"))
+    ref_inp = _to_reference(inp)
 
     # Build the reference buffer with the same requested geometry on the
     # reference device before the native out call, so the whole-parent
     # comparison below also covers the sentinel padding outside the view.
     ref_out, ref_parent = _make_out(size, ref_inp.dtype, ref_inp.device, out_layout)
-    torch.ops.aten._reshape_alias_copy.out(ref_inp, size, stride, out=ref_out)
+    _native_reference_out(ref_inp, size, stride, out=ref_out)
 
     out, parent = _make_out(size, dtype, flag_gems.device, out_layout)
     geometry = _buffer_geometry(out)
@@ -361,11 +504,11 @@ def test__reshape_alias_copy_out(shape, size, stride, out_layout, dtype):
 
     assert res is out
     assert _buffer_geometry(out) == geometry
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     if parent is not None:
         assert out.untyped_storage().data_ptr() == parent.untyped_storage().data_ptr()
-        tu.assert_result_equal(parent, ref_parent)
+        _assert_result_equal(parent, ref_parent)
 
 
 # Pure permutation / copy requests: the gradient is the upstream gradient read
@@ -386,22 +529,22 @@ _BACKWARD_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride", _BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__reshape_alias_copy_backward(shape, size, stride, dtype):
-    inp = tu.make_input(dtype, shape, ("-1", "1")).requires_grad_(True)
-    ref_inp = tu.to_reference(inp.detach())
+    inp = _make_input(dtype, shape, ("-1", "1")).requires_grad_(True)
+    ref_inp = _to_reference(inp.detach())
     ref_inp.requires_grad_(True)
-    upstream = tu.make_input(dtype, size, ("-1", "1"))
-    ref_upstream = tu.to_reference(upstream)
+    upstream = _make_input(dtype, size, ("-1", "1"))
+    ref_upstream = _to_reference(upstream)
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
 
     assert res_in_grad.device == inp.device
-    tu.assert_result_equal(res_in_grad, ref_in_grad)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_in_grad, ref_in_grad)
+    _assert_result_equal(inp, ref_inp)
 
 
 # The special-value matrix is derived from the dtypes the operator accepts, not
@@ -421,18 +564,18 @@ _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__reshape_alias_copy_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).reshape(1, 5)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario).reshape(1, 5)
+    ref_inp = _to_reference(inp)
     # Requested reach is 4 < 5, so the NaN/Inf positions are read directly.
     size, stride = [5, 1], [1, 5]
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
     # A copy is exact: NaN slots must match by position and must not be
     # replaced by finite values.
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
@@ -449,8 +592,8 @@ def _complex_special_input(scenario):
     index = _COMPLEX_SCENARIOS.index(scenario)
     imag = _COMPLEX_SCENARIOS[(index + 1) % len(_COMPLEX_SCENARIOS)]
     return torch.complex(
-        tu.make_special_input(torch.float32, scenario),
-        tu.make_special_input(torch.float32, imag),
+        _make_special_input(torch.float32, scenario),
+        _make_special_input(torch.float32, imag),
     )
 
 
@@ -458,7 +601,7 @@ def _complex_special_input(scenario):
 @pytest.mark.parametrize("scenario,conj", _COMPLEX_SPECIAL_ROWS)
 def test__reshape_alias_copy_complex_special_values(scenario, conj):
     base = _complex_special_input(scenario)
-    ref_base = tu.to_reference(base)
+    ref_base = _to_reference(base)
     if conj:
         inp = base.conj()
         ref_inp = ref_base.conj()
@@ -467,20 +610,22 @@ def test__reshape_alias_copy_complex_special_values(scenario, conj):
         ref_inp = ref_base
     size, stride = _permuted_spec(base.shape)
 
-    ref_out = torch.ops.aten._reshape_alias_copy(ref_inp, size, stride)
+    ref_out = _native_reference(ref_inp, size, stride)
     res_out = flag_gems._reshape_alias_copy(inp, size, stride)
 
     if conj:
         assert inp.is_conj()
         assert not res_out.is_conj()
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(base, ref_base)
     _assert_materialized_copy(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_mismatched_rank():
-    inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend native _reshape_alias_copy ignores mismatched stride rank")
+    inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._reshape_alias_copy(inp, [6, 4], [1])
 
@@ -493,14 +638,14 @@ def test__reshape_alias_copy_rejects_non_tensor_input():
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_non_integer_stride():
-    inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
+    inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._reshape_alias_copy(inp, [6, 4], [1.5, 6])
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_out_rejects_dtype_mismatch():
-    inp = tu.make_input(torch.float32, (4, 6), ("-1", "1"))
+    inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     out = torch.empty(6, 4, dtype=torch.int32, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._reshape_alias_copy(inp, [6, 4], [4, 1], out=out)
