@@ -112,8 +112,8 @@ def test_sparse_broadcast_to_copy_materialises_fresh_storage(dtype):
     assert res_out._values().data_ptr() != inp._values().data_ptr()
     assert res_out._indices().data_ptr() != inp._indices().data_ptr()
     # the source tensor is left untouched
-    utils.gems_assert_equal(inp._indices(), snapshot[0])
-    utils.gems_assert_equal(inp._values(), snapshot[1])
+    utils.gems_assert_equal(inp._indices(), utils.to_reference(snapshot[0]))
+    utils.gems_assert_equal(inp._values(), utils.to_reference(snapshot[1]))
 
 
 @pytest.mark.sparse_broadcast_to_copy
