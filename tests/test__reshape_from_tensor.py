@@ -202,6 +202,19 @@ if utils.fp64_is_supported:
 
 def _observed(tensor):
     # The stored values behind a lazy conjugate or negative view.
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and tensor.device.type != "cpu"
+        and tensor.is_neg()
+    ):
+        # Device resolve_neg loses the sign; observe independent physical storage
+        # on CPU, then retain the original observation device and dtype.
+        return (
+            _copy_dense_to(tensor.detach(), "cpu")
+            .resolve_conj()
+            .resolve_neg()
+            .to(tensor.device)
+        )
     return tensor.detach().resolve_conj().resolve_neg()
 
 
