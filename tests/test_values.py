@@ -35,6 +35,135 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_values(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_values(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_values(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_values(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_values(inp, dtype, shape)
+
+
+def _make_special_values(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_values(inp, dtype, (5,))
+
+
+def _to_reference(inp):
+    # Keep non-dense strides and offsets across the CPU reference transfer.
+    return _copy_to(inp, "cpu" if utils.TO_CPU else inp.device)
+
+
+def _assert_equal(actual, expected):
+    # Check the original ABI before any device or numeric conversion.
+    assert actual.dtype == expected.dtype and actual.shape == expected.shape
+    assert actual.layout == expected.layout == torch.strided
+    assert actual.device == _device(flag_gems.device)
+    assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
+        actual.dtype in _FP8_DTYPES or actual.dtype.is_complex
+    ):
+        actual = _copy_to(actual, "cpu")
+        expected = _copy_to(expected, "cpu")
+        if actual.dtype in _FP8_DTYPES:
+            actual, expected = actual.float(), expected.float()
+    tu.assert_result_equal(actual, expected)
+
+
+def _copy_values(actual, marker):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and actual.dtype in _FP8_DTYPES
+        and (not actual.is_contiguous() or actual.storage_offset() != 0)
+    ):
+        # Write through the same storage, including offset/strided views; keep
+        # bytes outside the view unchanged so this still proves aliasing.
+        host = _copy_to(actual, "cpu")
+        host.copy_(_copy_to(marker, "cpu"))
+        nbytes = actual.untyped_storage().nbytes()
+        destination = torch.empty(0, dtype=torch.uint8, device=actual.device).set_(
+            actual.untyped_storage(), 0, (nbytes,), (1,)
+        )
+        source = torch.empty(0, dtype=torch.uint8, device="cpu").set_(
+            host.untyped_storage(), 0, (nbytes,), (1,)
+        )
+        destination.copy_(source.to(actual.device))
+    else:
+        actual.copy_(marker)
+
+
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 _LAYOUTS = {
     "csr": torch.sparse_csr_tensor,
@@ -213,12 +342,22 @@ def _strided_values(shape, dtype, value_range=("-1", "1")):
     so a compacting copy cannot satisfy the layout assertions.
     """
     numel = math.prod(shape) if shape else 1
-    storage = tu.make_input(dtype, (2 * numel + 4,), list(value_range))
+    storage = _make_values(dtype, (2 * numel + 4,), list(value_range))
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        storage = _copy_to(storage, "cpu")
+        return _copy_to(
+            storage[3:].as_strided(shape, _strided_strides(shape)), flag_gems.device
+        )
     return storage[3:].as_strided(shape, _strided_strides(shape))
 
 
 def _filled_like(tensor, value):
     """Constant tensor of ``tensor``'s shape/dtype (7 and 5 are exact in fp8)."""
+    if (flag_gems.vendor_name == "ascend" and tensor.dtype in _FP8_DTYPES) or (
+        flag_gems.vendor_name == "kunlunxin" and tensor.dtype.is_complex
+    ):
+        host = torch.full_like(_copy_to(tensor, "cpu"), value, dtype=torch.float32)
+        return _copy_to(host.to(tensor.dtype), tensor.device)
     return torch.full_like(tensor, value)
 
 
@@ -232,6 +371,10 @@ def _index_buffers(inp):
 
 def _assert_values_view(res_out, ref_out, inp, ref_inp):
     """Stored values plus the aliasing contract of a stored-values view."""
+    assert inp.dtype == ref_inp.dtype and inp.shape == ref_inp.shape
+    assert inp.layout == ref_inp.layout and inp.device == _device(flag_gems.device)
+    assert ref_inp.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+    assert res_out.device == inp.device
     native = torch.ops.aten.values(inp)
     indices = _index_buffers(ref_inp)
 
@@ -242,21 +385,21 @@ def _assert_values_view(res_out, ref_out, inp, ref_inp):
         res_out.storage_offset() == native.storage_offset() == ref_out.storage_offset()
     )
     assert res_out.dtype == native.dtype
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out)
 
     # A view, not a copy: `res is inp.values()` does not hold on this backend, so
     # aliasing is shown by the shared buffer plus the write-through below.
     assert res_out.data_ptr() == native.data_ptr()
 
     marker = _filled_like(native, 7)
-    res_out.copy_(marker)
-    tu.assert_result_equal(native, tu.to_reference(marker))
+    _copy_values(res_out, marker)
+    _assert_equal(native, _to_reference(marker))
     marker = _filled_like(native, 5)
-    inp.values().copy_(marker)
-    tu.assert_result_equal(res_out, tu.to_reference(marker))
+    _copy_values(inp.values(), marker)
+    _assert_equal(res_out, _to_reference(marker))
 
     for expected, actual in zip(indices, _index_buffers(inp)):
-        tu.assert_result_equal(actual.detach(), expected)
+        _assert_equal(actual.detach(), expected)
 
 
 def _shape_to_row(shape):
@@ -406,8 +549,8 @@ _BACKWARD_CASES = tu.selected_cases(_BACKWARD_DEFAULT, quick=[])
 @pytest.mark.values
 @pytest.mark.parametrize("case,dtype,value_range", _VALUE_ROWS)
 def test_values(case, dtype, value_range):
-    values = tu.make_input(dtype, _stored_shape(*case), value_range)
-    ref_values = tu.to_reference(values)
+    values = _make_values(dtype, _stored_shape(*case), value_range)
+    ref_values = _to_reference(values)
 
     inp = _make_compressed(*case, dtype, values)
     ref_inp = _make_compressed(*case, dtype, ref_values)
@@ -421,8 +564,8 @@ def test_values(case, dtype, value_range):
 @pytest.mark.values
 @pytest.mark.parametrize("case,dtype", _COO_ROWS)
 def test_values_coo(case, dtype):
-    values = tu.make_input(dtype, _case_values_shape("coo", case), ["-1", "1"])
-    ref_values = tu.to_reference(values)
+    values = _make_values(dtype, _case_values_shape("coo", case), ["-1", "1"])
+    ref_values = _to_reference(values)
 
     inp = _make_coo(*case, dtype, values)
     ref_inp = _make_coo(*case, dtype, ref_values)
@@ -437,7 +580,7 @@ def test_values_coo(case, dtype):
 @pytest.mark.parametrize("kind,case,dtype", _STRIDED_CASES)
 def test_values_strided_values(kind, case, dtype):
     values = _strided_values(_case_values_shape(kind, case), dtype)
-    ref_values = tu.to_reference(values)
+    ref_values = _to_reference(values)
 
     inp = _make_case(kind, case, dtype, values)
     ref_inp = _make_case(kind, case, dtype, ref_values)
@@ -455,8 +598,8 @@ def test_values_strided_values(kind, case, dtype):
 @pytest.mark.values
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test_values_special_values(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario)
-    ref_values = tu.to_reference(values)
+    values = _make_special_values(dtype, scenario)
+    ref_values = _to_reference(values)
 
     inp = _make_compressed("csr", (2, 3), values.numel(), None, 0, False, dtype, values)
     ref_inp = _make_compressed(
@@ -472,9 +615,13 @@ def test_values_special_values(dtype, scenario):
 @pytest.mark.values
 @pytest.mark.parametrize("kind,case,dtype", _BACKWARD_CASES)
 def test_values_backward(kind, case, dtype):
-    values = tu.make_input(dtype, _case_values_shape(kind, case), ["-1", "1"])
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin cannot execute native CSR/COO values backward")
+    if flag_gems.vendor_name == "ascend" and kind == "coo":
+        pytest.skip("Ascend native COO values backward has no NPU dispatch kernel")
+    values = _make_values(dtype, _case_values_shape(kind, case), ["-1", "1"])
     values = values.requires_grad_(True)
-    ref_values = tu.to_reference(values).detach().requires_grad_(True)
+    ref_values = _to_reference(values).detach().requires_grad_(True)
 
     inp = _make_case(kind, case, dtype, values)
     ref_inp = _make_case(kind, case, dtype, ref_values)
@@ -483,23 +630,23 @@ def test_values_backward(kind, case, dtype):
     res_out = flag_gems.values(inp)
 
     assert res_out.shape == ref_out.shape
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out)
 
     # Nonuniform upstream, so a reordered or partially reduced gradient cannot
     # pass. The operator is differentiated through the original leaf values
     # tensor, not through the returned view.
-    upstream = tu.make_input(dtype, res_out.shape, ["-1", "1"])
-    ref_upstream = tu.to_reference(upstream).detach()
+    upstream = _make_values(dtype, res_out.shape, ["-1", "1"])
+    ref_upstream = _to_reference(upstream).detach()
     ref_grad = torch.autograd.grad(ref_out, ref_values, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, values, grad_outputs=upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_equal(res_grad, ref_grad)
 
 
 @pytest.mark.values
 def test_values_rejects_dense_input():
     # native: "values expected sparse tensor layout but got Strided"
-    inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"])
+    inp = _make_values(torch.float32, (4, 5), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
         flag_gems.values(inp)
@@ -509,7 +656,7 @@ def test_values_rejects_dense_input():
 def test_values_rejects_uncoalesced_coo():
     # native: "Cannot get values on an uncoalesced tensor, please call
     # .coalesce() first"
-    values = tu.make_input(torch.float32, (8,), ["-1", "1"])
+    values = _make_values(torch.float32, (8,), ["-1", "1"])
     inp = _make_coo((4, 4), (), 8, torch.float32, values, is_coalesced=False)
 
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
