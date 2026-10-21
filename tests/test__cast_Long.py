@@ -62,7 +62,7 @@ def _check_cast_abi(result, reference, inp):
 
 def _assert_cast_equal(result, reference, inp):
     _check_cast_abi(result, reference, inp)
-    tu.assert_result_equal(result, reference)
+    _assert_tensor_equal(result, reference)
 
 
 def _reference(inp):
@@ -99,6 +99,10 @@ def _assert_tensor_equal(result, reference):
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
+    if flag_gems.vendor_name == "ascend" and result.dtype == torch.int64:
+        # NPU isclose can merge distinct large integers even at zero tolerance.
+        # Preserve every bit and check the original ABI before CPU observation.
+        result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
 
