@@ -3271,18 +3271,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: clone
-  description: Pure layout/memory operation (clone).
-  for:
-  - clone
-  labels:
-  - KernelGen
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
     by their linear index, sorts unique coordinates ascending and sums duplicated
@@ -3690,6 +3678,18 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_depthwise3d
+  description: Applies a 3D depthwise convolution over an input signal composed of
+    several input planes.
+  for:
+  - conv_depthwise3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: conv_tbc
   description: Applies a 1D convolution over an input with time-batch-channel (T,
     B, C) layout.
@@ -8579,18 +8579,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
-- id: fused_moe
-  description: The generic interface for fused MoE.
-  for:
-  - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
@@ -15881,16 +15869,6 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
-- id: random_
-  description: Random sampling operator (random_).
-  for:
-  - random_
-  labels:
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.1'
 - id: randperm
   description: Returns a random permutation of integers from `0` to `n - 1`.
   for:
