@@ -49,11 +49,11 @@ Two bodies implement the same packing:
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 _BM = 32
 _BK = 64

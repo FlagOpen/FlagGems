@@ -371,7 +371,6 @@ def _sparse_lookup_backprop_kernel(
     nnz_s,
     nnz_c,
     D,
-    STEPS: tl.constexpr,
     s0,
     s1,
     s2,
@@ -381,6 +380,7 @@ def _sparse_lookup_backprop_kernel(
     s6,
     s7,
     P: tl.constexpr,
+    STEPS: tl.constexpr,
     BLOCK_I: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -433,7 +433,6 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
         from flag_gems.ops._sparse_log_softmax import triton_coalesce
 
         nnz_m = int(indices.shape[1]) if indices.dim() == 2 else 0
-        nnz_s = int(self_idx.shape[1]) if self_idx.dim() == 2 else 0
         block = 1
         for size in dense_sizes:
             block *= int(size)
@@ -520,6 +519,7 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
     def backward(ctx, grad_values):
         indices, hit, keys = ctx.saved_tensors
         nnz_m = int(indices.shape[1]) if indices.dim() == 2 else 0
+        nnz_s = int(ctx.self_idx.shape[1]) if ctx.self_idx.dim() == 2 else 0
         nnz_c = int(keys.shape[0])
         dense_sizes = tuple(int(d) for d in grad_values.shape[1:])
         block = 1
@@ -565,10 +565,9 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
                 BLOCK_D=_BLOCK_D,
                 num_warps=_NUM_WARPS,
             )
-        grad = torch.sparse_coo_tensor(
-            ctx.self_idx, grad_vals, ctx.self_size, is_coalesced=ctx.self_coalesced
-        )
-        return grad, None, None, None, None, None, None
+        # self_vals is a dense stored-values tensor, so its gradient is the
+        # per-row grad_vals; the indices carry no gradient.
+        return None, grad_vals, None, None, None, None, None, None
 
 
 class _SparseMaskGather(torch.autograd.Function):
