@@ -11098,7 +11098,7 @@ ops:
 
     '
   for:
-  - linalg.det
+  - linalg_det
   labels:
   - aten
   kind:
@@ -11111,7 +11111,7 @@ ops:
 
     '
   for:
-  - linalg.det.out
+  - linalg_det.out
   labels:
   - aten
   kind:
@@ -11248,7 +11248,7 @@ ops:
 
     '
   for:
-  - linalg.ldl_factor_ex
+  - linalg_ldl_factor_ex
   labels:
   - aten
   - KernelGen
@@ -11289,7 +11289,7 @@ ops:
 
     '
   for:
-  - linalg.lu
+  - linalg_lu
   labels:
   - aten
   kind:
@@ -11302,7 +11302,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor
+  - linalg_lu_factor
   labels:
   - aten
   kind:
@@ -11322,7 +11322,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor_ex
+  - linalg_lu_factor_ex
   labels:
   - aten
   kind:
@@ -11340,7 +11340,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor_ex.out
+  - linalg_lu_factor_ex.out
   labels:
   - aten
   kind:
@@ -11354,7 +11354,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor.out
+  - linalg_lu_factor.out
   labels:
   - aten
   kind:
@@ -11370,7 +11370,7 @@ ops:
 
     '
   for:
-  - linalg.lu.out
+  - linalg_lu.out
   labels:
   - aten
   kind:
@@ -11399,7 +11399,7 @@ ops:
 - id: linalg_matmul
   description: Triton kernel implementation for linalg_matmul.
   for:
-  - linalg.matmul
+  - linalg_matmul
   labels:
   - aten
   - KernelGen
@@ -11411,7 +11411,7 @@ ops:
   description: Computes the matrix exponential of a square matrix via scaling-and-squaring
     with an optimized Taylor polynomial approximation of degree 18.
   for:
-  - linalg.matrix_exp
+  - linalg_matrix_exp
   labels:
   - aten
   kind:
@@ -11422,7 +11422,7 @@ ops:
   description: A variant of linalg_matrix_exp that writes the matrix exponential to
     the provided out tensor.
   for:
-  - linalg.matrix_exp.out
+  - linalg_matrix_exp.out
   labels:
   - aten
   kind:
@@ -11722,7 +11722,7 @@ ops:
 
     '
   for:
-  - linalg.slogdet
+  - linalg_slogdet
   labels:
   - aten
   - KernelGen
@@ -11861,7 +11861,7 @@ ops:
 - id: linalg_vecdot
   description: Computes the dot product of two vectors along a specified dimension.
   for:
-  - linalg.vecdot
+  - linalg_vecdot
   labels:
   - aten
   kind:
@@ -11871,7 +11871,7 @@ ops:
 - id: linalg_vecdot_out
   description: Computes the dot product of two vectors along a specified dimension.
   for:
-  - linalg.vecdot.out
+  - linalg_vecdot.out
   labels:
   - aten
   kind:
@@ -21743,7 +21743,7 @@ ops:
 - id: vector_norm
   description: Computes a vector norm.
   for:
-  - linalg.vector_norm
+  - linalg_vector_norm
   labels:
   - aten
   - Reduction
