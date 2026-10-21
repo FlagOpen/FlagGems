@@ -61,23 +61,38 @@ def _numeric_values(inp):
     return value.resolve_conj().resolve_neg()
 
 
-def _comparison_values(result, reference):
+def _comparison_values(result, reference, *, required_device):
     # Check the original ABI before any CPU observation can erase it.
     assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
-    assert result.device == _expected_device()
+    assert result.device == required_device
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
-    if result.dtype in _FP8_DTYPES or (
-        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+    if (
+        (
+            result.is_neg()
+            or reference.is_neg()
+            or result.is_conj()
+            or reference.is_conj()
+            or not (result.dtype.is_floating_point or result.dtype.is_complex)
+        )
+        or result.dtype in _FP8_DTYPES
+        or (
+            flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+        )
     ):
         return _numeric_values(result), _numeric_values(reference)
     return utils.to_cpu(result, reference), reference
 
 
-def _assert_result_equal(result, reference):
-    result, reference = _comparison_values(result, reference)
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+def _assert_result_equal(result, reference, *, required_device):
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
+    if result.dtype.is_floating_point or result.dtype.is_complex:
+        torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    else:
+        assert torch.equal(result, reference), "integer/bool values differ"
 
 
 def _to_reference(inp):
@@ -127,9 +142,11 @@ def _make_special_input(dtype, scenario):
     return value
 
 
-def _assert_result_close(result, reference, *, atol=1e-4):
+def _assert_result_close(result, reference, *, required_device, atol=1e-4):
     dtype = result.dtype
-    result, reference = _comparison_values(result, reference)
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
     if dtype.is_floating_point or dtype.is_complex:
         torch.testing.assert_close(
             result,
@@ -206,40 +223,45 @@ _DTYPE_RANGE_PAIRS = [
 @pytest.mark.parametrize("level", [0, 1, 3])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim(shape, out_dim, batch_size, level, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
+    res_out = _candidate(
+        inp, level, batch_size, out_dim, required_device=required_device
+    )
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_PAIRS)
 def test__remove_batch_dim_value_ranges(shape, dtype, value_range):
+    required_device = _expected_device()
     out_dim, batch_size = 0, 1
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(inp, 0, batch_size, out_dim)
+    res_out = _candidate(inp, 0, batch_size, out_dim, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype, value_range", tu.selected_cases(_DTYPE_RANGE_PAIRS))
 def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):
+    required_device = _expected_device()
     shape, out_dim, batch_size = (2, 19, 7), 1, 2
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(inp, 0, batch_size, out_dim)
+    res_out = _candidate(inp, 0, batch_size, out_dim, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
@@ -247,6 +269,7 @@ def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):
 @pytest.mark.parametrize("level", [0, 1])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim_non_contiguous(shape, out_dim, batch_size, level, dtype):
+    required_device = _expected_device()
     base = _make_input(dtype, shape, ["-1", "1"])
     ref_base = _to_reference(base)
     inp = base[..., ::2]
@@ -254,14 +277,17 @@ def test__remove_batch_dim_non_contiguous(shape, out_dim, batch_size, level, dty
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
+    res_out = _candidate(
+        inp, level, batch_size, out_dim, required_device=required_device
+    )
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.FLOAT_DTYPES))
 def test__remove_batch_dim_nan_inf(dtype):
+    required_device = _expected_device()
     vals = [
         float("inf"),
         float("-inf"),
@@ -277,15 +303,16 @@ def test__remove_batch_dim_nan_inf(dtype):
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, 0, 4, 0)
-    res_out = flag_gems._remove_batch_dim(inp, 0, 4, 0)
+    res_out = _candidate(inp, 0, 4, 0, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("shape, out_dim, batch_size", _BACKWARD_CASES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test__remove_batch_dim_backward(shape, out_dim, batch_size, dtype):
+    required_device = _expected_device()
     level = 0
     inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = _to_reference(inp)
@@ -299,39 +326,44 @@ def test__remove_batch_dim_backward(shape, out_dim, batch_size, dtype):
     ref_inp.requires_grad_(True)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_inp, level, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(inp, level, batch_size, out_dim)
-    _assert_result_equal(res_out, ref_out)
+    res_out = _candidate(
+        inp, level, batch_size, out_dim, required_device=required_device
+    )
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     res_grad = torch.autograd.grad(res_out, inp, grad_out)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, ref_grad_out)[0]
 
-    _assert_result_close(res_grad, ref_grad)
+    _assert_result_close(res_grad, ref_grad, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_non_broadcastable_batch_size():
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(inp, 0, 3, 1)
     with pytest.raises(RuntimeError):
-        flag_gems._remove_batch_dim(inp, 0, 3, 1)
+        _candidate(inp, 0, 3, 1, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_negative_batch_size():
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (2, 19, 7), ["-1", "1"])
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(inp, 0, -1, 0)
     with pytest.raises(RuntimeError):
-        flag_gems._remove_batch_dim(inp, 0, -1, 0)
+        _candidate(inp, 0, -1, 0, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
 def test__remove_batch_dim_rejects_non_tensor():
+    required_device = _expected_device()
     with pytest.raises(RuntimeError):
         torch.ops.aten._remove_batch_dim(3.14, 0, 1, 0)
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        flag_gems._remove_batch_dim(3.14, 0, 1, 0)
+        _candidate(3.14, 0, 1, 0, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
@@ -340,11 +372,12 @@ def test__remove_batch_dim_rejects_non_tensor():
     tu.selected_cases(tu.special_value_cases(_REMOVE_BATCH_DIM_DTYPES)),
 )
 def test__remove_batch_dim_special_scenarios(dtype, scenario):
+    required_device = _expected_device()
     inp = _make_special_input(dtype, scenario)
     reference = _to_reference(inp)
     expected = torch.ops.aten._remove_batch_dim(reference, 0, 4, 0)
-    actual = flag_gems._remove_batch_dim(inp, 0, 4, 0)
-    _assert_result_equal(actual, expected)
+    actual = _candidate(inp, 0, 4, 0, required_device=required_device)
+    _assert_result_equal(actual, expected, required_device=required_device)
 
 
 @pytest.mark.underscore_remove_batch_dim
@@ -352,6 +385,7 @@ def test__remove_batch_dim_special_scenarios(dtype, scenario):
 @pytest.mark.parametrize("level", [0, 3])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
+    required_device = _expected_device()
     base = _make_input(dtype, (3, 5, 14), ["-1", "1"])
     ref_base = _to_reference(base)
     # Transfer the dense parent first: copying the sliced view to CPU can
@@ -363,9 +397,11 @@ def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
     batch_size = inp.size(batch_dim)
 
     ref_out = torch.ops.aten._remove_batch_dim(ref_batched, level, batch_size, out_dim)
-    res_out = flag_gems._remove_batch_dim(batched, level, batch_size, out_dim)
+    res_out = _candidate(
+        batched, level, batch_size, out_dim, required_device=required_device
+    )
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert torch._C._is_alias_of(res_out, inp)
@@ -374,15 +410,23 @@ def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
 @pytest.mark.underscore_remove_batch_dim
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim_other_level(dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, (3, 5), ["-1", "1"])
     ref_inp = _to_reference(inp)
     batched = torch.ops.aten._add_batch_dim(inp, 0, 0)
     ref_batched = torch.ops.aten._add_batch_dim(ref_inp, 0, 0)
     ref_out = torch.ops.aten._remove_batch_dim(ref_batched, 1, 2, 0)
-    res_out = flag_gems._remove_batch_dim(batched, 1, 2, 0)
+    res_out = _candidate(batched, 1, 2, 0, required_device=required_device)
 
     assert torch._C._functorch.is_legacy_batchedtensor(res_out)
     ref_physical = torch.ops.aten._remove_batch_dim(ref_out, 0, 3, 0)
     res_physical = torch.ops.aten._remove_batch_dim(res_out, 0, 3, 0)
-    _assert_result_equal(res_physical, ref_physical)
+    _assert_result_equal(res_physical, ref_physical, required_device=required_device)
     assert torch._C._is_alias_of(res_physical, inp)
+
+
+def _candidate(*args, required_device, **kwargs):
+    result = flag_gems._remove_batch_dim(*args, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == required_device
+    return result

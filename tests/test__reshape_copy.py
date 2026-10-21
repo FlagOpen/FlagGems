@@ -75,23 +75,38 @@ def _numeric_values(inp):
     return value.resolve_conj().resolve_neg()
 
 
-def _comparison_values(result, reference):
+def _comparison_values(result, reference, *, required_device):
     # Check the original ABI before any CPU observation can erase it.
     assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
-    assert result.device == _expected_device()
+    assert result.device == required_device
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
-    if result.dtype in _FP8_DTYPES or (
-        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+    if (
+        (
+            result.is_neg()
+            or reference.is_neg()
+            or result.is_conj()
+            or reference.is_conj()
+            or not (result.dtype.is_floating_point or result.dtype.is_complex)
+        )
+        or result.dtype in _FP8_DTYPES
+        or (
+            flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+        )
     ):
         return _numeric_values(result), _numeric_values(reference)
     return utils.to_cpu(result, reference), reference
 
 
-def _assert_result_equal(result, reference):
-    result, reference = _comparison_values(result, reference)
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+def _assert_result_equal(result, reference, *, required_device):
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
+    if result.dtype.is_floating_point or result.dtype.is_complex:
+        torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    else:
+        assert torch.equal(result, reference), "integer/bool values differ"
 
 
 def _to_reference(inp):
@@ -171,10 +186,11 @@ def _target_size(shape):
     return list(reversed(tuple(shape)))
 
 
-def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
+def _assert_copy_semantics(res_out, ref_out, inp, ref_inp, *, required_device):
     """Exact values plus the independence and layout a copy must own."""
     # The native op returns a distinct tensor object even for zero-element
     # inputs, so returning the input itself is never a valid copy.
+    assert not torch._C._is_alias_of(res_out, inp)
     assert res_out is not inp
     assert res_out.device == inp.device
     assert res_out.is_contiguous()
@@ -183,8 +199,8 @@ def _assert_copy_semantics(res_out, ref_out, inp, ref_inp):
         # storage report different data_ptr() values while still sharing it, so
         # data_ptr() alone would not prove independence.
         assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -204,14 +220,17 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__reshape_copy_value_ranges(shape, value_range, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     size = _target_size(shape)
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 # ``size`` forms: scalar to 1-D, explicit zero extents, one inferred dimension
@@ -242,13 +261,16 @@ _SIZE_ARG_CASES = tu.selected_cases(
     "dtype", _supported([torch.bfloat16, torch.float8_e4m3fn, torch.int8])
 )
 def test__reshape_copy_size_forms(shape, size, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 _KEYWORD_SIZE_CASES = tu.selected_cases(
@@ -263,13 +285,16 @@ _KEYWORD_SIZE_CASES = tu.selected_cases(
 @pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("shape,size", _KEYWORD_SIZE_CASES)
 def test__reshape_copy_keyword_size(shape, size):
+    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, ["-1", "1"])
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size=size)
-    res_out = flag_gems._reshape_copy(inp, size=size)
+    res_out = _candidate(inp, size=size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 _NONCONTIG_LAYOUTS = tu.selected_cases(["transpose", "slice", "offset"], quick=[])
@@ -279,6 +304,7 @@ _NONCONTIG_LAYOUTS = tu.selected_cases(["transpose", "slice", "offset"], quick=[
 @pytest.mark.parametrize("layout", _NONCONTIG_LAYOUTS)
 @pytest.mark.parametrize("dtype", _supported([torch.float32, torch.int32]))
 def test__reshape_copy_non_contiguous_input(layout, dtype):
+    required_device = _expected_device()
     base = _make_input(dtype, (4, 8, 16), ["-1", "1"])
     if layout == "transpose":
         inp = base.transpose(0, 1)
@@ -290,9 +316,11 @@ def test__reshape_copy_non_contiguous_input(layout, dtype):
 
     size = _target_size(inp.shape)
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 _LAZY_VIEW_CASES = tu.selected_cases(
@@ -305,6 +333,7 @@ _LAZY_VIEW_CASES = tu.selected_cases(
 @pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("dtype,lazy_bit", _LAZY_VIEW_CASES)
 def test__reshape_copy_drops_lazy_view_bit(dtype, lazy_bit):
+    required_device = _expected_device()
     if flag_gems.vendor_name == "kunlunxin" and lazy_bit == "neg":
         pytest.skip(
             "Kunlunxin native _reshape_copy copies unnegated storage for a lazy-negative input"
@@ -320,11 +349,13 @@ def test__reshape_copy_drops_lazy_view_bit(dtype, lazy_bit):
     size = _target_size(base.shape)
 
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
     assert not res_out.is_conj()
     assert not res_out.is_neg()
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 _EMPTY_CASES = tu.selected_cases(
@@ -344,13 +375,16 @@ _EMPTY_CASES = tu.selected_cases(
     "dtype", _supported([torch.float32, torch.int8, torch.float8_e4m3fn])
 )
 def test__reshape_copy_empty_input(shape, size, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 # ``special_value_cases`` omits the inf-containing scenarios for dtypes that
@@ -376,14 +410,17 @@ def _special_input(dtype, scenario):
 @pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test__reshape_copy_special_values(dtype, scenario):
+    required_device = _expected_device()
     inp = _special_input(dtype, scenario)
     ref_inp = _to_reference(inp)
 
     size = _target_size(inp.shape)
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
-    _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
+    _assert_copy_semantics(
+        res_out, ref_out, inp, ref_inp, required_device=required_device
+    )
 
 
 _BACKWARD_SHAPES = tu.selected_cases([(16, 64), (7, 13, 29)], quick=[])
@@ -393,12 +430,13 @@ _BACKWARD_SHAPES = tu.selected_cases([(16, 64), (7, 13, 29)], quick=[])
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", _supported(utils.ALL_FLOAT_DTYPES))
 def test__reshape_copy_backward(shape, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ["-1", "1"]).clone().requires_grad_(True)
     ref_inp = _to_reference(inp).clone().requires_grad_(True)
 
     size = _target_size(shape)
     ref_out = torch.ops.aten._reshape_copy(ref_inp, size)
-    res_out = flag_gems._reshape_copy(inp, size)
+    res_out = _candidate(inp, size, required_device=required_device)
 
     # The upstream gradient is laid out like the result; both the candidate and
     # the reference receive the same values.
@@ -407,7 +445,7 @@ def test__reshape_copy_backward(shape, dtype):
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad_out)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=grad_out)
 
-    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 _INVALID_SIZES = [
@@ -428,32 +466,36 @@ _INVALID_SIZES = [
 @pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("size,error", _INVALID_SIZES)
 def test__reshape_copy_rejects_invalid_size(size, error):
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (2, 3, 4), ["-1", "1"])
     with pytest.raises(error):
-        flag_gems._reshape_copy(inp, size)
+        _candidate(inp, size, required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_copy
 def test__reshape_copy_rejects_ambiguous_empty_inference():
     # Two inferred (-1) extents stay ambiguous even when the input is empty.
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (0,), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems._reshape_copy(inp, [-1, -1])
+        _candidate(inp, [-1, -1], required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_copy
 @pytest.mark.parametrize("size", [6, 6.0])
 def test__reshape_copy_rejects_non_list_size(size):
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (2, 3, 4), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems._reshape_copy(inp, size)
+        _candidate(inp, size, required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_copy
 def test__reshape_copy_rejects_missing_size():
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (2, 3, 4), ["-1", "1"])
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems._reshape_copy(inp)
+        _candidate(inp, required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_copy
@@ -461,5 +503,13 @@ def test__reshape_copy_rejects_missing_size():
 def test__reshape_copy_rejects_non_tensor_source(source):
     # The native schema requires a Tensor for ``self``: "Expected a value of
     # type 'Tensor' for argument 'self' but instead found type 'list'".
+    required_device = _expected_device()
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems._reshape_copy(source, [3])
+        _candidate(source, [3], required_device=required_device)
+
+
+def _candidate(*args, required_device, **kwargs):
+    result = flag_gems._reshape_copy(*args, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == required_device
+    return result

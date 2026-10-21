@@ -63,23 +63,38 @@ def _numeric_values(inp):
     return value.resolve_conj().resolve_neg()
 
 
-def _comparison_values(result, reference):
+def _comparison_values(result, reference, *, required_device):
     # Check the original ABI before any CPU observation can erase it.
     assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
-    assert result.device == _expected_device()
+    assert result.device == required_device
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
-    if result.dtype in _FP8_DTYPES or (
-        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+    if (
+        (
+            result.is_neg()
+            or reference.is_neg()
+            or result.is_conj()
+            or reference.is_conj()
+            or not (result.dtype.is_floating_point or result.dtype.is_complex)
+        )
+        or result.dtype in _FP8_DTYPES
+        or (
+            flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+        )
     ):
         return _numeric_values(result), _numeric_values(reference)
     return utils.to_cpu(result, reference), reference
 
 
-def _assert_result_equal(result, reference):
-    result, reference = _comparison_values(result, reference)
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+def _assert_result_equal(result, reference, *, required_device):
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
+    if result.dtype.is_floating_point or result.dtype.is_complex:
+        torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    else:
+        assert torch.equal(result, reference), "integer/bool values differ"
 
 
 def _to_reference(inp):
@@ -132,6 +147,8 @@ def _make_special_input(dtype, scenario):
 def _full(shape, value, *, dtype, device):
     # Older CPU Torch can store FP8 but cannot fill it. Encode the sentinel
     # before transfer; the native zeros reference/candidate still run unchanged.
+    if flag_gems.vendor_name == "kunlunxin" and dtype.is_complex:
+        return torch.full(shape, value, dtype=dtype, device="cpu").to(device)
     if dtype in _FP8_DTYPES and torch.device(device).type == "cpu":
         return torch.full(shape, value, dtype=torch.float32, device="cpu").to(dtype)
     return torch.full(shape, value, dtype=dtype, device=device)
@@ -141,6 +158,26 @@ def _full(shape, value, *, dtype, device):
 def _native_output_dtype_capability(request):
     params = getattr(getattr(request.node, "callspec", None), "params", {})
     dtype = params.get("other_dtype", params.get("dtype"))
+    # Torch 2.4 CPU zeros uses a small nonempty memset fast path. Empty
+    # and >=32768-element FP8 outputs reach its missing fill_cpu kernel.
+    if (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and torch.__version__.split("+")[0].startswith("2.4.")
+        and dtype in _FP8_DTYPES
+        and all(
+            key in params
+            for key in ("self_shape", "other_shape", "self_num_batch_dims")
+        )
+    ):
+        shape = tuple(params["self_shape"][: params["self_num_batch_dims"]]) + tuple(
+            params["other_shape"]
+        )
+        count = math.prod(shape)
+        if count == 0 or count >= 32768:
+            pytest.skip(
+                "Hygon Torch 2.4 CPU FP8 zeros reference lacks fill_cpu for empty or >=32768-element outputs"
+            )
     if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
         *_FP8_DTYPES,
         torch.complex32,
@@ -211,20 +248,22 @@ def _special_tensor(shape, dtype, scenario):
     return values.repeat(repeats)[:numel].reshape(shape)
 
 
-def _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other):
+def _assert_zero_output(
+    res_out, ref_out, self_t, other_t, ref_self, ref_other, *, required_device
+):
     assert isinstance(res_out, torch.Tensor)
     assert res_out.device == other_t.device
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert res_out.requires_grad == ref_out.requires_grad
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     # Default returns fresh storage. Explicit .out may alias an input, in
     # which case its writes and aliasing must agree with ATen.
     for inp, ref_inp in ((self_t, ref_self), (other_t, ref_other)):
         assert torch._C._is_alias_of(res_out, inp) == torch._C._is_alias_of(
             ref_out, ref_inp
         )
-        _assert_result_equal(inp, ref_inp)
+        _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
@@ -236,6 +275,7 @@ def _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other):
 def test__new_zeros_with_same_feature_meta(
     self_shape, other_shape, self_num_batch_dims, dtype
 ):
+    required_device = _expected_device()
     self_t = _make_input(dtype, self_shape, _MAIN_RANGE)
     other_t = _make_input(dtype, other_shape, _MAIN_RANGE)
     ref_self = _to_reference(self_t)
@@ -244,11 +284,22 @@ def test__new_zeros_with_same_feature_meta(
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=self_num_batch_dims
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=self_num_batch_dims
+    res_out = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=self_num_batch_dims,
+        required_device=required_device,
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.new_zeros_with_same_feature_meta_out
@@ -260,6 +311,7 @@ def test__new_zeros_with_same_feature_meta(
 def test__new_zeros_with_same_feature_meta_out(
     self_shape, other_shape, self_num_batch_dims, dtype
 ):
+    required_device = _expected_device()
     self_t = _make_input(dtype, self_shape, _MAIN_RANGE)
     other_t = _make_input(dtype, other_shape, _MAIN_RANGE)
     ref_self = _to_reference(self_t)
@@ -274,13 +326,25 @@ def test__new_zeros_with_same_feature_meta_out(
     torch.ops.aten._new_zeros_with_same_feature_meta.out(
         ref_self, ref_other, self_num_batch_dims=self_num_batch_dims, out=ref_out
     )
-    res_ret = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=self_num_batch_dims, out=res_out
+    res_ret = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=self_num_batch_dims,
+        out=res_out,
+        required_device=required_device,
     )
 
     # The .out variant must write into and return the out tensor itself.
     assert res_ret is res_out
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
@@ -291,6 +355,7 @@ def test__new_zeros_with_same_feature_meta_out(
 def test__new_zeros_with_same_feature_meta_shapes(
     self_shape, other_shape, self_num_batch_dims, dtype
 ):
+    required_device = _expected_device()
     self_t = _make_input(dtype, self_shape, _MAIN_RANGE)
     other_t = _make_input(dtype, other_shape, _MAIN_RANGE)
     ref_self = _to_reference(self_t)
@@ -299,11 +364,22 @@ def test__new_zeros_with_same_feature_meta_shapes(
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=self_num_batch_dims
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=self_num_batch_dims
+    res_out = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=self_num_batch_dims,
+        required_device=required_device,
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.new_zeros_with_same_feature_meta_out
@@ -324,6 +400,7 @@ def test__new_zeros_with_same_feature_meta_shapes(
 def test__new_zeros_with_same_feature_meta_out_layouts(
     base_shape, stride, offset, dtype
 ):
+    required_device = _expected_device()
     self_t = _make_input(dtype, (4, 10), _MAIN_RANGE)[:, ::2]
     other_t = _make_input(dtype, (8, 5), _MAIN_RANGE)[::2]
     ref_self, ref_other = _to_reference(self_t), _to_reference(other_t)
@@ -335,14 +412,26 @@ def test__new_zeros_with_same_feature_meta_out_layouts(
     torch.ops.aten._new_zeros_with_same_feature_meta.out(
         ref_self, ref_other, self_num_batch_dims=0, out=ref_out
     )
-    res_ret = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=0, out=res_out
+    res_ret = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=0,
+        out=res_out,
+        required_device=required_device,
     )
 
     assert res_ret is res_out
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
     # The gaps and prefix outside the output view must remain untouched.
-    _assert_result_equal(res_base, ref_base)
+    _assert_result_equal(res_base, ref_base, required_device=required_device)
 
 
 @pytest.mark.new_zeros_with_same_feature_meta_out
@@ -354,6 +443,7 @@ def test__new_zeros_with_same_feature_meta_out_layouts(
     ),
 )
 def test__new_zeros_with_same_feature_meta_out_resize(out_shape, dtype):
+    required_device = _expected_device()
     self_t = _make_input(dtype, (2, 3), _MAIN_RANGE)
     other_t = _make_input(dtype, (4, 5), _MAIN_RANGE)
     ref_self, ref_other = _to_reference(self_t), _to_reference(other_t)
@@ -363,12 +453,24 @@ def test__new_zeros_with_same_feature_meta_out_resize(out_shape, dtype):
     torch.ops.aten._new_zeros_with_same_feature_meta.out(
         ref_self, ref_other, self_num_batch_dims=1, out=ref_out
     )
-    res_ret = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=1, out=res_out
+    res_ret = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=1,
+        out=res_out,
+        required_device=required_device,
     )
 
     assert res_ret is res_out
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.new_zeros_with_same_feature_meta_out
@@ -380,6 +482,7 @@ def test__new_zeros_with_same_feature_meta_out_resize(out_shape, dtype):
     ),
 )
 def test__new_zeros_with_same_feature_meta_out_alias(alias_self, dtype):
+    required_device = _expected_device()
     self_t = _make_input(dtype, (4, 5), _MAIN_RANGE)
     other_t = _make_input(dtype, (4, 5), _MAIN_RANGE)
     ref_self, ref_other = _to_reference(self_t), _to_reference(other_t)
@@ -389,12 +492,24 @@ def test__new_zeros_with_same_feature_meta_out_alias(alias_self, dtype):
     torch.ops.aten._new_zeros_with_same_feature_meta.out(
         ref_self, ref_other, self_num_batch_dims=0, out=ref_out
     )
-    res_ret = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=0, out=res_out
+    res_ret = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=0,
+        out=res_out,
+        required_device=required_device,
     )
 
     assert res_ret is res_out
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
@@ -413,6 +528,7 @@ def test__new_zeros_with_same_feature_meta_out_alias(alias_self, dtype):
     ),
 )
 def test__new_zeros_with_same_feature_meta_no_autograd(self_grad, other_grad, dtype):
+    required_device = _expected_device()
     self_t = _make_input(dtype, (2, 3), _MAIN_RANGE).requires_grad_(self_grad)
     other_t = _make_input(dtype, (4, 5), _MAIN_RANGE).requires_grad_(other_grad)
     ref_self, ref_other = _to_reference(self_t), _to_reference(other_t)
@@ -420,11 +536,19 @@ def test__new_zeros_with_same_feature_meta_no_autograd(self_grad, other_grad, dt
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=1
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=1
+    res_out = _candidate(
+        self_t, other_t, self_num_batch_dims=1, required_device=required_device
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -447,6 +571,7 @@ _DTYPE_RANGE_CASES = [
 def test__new_zeros_with_same_feature_meta_value_ranges(
     self_shape, other_shape, self_num_batch_dims, value_range, dtype
 ):
+    required_device = _expected_device()
     self_t = _make_input(dtype, self_shape, value_range)
     other_t = _make_input(dtype, other_shape, value_range)
     ref_self = _to_reference(self_t)
@@ -455,11 +580,22 @@ def test__new_zeros_with_same_feature_meta_value_ranges(
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=self_num_batch_dims
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=self_num_batch_dims
+    res_out = _candidate(
+        self_t,
+        other_t,
+        self_num_batch_dims=self_num_batch_dims,
+        required_device=required_device,
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
@@ -467,6 +603,7 @@ def test__new_zeros_with_same_feature_meta_value_ranges(
     "self_dtype, other_dtype", _NEW_ZEROS_WITH_SAME_FEATURE_META_MIXED_DTYPES
 )
 def test__new_zeros_with_same_feature_meta_other_dtype_wins(self_dtype, other_dtype):
+    required_device = _expected_device()
     self_t = _make_input(self_dtype, (2, 3, 4), _MAIN_RANGE)
     other_t = _make_input(other_dtype, (7, 8), _MAIN_RANGE)
     ref_self = _to_reference(self_t)
@@ -475,16 +612,25 @@ def test__new_zeros_with_same_feature_meta_other_dtype_wins(self_dtype, other_dt
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=1
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=1
+    res_out = _candidate(
+        self_t, other_t, self_num_batch_dims=1, required_device=required_device
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize("dtype", _NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES)
 def test__new_zeros_with_same_feature_meta_same_tensor(dtype):
+    required_device = _expected_device()
     self_t = _make_input(dtype, (2, 3, 4), _MAIN_RANGE)
     other_t = self_t
     ref_self = _to_reference(self_t)
@@ -493,11 +639,19 @@ def test__new_zeros_with_same_feature_meta_same_tensor(dtype):
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=1
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=1
+    res_out = _candidate(
+        self_t, other_t, self_num_batch_dims=1, required_device=required_device
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
@@ -507,6 +661,7 @@ def test__new_zeros_with_same_feature_meta_same_tensor(dtype):
     tu.selected_cases(tu.special_value_cases(_NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES)),
 )
 def test__new_zeros_with_same_feature_meta_nan_inf_values(shape, dtype, scenario):
+    required_device = _expected_device()
     self_t = _special_tensor(shape, dtype, scenario)
     other_t = _special_tensor((4, 5), dtype, scenario)
     ref_self = _to_reference(self_t)
@@ -515,16 +670,29 @@ def test__new_zeros_with_same_feature_meta_nan_inf_values(shape, dtype, scenario
     ref_out = torch.ops.aten._new_zeros_with_same_feature_meta(
         ref_self, ref_other, self_num_batch_dims=0
     )
-    res_out = flag_gems._new_zeros_with_same_feature_meta(
-        self_t, other_t, self_num_batch_dims=0
+    res_out = _candidate(
+        self_t, other_t, self_num_batch_dims=0, required_device=required_device
     )
 
-    _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
+    _assert_zero_output(
+        res_out,
+        ref_out,
+        self_t,
+        other_t,
+        ref_self,
+        ref_other,
+        required_device=required_device,
+    )
 
 
 @pytest.mark.underscore_new_zeros_with_same_feature_meta
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test__new_zeros_with_same_feature_meta_negative_batch_dims_raises(dtype):
+    required_device = _expected_device()
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip(
+            "Ascend native negative self_num_batch_dims handling can segfault instead of raising"
+        )
     self_t = _make_input(dtype, (2, 3), _MAIN_RANGE)
     other_t = _make_input(dtype, (4, 5), _MAIN_RANGE)
 
@@ -538,13 +706,14 @@ def test__new_zeros_with_same_feature_meta_negative_batch_dims_raises(dtype):
             self_t, other_t, self_num_batch_dims=-1
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems._new_zeros_with_same_feature_meta(
-            self_t, other_t, self_num_batch_dims=-1
+        _candidate(
+            self_t, other_t, self_num_batch_dims=-1, required_device=required_device
         )
 
 
 @pytest.mark.new_zeros_with_same_feature_meta_out
 def test__new_zeros_with_same_feature_meta_out_wrong_dtype_raises():
+    required_device = _expected_device()
     self_t = _make_input(torch.float32, (2, 3), _MAIN_RANGE)
     other_t = _make_input(torch.float32, (4, 5), _MAIN_RANGE)
     out_t = _full((2, 4, 5), 1, dtype=torch.int64, device=flag_gems.device)
@@ -554,8 +723,12 @@ def test__new_zeros_with_same_feature_meta_out_wrong_dtype_raises():
             self_t, other_t, self_num_batch_dims=1, out=out_t
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems._new_zeros_with_same_feature_meta(
-            self_t, other_t, self_num_batch_dims=1, out=out_t
+        _candidate(
+            self_t,
+            other_t,
+            self_num_batch_dims=1,
+            out=out_t,
+            required_device=required_device,
         )
 
 
@@ -571,7 +744,15 @@ def test__new_zeros_with_same_feature_meta_out_wrong_dtype_raises():
     ],
 )
 def test__new_zeros_with_same_feature_meta_rejects_non_tensor(self_arg, other_arg):
+    required_device = _expected_device()
     with pytest.raises(RuntimeError):
         torch.ops.aten._new_zeros_with_same_feature_meta(self_arg, other_arg)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems._new_zeros_with_same_feature_meta(self_arg, other_arg)
+        _candidate(self_arg, other_arg, required_device=required_device)
+
+
+def _candidate(*args, required_device, **kwargs):
+    result = flag_gems._new_zeros_with_same_feature_meta(*args, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == required_device
+    return result

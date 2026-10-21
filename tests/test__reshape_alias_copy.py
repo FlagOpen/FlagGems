@@ -61,23 +61,38 @@ def _numeric_values(inp):
     return value.resolve_conj().resolve_neg()
 
 
-def _comparison_values(result, reference):
+def _comparison_values(result, reference, *, required_device):
     # Check the original ABI before any CPU observation can erase it.
     assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
-    assert result.device == _expected_device()
+    assert result.device == required_device
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
-    if result.dtype in _FP8_DTYPES or (
-        flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+    if (
+        (
+            result.is_neg()
+            or reference.is_neg()
+            or result.is_conj()
+            or reference.is_conj()
+            or not (result.dtype.is_floating_point or result.dtype.is_complex)
+        )
+        or result.dtype in _FP8_DTYPES
+        or (
+            flag_gems.vendor_name in ("ascend", "kunlunxin") and result.dtype.is_complex
+        )
     ):
         return _numeric_values(result), _numeric_values(reference)
     return utils.to_cpu(result, reference), reference
 
 
-def _assert_result_equal(result, reference):
-    result, reference = _comparison_values(result, reference)
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+def _assert_result_equal(result, reference, *, required_device):
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
+    if result.dtype.is_floating_point or result.dtype.is_complex:
+        torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    else:
+        assert torch.equal(result, reference), "integer/bool values differ"
 
 
 def _to_reference(inp):
@@ -144,6 +159,8 @@ def _skip_native_layout(inp, size, stride):
         pytest.skip(
             "Ascend/Kunlunxin native _reshape_alias_copy requires reshape-compatible input geometry and element count"
         )
+    if viewed.numel() == 0:
+        return
     if vendor == "ascend" and any(
         extent > 1 and requested != actual
         for extent, requested, actual in zip(size, stride, viewed.stride())
@@ -238,11 +255,12 @@ def _permuted_spec(shape):
     return [shape[dim] for dim in order], [strides[dim] for dim in order]
 
 
-def _assert_materialized_copy(res_out, ref_out, inp):
+def _assert_materialized_copy(res_out, ref_out, inp, *, required_device):
     # Operator-specific checks the shared value assertions do not cover: the
     # ``_copy`` variant materialises the request, so the result is a fresh dense
     # tensor that drops the requested strides and offset and must not alias the
     # input storage.
+    assert not torch._C._is_alias_of(res_out, inp)
     assert res_out.device == inp.device
     assert res_out is not inp
     assert res_out.stride() == ref_out.stride()
@@ -272,16 +290,17 @@ _SHAPE_DTYPE_RANGE_CASES = [
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("shape,dtype,value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test__reshape_alias_copy_value_range(shape, value_range, dtype):
+    required_device = _expected_device()
     size, stride = _permuted_spec(shape)
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 # Layout rows exercise the size/stride metadata the operator actually takes: the
@@ -324,15 +343,16 @@ _LAYOUT_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_layout(shape, size, stride, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ("-1", "1"))
     ref_inp = _to_reference(inp)
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 # Sliced inputs carry a storage offset and/or non-unit strides; 'dense' asks for
@@ -364,6 +384,7 @@ def _view_spec(inp, mode):
 @pytest.mark.parametrize("base_shape,slicer,mode", _STRIDED_INPUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test__reshape_alias_copy_strided_input(base_shape, slicer, mode, dtype):
+    required_device = _expected_device()
     base = _make_input(dtype, base_shape, ("-1", "1"))
     ref_base = _to_reference(base)
     inp = base[slicer]
@@ -371,13 +392,13 @@ def test__reshape_alias_copy_strided_input(base_shape, slicer, mode, dtype):
     size, stride = _view_spec(inp, mode)
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     # Whole-parent comparison: a write into the sliced-away padding, not just
     # into the view itself, makes the two parents differ.
-    _assert_result_equal(base, ref_base)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(base, ref_base, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 # bool and complex64 are outside the required nine-dtype list but natively valid.
@@ -402,6 +423,7 @@ _EXTRA_ROWS = tu.selected_cases(
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,shape,size,stride,conj", _EXTRA_ROWS)
 def test__reshape_alias_copy_extra_dtypes(dtype, shape, size, stride, conj):
+    required_device = _expected_device()
     base = _make_input(dtype, shape, ("-1", "1"))
     ref_base = _to_reference(base)
     if conj:
@@ -415,14 +437,14 @@ def test__reshape_alias_copy_extra_dtypes(dtype, shape, size, stride, conj):
         ref_inp = ref_base
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
     if conj:
         assert inp.is_conj()
         assert not res_out.is_conj()
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(base, ref_base)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(base, ref_base, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 _SENTINEL = -12345
@@ -489,6 +511,7 @@ _OUT_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride,out_layout", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 def test__reshape_alias_copy_out(shape, size, stride, out_layout, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ("-1", "1"))
     ref_inp = _to_reference(inp)
 
@@ -500,15 +523,15 @@ def test__reshape_alias_copy_out(shape, size, stride, out_layout, dtype):
 
     out, parent = _make_out(size, dtype, flag_gems.device, out_layout)
     geometry = _buffer_geometry(out)
-    res = flag_gems._reshape_alias_copy(inp, size, stride, out=out)
+    res = _candidate(inp, size, stride, out=out, required_device=required_device)
 
     assert res is out
     assert _buffer_geometry(out) == geometry
-    _assert_result_equal(out, ref_out)
-    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
     if parent is not None:
         assert out.untyped_storage().data_ptr() == parent.untyped_storage().data_ptr()
-        _assert_result_equal(parent, ref_parent)
+        _assert_result_equal(parent, ref_parent, required_device=required_device)
 
 
 # Pure permutation / copy requests: the gradient is the upstream gradient read
@@ -529,6 +552,7 @@ _BACKWARD_ROWS = tu.selected_cases(
 @pytest.mark.parametrize("shape,size,stride", _BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test__reshape_alias_copy_backward(shape, size, stride, dtype):
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, ("-1", "1")).requires_grad_(True)
     ref_inp = _to_reference(inp.detach())
     ref_inp.requires_grad_(True)
@@ -536,15 +560,15 @@ def test__reshape_alias_copy_backward(shape, size, stride, dtype):
     ref_upstream = _to_reference(upstream)
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
-    _assert_result_equal(res_out, ref_out)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
 
     assert res_in_grad.device == inp.device
-    _assert_result_equal(res_in_grad, ref_in_grad)
-    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_in_grad, ref_in_grad, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 # The special-value matrix is derived from the dtypes the operator accepts, not
@@ -564,19 +588,20 @@ _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__reshape_alias_copy_special_values(dtype, scenario):
+    required_device = _expected_device()
     inp = _make_special_input(dtype, scenario).reshape(1, 5)
     ref_inp = _to_reference(inp)
     # Requested reach is 4 < 5, so the NaN/Inf positions are read directly.
     size, stride = [5, 1], [1, 5]
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
     # A copy is exact: NaN slots must match by position and must not be
     # replaced by finite values.
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 _COMPLEX_SCENARIOS = ("nan", "inf", "mixed")
@@ -600,6 +625,7 @@ def _complex_special_input(scenario):
 @pytest.mark.underscore_reshape_alias_copy
 @pytest.mark.parametrize("scenario,conj", _COMPLEX_SPECIAL_ROWS)
 def test__reshape_alias_copy_complex_special_values(scenario, conj):
+    required_device = _expected_device()
     base = _complex_special_input(scenario)
     ref_base = _to_reference(base)
     if conj:
@@ -611,41 +637,52 @@ def test__reshape_alias_copy_complex_special_values(scenario, conj):
     size, stride = _permuted_spec(base.shape)
 
     ref_out = _native_reference(ref_inp, size, stride)
-    res_out = flag_gems._reshape_alias_copy(inp, size, stride)
+    res_out = _candidate(inp, size, stride, required_device=required_device)
 
     if conj:
         assert inp.is_conj()
         assert not res_out.is_conj()
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(base, ref_base)
-    _assert_materialized_copy(res_out, ref_out, inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(base, ref_base, required_device=required_device)
+    _assert_materialized_copy(res_out, ref_out, inp, required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_mismatched_rank():
+    required_device = _expected_device()
     if flag_gems.vendor_name == "ascend":
         pytest.skip("Ascend native _reshape_alias_copy ignores mismatched stride rank")
     inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        flag_gems._reshape_alias_copy(inp, [6, 4], [1])
+        _candidate(inp, [6, 4], [1], required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_non_tensor_input():
+    required_device = _expected_device()
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        flag_gems._reshape_alias_copy([1.0, 2.0, 3.0], [3], [1])
+        _candidate([1.0, 2.0, 3.0], [3], [1], required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_rejects_non_integer_stride():
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        flag_gems._reshape_alias_copy(inp, [6, 4], [1.5, 6])
+        _candidate(inp, [6, 4], [1.5, 6], required_device=required_device)
 
 
 @pytest.mark.underscore_reshape_alias_copy
 def test__reshape_alias_copy_out_rejects_dtype_mismatch():
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (4, 6), ("-1", "1"))
     out = torch.empty(6, 4, dtype=torch.int32, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems._reshape_alias_copy(inp, [6, 4], [4, 1], out=out)
+        _candidate(inp, [6, 4], [4, 1], out=out, required_device=required_device)
+
+
+def _candidate(*args, required_device, **kwargs):
+    result = flag_gems._reshape_alias_copy(*args, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == required_device
+    return result
