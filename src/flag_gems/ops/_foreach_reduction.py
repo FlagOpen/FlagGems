@@ -32,7 +32,6 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 import triton
 import triton.language as tl
-
 from triton import knobs
 from triton.runtime import driver as _triton_driver
 
@@ -94,15 +93,11 @@ def _sm_count(device: torch.device) -> int:
     """SM count for ``device``, cached to keep the query off the hot path."""
     key = str(device)
     if key not in _SM_COUNTS:
-        _SM_COUNTS[key] = torch.cuda.get_device_properties(
-            device
-        ).multi_processor_count
+        _SM_COUNTS[key] = torch.cuda.get_device_properties(device).multi_processor_count
     return _SM_COUNTS[key]
 
 
-def _reduction_chunks(
-    nt: int, max_numel: int, device: torch.device, block: int
-) -> int:
+def _reduction_chunks(nt: int, max_numel: int, device: torch.device, block: int) -> int:
     """Chunks per tensor for stage one, i.e. the ``G`` in ``grid=(NT, G)``.
 
     ``nt * G`` is held near ``_PROGRAMS_PER_SM * SM`` so a short list still
@@ -279,8 +274,7 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     numels = [t.numel() for t in tensors]
     if 0 in numels:
         raise RuntimeError(
-            "max(): Expected reduction dim to be specified for "
-            "input.numel() == 0."
+            "max(): Expected reduction dim to be specified for " "input.numel() == 0."
         )
 
     prepared = [t if t.is_contiguous() else t.contiguous() for t in tensors]
@@ -619,9 +613,7 @@ def _pow_sum_list(
         work = [prepared[i] for i in idxs]
         numels = [w.numel() for w in work]
         if max(numels) > 0:
-            out = _norm_group(
-                work, numels, device, in_dtype, ord_key, root, inf_mode
-            )
+            out = _norm_group(work, numels, device, in_dtype, ord_key, root, inf_mode)
         else:
             # Every entry is empty; the stage-two kernel would not be launched,
             # so initialize the results instead of returning uninitialized memory.

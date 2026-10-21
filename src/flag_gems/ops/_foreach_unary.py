@@ -166,9 +166,14 @@ def _erfc_pos_func(x):
     """
     a = tl.abs(x)
     v = a * 0.33333334 - 1.0
-    q = ((((((-0.0073543065 * v + 0.02308265) * v - 0.0400557) * v
-            + 0.072947204) * v - 0.14141525) * v + 0.27006385) * v
-         - 0.5734953)
+    q = (
+        (
+            (((-0.0073543065 * v + 0.02308265) * v - 0.0400557) * v + 0.072947204) * v
+            - 0.14141525
+        )
+        * v
+        + 0.27006385
+    ) * v - 0.5734953
     return tl_extra_shim.fast_expf(a * (q - a))
 
 
@@ -235,14 +240,35 @@ def _atan_func(x):
     a = tl.abs(x)
     c = tl.minimum(a, tl_extra_shim.fast_dividef(1.0, a))
     v = 2.0 * c * c - 1.0
-    s = (((((((6.0314509938e-06 * v - 1.5670237190e-05) * v + 4.3488384108e-05) * v
-            - 1.5755316417e-04) * v + 5.6417664746e-04) * v - 2.0681463648e-03) * v
-          + 7.9936748371e-03) * v - 3.3709898591e-02) * v + 1.7004318535e-01
+    s = (
+        (
+            (
+                (
+                    (
+                        (
+                            (6.0314509938e-06 * v - 1.5670237190e-05) * v
+                            + 4.3488384108e-05
+                        )
+                        * v
+                        - 1.5755316417e-04
+                    )
+                    * v
+                    + 5.6417664746e-04
+                )
+                * v
+                - 2.0681463648e-03
+            )
+            * v
+            + 7.9936748371e-03
+        )
+        * v
+        - 3.3709898591e-02
+    ) * v + 1.7004318535e-01
     core = c * (0.7853982 + (0.5 - 0.5 * v) * s)
     res = tl.where(a > 1.0, 1.5707964 - core, core)
-    return (res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)).to(
-        tl.float32, bitcast=True
-    )
+    return (
+        res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)
+    ).to(tl.float32, bitcast=True)
 
 
 @triton.jit
@@ -267,13 +293,14 @@ def _atan16_func(x):
     a = tl.abs(x)
     c = tl.minimum(a, tl_extra_shim.fast_dividef(1.0, a))
     v = 2.0 * c * c - 1.0
-    s = ((-2.8894221779e-03 * v + 8.2041949608e-03) * v
-         - 3.3429690616e-02) * v + 1.7004555372e-01
+    s = (
+        (-2.8894221779e-03 * v + 8.2041949608e-03) * v - 3.3429690616e-02
+    ) * v + 1.7004555372e-01
     core = c * (0.7853982 + (0.5 - 0.5 * v) * s)
     res = tl.where(a > 1.0, 1.5707964 - core, core)
-    return (res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)).to(
-        tl.float32, bitcast=True
-    )
+    return (
+        res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)
+    ).to(tl.float32, bitcast=True)
 
 
 @triton.jit
@@ -294,9 +321,10 @@ def _lgamma_pos_func(y):
     inv = tl_extra_shim.fast_dividef(1.0, z)
     inv2 = inv * inv
     st = (z - 0.5) * tl_extra_shim.fast_logf(z) - z + 0.9189385332046727
-    st = st + inv * (0.08333333333333333
-                     - inv2 * (0.002777777777777778
-                               - inv2 * 0.0007936507936507937))
+    st = st + inv * (
+        0.08333333333333333
+        - inv2 * (0.002777777777777778 - inv2 * 0.0007936507936507937)
+    )
     corr = tl.where(shift, tl_extra_shim.fast_logf(prod), 0.0)
     return st - corr
 
@@ -326,8 +354,10 @@ def _approx_lgamma_func(x):
     # scaling by 2^64 (exact power-of-two multiply, |sin| <= 1 so no overflow)
     # keeps the log finite.  Without this 80 bf16 inputs came out +inf against
     # ATen's ~90.
-    log_sin = (tl_extra_shim.fast_logf(tl.abs(sin_pi) * 18446744073709551616.0)
-               - 44.3614195558365)
+    log_sin = (
+        tl_extra_shim.fast_logf(tl.abs(sin_pi) * 18446744073709551616.0)
+        - 44.3614195558365
+    )
     refl = 1.1447298858494002 - log_sin - pos
     res = tl.where(reflect, refl, pos)
     pole = (x <= 0.0) & (x == tl.floor(x))

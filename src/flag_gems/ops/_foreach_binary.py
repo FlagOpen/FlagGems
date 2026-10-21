@@ -130,14 +130,14 @@ def _pow_fn(a, b):
             # shifts by a constant.  fp16 subnormals are normal in fp32 and
             # skip this.
             sub = s < 1.1754943508222875e-38
-            l = tl_extra_shim.fast_log2f(
-                tl.where(sub, s * 16777216.0, s)
-            ) - tl.where(sub, 24.0, 0.0)
+            lg = tl_extra_shim.fast_log2f(tl.where(sub, s * 16777216.0, s)) - tl.where(
+                sub, 24.0, 0.0
+            )
         else:
-            l = tl_extra_shim.fast_log2f(s)
+            lg = tl_extra_shim.fast_log2f(s)
         # ``|a| == 1`` is pinned to 1: the magnitude is 1 for every exponent,
         # while ``exp2(0 * inf)`` is NaN and ``pow(±1, ±inf)`` is 1.
-        r = tl.where(s == 1.0, 1.0, tl.exp2(l * bf))
+        r = tl.where(s == 1.0, 1.0, tl.exp2(lg * bf))
         # Negative base: ``(-1)**b`` when ``b`` is integral, NaN otherwise.
         # Parity is tested through ``b/2`` because ``bi % 2`` is exact only for
         # ``|b| < 2**24``; ``b == 2**24`` is even and ``2**24 - 1`` is odd, and
@@ -177,9 +177,7 @@ def _pow_fn(a, b):
         # ``pow(1, inf)`` is 1; ``b == 0`` is pinned for the same reason on an
         # infinite base (``exp2(inf * 0)`` is NaN, ``pow(inf, 0)`` is 1).
         if tl.min(af) >= 1.1754943508222875e-38:
-            r = tl.where(
-                (af == 1.0) | (bf == 0.0), 1.0, tl.exp2(tl.log2(af) * bf)
-            )
+            r = tl.where((af == 1.0) | (bf == 0.0), 1.0, tl.exp2(tl.log2(af) * bf))
         else:
             r = _pow(af, bf)
     else:
@@ -203,9 +201,7 @@ def _rpow_fn(a, b):
     # ``exponent == 0`` pin carry over unchanged.
     if b.dtype.is_floating():
         if bf >= 1.1754943508222875e-38:
-            r = tl.where(
-                (bf == 1.0) | (af == 0.0), 1.0, tl.exp2(tl.log2(bf) * af)
-            )
+            r = tl.where((bf == 1.0) | (af == 0.0), 1.0, tl.exp2(tl.log2(bf) * af))
         else:
             r = _pow(bf, af)
     else:

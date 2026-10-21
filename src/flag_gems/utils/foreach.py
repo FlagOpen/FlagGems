@@ -573,9 +573,7 @@ def _binary_wide_body(
 
     idx = offset + tl.arange(0, BLOCK // 4)
     mask = idx < n_elements // 4
-    a0, a1, a2, a3 = _binary_unpack4(
-        tl.load(a_ptr + idx, mask=mask, other=0), A_DT
-    )
+    a0, a1, a2, a3 = _binary_unpack4(tl.load(a_ptr + idx, mask=mask, other=0), A_DT)
     if B_SCALAR:
         b = _alpha_scale(tl.load(b_raw.to(tl.pointer_type(B_DT))), ALPHA, OUT_DT)
         r0 = fn(a0.to(OUT_DT), b).to(OUT_DT)
@@ -584,9 +582,7 @@ def _binary_wide_body(
         r3 = fn(a3.to(OUT_DT), b).to(OUT_DT)
     else:
         b_ptr = b_raw.to(tl.pointer_type(tl.int64))
-        b0, b1, b2, b3 = _binary_unpack4(
-            tl.load(b_ptr + idx, mask=mask, other=0), B_DT
-        )
+        b0, b1, b2, b3 = _binary_unpack4(tl.load(b_ptr + idx, mask=mask, other=0), B_DT)
         b0 = _alpha_scale(b0, ALPHA, OUT_DT)
         b1 = _alpha_scale(b1, ALPHA, OUT_DT)
         b2 = _alpha_scale(b2, ALPHA, OUT_DT)
@@ -755,9 +751,7 @@ def foreach_binary_kernel_p4(
         r3 = fn(a3.to(OUT_DT), b).to(OUT_DT)
     else:
         b_ptr = b_raw.to(tl.pointer_type(tl.int64))
-        b0, b1, b2, b3 = _unpack4(
-            tl.load(b_ptr + idx, mask=mask, other=0), B_DT
-        )
+        b0, b1, b2, b3 = _unpack4(tl.load(b_ptr + idx, mask=mask, other=0), B_DT)
         b0 = _alpha_scale(b0, ALPHA, OUT_DT)
         b1 = _alpha_scale(b1, ALPHA, OUT_DT)
         b2 = _alpha_scale(b2, ALPHA, OUT_DT)
@@ -1593,9 +1587,7 @@ def foreach_unary(
     if allowed_dtypes is not None and dtype not in allowed_dtypes:
         check_dtype_supported(dtype, allowed_dtypes)
     if dtype.is_complex and complex_fn is None:
-        raise NotImplementedError(
-            f"foreach executor has no complex kernel for {dtype}"
-        )
+        raise NotImplementedError(f"foreach executor has no complex kernel for {dtype}")
     out_dtype = out_dtype_fn(dtype)
     if inplace and out_dtype != dtype:
         # Same refusal as ATen: an in-place op may not silently narrow its
@@ -1631,8 +1623,7 @@ def foreach_unary(
         # unchanged.  ``_IS_CONTIGUOUS`` is the module-level unbound descriptor
         # defined with the grouping helpers below.
         if uniform and (
-            all(map(_IS_CONTIGUOUS, tensors))
-            or all(map(is_flat_addressable, tensors))
+            all(map(_IS_CONTIGUOUS, tensors)) or all(map(is_flat_addressable, tensors))
         ):
             if inplace:
                 # Flat implies non-overlapping and dense, so the overlap probe
@@ -1645,9 +1636,7 @@ def foreach_unary(
                 # the input's, which is the float case.
                 dsts = list(map(torch.empty_like, tensors))
             else:
-                dsts = [
-                    torch.empty_like(t, dtype=out_dtype) for t in tensors
-                ]
+                dsts = [torch.empty_like(t, dtype=out_dtype) for t in tensors]
             _launch_group(tensors, dsts, kernel_fn, dtype, device, False)
             return dsts
 
@@ -2176,9 +2165,9 @@ def _binary_homogeneous(
         if _GROUP_TENSORS is not None:
             uniform = len(_GROUP_TENSORS([self + other], False)) == 1
         else:
-            uniform = all(
-                t.dtype is dt_a and t.device == dev for t in self
-            ) and all(t.dtype is dt_a and t.device == dev for t in other)
+            uniform = all(t.dtype is dt_a and t.device == dev for t in self) and all(
+                t.dtype is dt_a and t.device == dev for t in other
+            )
     if not uniform:
         zero_dim = a0.dim() == 0
         for t in self:
@@ -2807,9 +2796,7 @@ def _binary_scalar_homogeneous(
         dsts = results
         writebacks = []
 
-    _launch_scalar_group(
-        srcs, dsts, values, fn, dt, out_dtype, dev, alpha, common
-    )
+    _launch_scalar_group(srcs, dsts, values, fn, dt, out_dtype, dev, alpha, common)
     _finish_inplace(results, writebacks)
     return results
 
@@ -2922,9 +2909,7 @@ def foreach_binary_scalar(
         bucket[2].append(v)
 
     for (device, in_dt, out_dt), (srcs, dsts, vals) in buckets.items():
-        _launch_scalar_group(
-            srcs, dsts, vals, fn, in_dt, out_dt, device, alpha, common
-        )
+        _launch_scalar_group(srcs, dsts, vals, fn, in_dt, out_dt, device, alpha, common)
 
     _finish_inplace(results, writebacks)
     return results
@@ -3055,11 +3040,7 @@ def _launch_scalar_group(
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
     ptrs = list(map(_DATA_PTR, srcs))
-    values = (
-        ptrs
-        + (ptrs if dsts is srcs else list(map(_DATA_PTR, dsts)))
-        + numels
-    )
+    values = ptrs + (ptrs if dsts is srcs else list(map(_DATA_PTR, dsts))) + numels
     meta = _device_meta(values, device)
     # The scalars ride in a device array of the *output* dtype, so integer
     # operators keep integer semantics instead of going through a float.
@@ -3586,9 +3567,7 @@ def _launch_ternary_group(
     # An in-place call writes into its inputs, so the destination run repeats
     # the first pointer run instead of reading it a second time.
     values = (
-        (*prun, *prun[:nt], *numels)
-        if d_l is a_l
-        else (*prun, *map(ptr, d_l), *numels)
+        (*prun, *prun[:nt], *numels) if d_l is a_l else (*prun, *map(ptr, d_l), *numels)
     )
     kernel = (
         foreach_ternary_kernel_p4
