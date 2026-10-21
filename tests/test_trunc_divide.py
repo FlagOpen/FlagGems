@@ -45,9 +45,12 @@ def test_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
+    # No upcast: trunc is discontinuous at integer quotients, so an fp64
+    # reference disagrees with the fp32 semantics of both the kernel and ATen
+    # CUDA whenever the exact quotient falls just below an integer (e.g.
+    # 59.99999865 truncates to 59 in fp64 but rounds to 60.0 in fp32 before
+    # the trunc). Both sides must share the input dtype.
     upcast = False
-    if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]:
-        upcast = True
 
     ref_inp1 = utils.to_reference(inp1, upcast)
     ref_inp2 = utils.to_reference(inp2, upcast)
@@ -82,9 +85,9 @@ def test_trunc_divide_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True
-    if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar", "tsingmicro"):
-        upcast = False
+    # No upcast: see test_trunc_div — trunc is discontinuous, so an fp64
+    # reference disagrees with fp32 semantics at integer-adjacent quotients.
+    upcast = False
     ref_inp1 = utils.to_reference(inp1, upcast)
     ref_inp2 = utils.to_reference(inp2, upcast)
 

@@ -67,9 +67,17 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
         input_tensor, hx, params, True, 1, 0.0, False, False, batch_first
     )
 
+    # The Triton kernel uses tiled mat-vec with float32 accumulation while
+    # PyTorch's native rnn_relu uses cuDNN fused kernels.  The algorithmic
+    # difference causes small numerical discrepancies (worst-case over all
+    # configs: float32≈1e-3, float16≈2e-3, bfloat16≈1.6e-2).  We use a
+    # 2× safety margin for atol.  Same calibration as the wrapper and
+    # backward tests below.
+    atol = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
+
     # Compare outputs
-    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
-    utils.gems_assert_close(res_out[1], ref_out[1], dtype)
+    utils.gems_assert_close(res_out[0], ref_out[0], dtype, atol=atol)
+    utils.gems_assert_close(res_out[1], ref_out[1], dtype, atol=atol)
 
 
 @pytest.mark.skipif(

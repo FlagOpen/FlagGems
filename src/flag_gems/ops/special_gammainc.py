@@ -56,14 +56,17 @@ def gammainc_kernel(a_ptr, x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
     # sum = Gamma(a) * sum_{n=0} x^n / Gamma(a+n+1) = sum_{n=0} x^n / ((a)_n * a)
     # where (a)_n = a*(a+1)*...*(a+n-1) is the rising factorial.
     # So series_result = exp(-x) * x^a * sum / Gamma(a)
+    #
+    # The loop always runs to the fixed trip count: a data-dependent `break`
+    # on a vector-valued condition does not compile in Triton, and the early
+    # exit only saves work for already-converged lanes. Extra terms beyond
+    # convergence underflow harmlessly.
     series_sum = 0.0
     term = 1.0 / a_f32
     series_sum = term
     for i in range(1, 200):
         term = term * x_f32 / (a_f32 + tl.cast(i, tl.float32))
         series_sum = series_sum + term
-        if tl.abs(term) < tl.abs(series_sum) * 1e-10:
-            break
 
     # Divide by Gamma(a) to get the regularized value P(a, x)
     log_gamma_a = tl_extra_shim.lgamma(a_f32)
@@ -168,6 +171,10 @@ def special_gammainc(a: torch.Tensor, x: torch.Tensor, *, out: torch.Tensor = No
     if x.device.type != flag_gems.device:
         raise ValueError(
             f"gammainc: second input tensor must be on {flag_gems.device} device"
+        )
+    if out is None:
+        out = torch.empty(
+            torch.broadcast_shapes(a.shape, x.shape), dtype=a.dtype, device=a.device
         )
 
     _launch_gammainc(out, a, x)
