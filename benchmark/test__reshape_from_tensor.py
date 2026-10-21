@@ -156,7 +156,7 @@ def _build_inputs_fn(plan, dtype, device):
     # resident shape tensor is excluded from this file as unverified, based on a prior
     # report rather than on an inspected execution record; no such tensor is built and
     # no runtime probe of that path is performed.
-    shape_tensor = torch.tensor(list(target), dtype=torch.long)
+    shape_tensor = torch.tensor(list(target), dtype=torch.long, device="cpu")
     return operand, shape_tensor, {}
 
 
