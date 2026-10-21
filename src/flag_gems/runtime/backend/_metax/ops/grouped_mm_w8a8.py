@@ -40,8 +40,17 @@ logger = logging.getLogger(__name__)
 _E4M3_DTYPES = (torch.float8_e4m3fn, torch.float8_e4m3fnuz)
 
 
+def _use_sparse_int8(M, N, K, groups):
+    # Sparse token batches need less staging and more work per K/N tile.
+    return M < groups and (
+        (64 <= N <= 1024 and K >= 2048) or (N >= 1024 and 128 <= K <= 512)
+    )
+
+
 def _select_config(M, N, K, num_groups, mode, is_int8):
     if is_int8:
+        if mode == 0 and _use_sparse_int8(M, N, K, num_groups):
+            return (16, 64, 256, 4) if K >= 2048 else (16, 128, 128, 4)
         # Packed M alone overestimates the useful tile height for small experts.
         if mode == 0 and M <= 16 * num_groups and N >= 64 and K >= 128:
             return (16, 64, 128, 4)
@@ -147,6 +156,7 @@ def _scaled_grouped_mm_kernel(
     ScaleA,
     ScaleB,
     Offs,
+    ActiveGroups,
     Bias,
     C,
     M: tl.constexpr,
@@ -169,12 +179,13 @@ def _scaled_grouped_mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     NUM_WARPS: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
     GROUP_MAJOR: tl.constexpr = False,
     DIRECT_GROUP: tl.constexpr = False,
+    COMPACT_GROUPS: tl.constexpr = False,
 ):
-    # LibEntry does not key compiler options; include the warp count explicitly
-    # so different launch configurations cannot alias.
-    tl.static_assert(NUM_WARPS > 0)
+    # LibEntry does not key compiler options; make both launch options explicit.
+    tl.static_assert(NUM_WARPS > 0 and NUM_STAGES > 0)
     if GROUP_MAJOR:
         tl.static_assert(IS_INT8 and MODE == 0)
     if DIRECT_GROUP:
@@ -193,6 +204,11 @@ def _scaled_grouped_mm_kernel(
         # offsets for each CTA and does not depend on the grid-Y limit.
         DIRECT_TILES_N: tl.constexpr = (N + BLOCK_N - 1) // BLOCK_N
         group = tile // DIRECT_TILES_N
+        if COMPACT_GROUPS:
+            active_count = tl.load(ActiveGroups + NUM_GROUPS)
+            if group >= active_count:
+                return
+            group = tl.load(ActiveGroups + group).to(tl.int64)
         pid_n = tile % DIRECT_TILES_N
         pid_m = zero
         m_start = tl.load(Offs + group - 1, group > 0, other=0).to(tl.int64)
@@ -312,6 +328,7 @@ def _grouped_mm_quantized(
     use_fast_accum: bool = False,
     *,
     out: Optional[torch.Tensor] = None,
+    active_groups: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Grouped signed INT8 or E4M3 GEMM; offsets contain cumulative ends.
 
@@ -396,6 +413,10 @@ def _grouped_mm_quantized(
             bm, bn, bk, warps = (128, 128, 64, 4)
     # Direct expert mapping avoids prefix work for small average group sizes;
     # its inner M loop also handles skewed partitions with larger individual groups.
+    stages = 2 if is_int8 else 1
+    if is_int8 and mode == 0 and _use_sparse_int8(M, N, K, groups):
+        stages = 1
+    compact_groups = active_groups is not None
     direct_group = mode == 0 and M <= 64 * groups
     if mode == 0:
         grid = (triton.cdiv(M, bm) + groups - 1, triton.cdiv(N, bn))
@@ -418,7 +439,11 @@ def _grouped_mm_quantized(
         # compact GPU prefix lookup. No offsets are copied to the host.
         grid = (grid[0] * grid[1],)
     if direct_group:
-        grid = (groups * triton.cdiv(N, bn),)
+        grid = (
+            (min(groups, M) * triton.cdiv(N, bn),)
+            if compact_groups
+            else (groups * triton.cdiv(N, bn),)
+        )
     fnuz = self.dtype == torch.float8_e4m3fnuz
     a = self if is_int8 else self.view(torch.uint8)
     b = mat2 if is_int8 else mat2.view(torch.uint8)
@@ -433,6 +458,7 @@ def _grouped_mm_quantized(
             scale_a,
             scale_b,
             offs,
+            active_groups,
             bias,
             out,
             M,
@@ -455,11 +481,12 @@ def _grouped_mm_quantized(
             BLOCK_N=bn,
             BLOCK_K=bk,
             NUM_WARPS=warps,
+            NUM_STAGES=stages,
             GROUP_MAJOR=group_major,
             DIRECT_GROUP=direct_group,
+            COMPACT_GROUPS=compact_groups,
             num_warps=warps,
-            # IS_INT8 is a constexpr cache key; stages are fixed by input dtype.
-            num_stages=2 if is_int8 else 1,
+            num_stages=stages,
             pipeline="basic",
             enable_fp_fusion=False,
         )
@@ -468,10 +495,22 @@ def _grouped_mm_quantized(
 
 @libentry()
 @triton.jit
-def _expert_offsets(Rows, Offsets, E: tl.constexpr, BLOCK: tl.constexpr):
+def _expert_offsets(
+    Rows,
+    Offsets,
+    ActiveGroups,
+    E: tl.constexpr,
+    BLOCK: tl.constexpr,
+    COMPACT: tl.constexpr = False,
+):
     experts = tl.arange(0, BLOCK)
     counts = tl.load(Rows + experts, experts < E, other=0)
     tl.store(Offsets + experts, tl.cumsum(counts, 0), experts < E)
+    if COMPACT:
+        active = (experts < E) & (counts > 0)
+        ranks = tl.cumsum(active.to(tl.int32), 0)
+        tl.store(ActiveGroups + ranks - 1, experts, active)
+        tl.store(ActiveGroups + E, tl.sum(active.to(tl.int32), 0))
 
 
 def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
@@ -523,10 +562,27 @@ def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
             raise ValueError("C must not overlap an input")
     if m == 0 or n == 0:
         return
-    offsets = torch.empty((e,), dtype=torch.int32, device=A.device)
+    # The active count is at most min(M, E), so no host readback is needed.
+    # Long-K batches compact only when the upper bound is sufficiently sparse.
+    compact = (
+        A.dtype == torch.int8
+        and _use_sparse_int8(m, n, k, e)
+        and (k <= 512 or m <= e // 4)
+    )
+    metadata = torch.empty(
+        (2 * e + 1 if compact else e,), dtype=torch.int32, device=A.device
+    )
+    offsets = metadata[:e]
+    active_groups = metadata[e:] if compact else None
     with torch_device_fn.device(A.device):
         _expert_offsets[(1,)](
-            m_rows, offsets, e, triton.next_power_of_2(e), num_warps=4
+            m_rows,
+            offsets,
+            active_groups,
+            e,
+            triton.next_power_of_2(e),
+            COMPACT=compact,
+            num_warps=4,
         )
         _grouped_mm_quantized(
             A,
@@ -536,4 +592,5 @@ def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
             offs=offsets,
             out_dtype=C.dtype,
             out=C,
+            active_groups=active_groups,
         )

@@ -163,3 +163,27 @@ def test_grouped_mm_w8a8_int8_cancellation():
     expected = grouped_gemm_cpu_reference(*args[:4], [0, 17, 65, 0, 131, 1])
     flag_gems.grouped_mm_w8a8(*args)
     gems_assert_equal(args[4].cpu(), expected)
+
+
+@pytest.mark.grouped_mm_w8a8
+@pytest.mark.parametrize("n,k", [(65, 2051), (1025, 129), (1025, 513)])
+def test_grouped_mm_w8a8_sparse_changing_groups(n, k):
+    # Compact/noncompact dispatch boundaries, output/K tails, and a group
+    # spanning several M tiles. Reuse metadata storage across different routes.
+    lengths = [0] * 257
+    lengths[0], lengths[17], lengths[256] = 1, 3, 33
+    args = make_grouped_gemm_case(lengths, n, k, flag_gems.device)
+    for counts in ((1, 3, 33), (33, 1, 3)):
+        lengths[0], lengths[17], lengths[256] = counts
+        args[6].copy_(torch.tensor(lengths, dtype=torch.int32, device=flag_gems.device))
+        args[5].copy_(
+            torch.repeat_interleave(
+                torch.arange(257, dtype=torch.int32, device=flag_gems.device),
+                args[6],
+                output_size=sum(lengths),
+            )
+        )
+        expected = grouped_gemm_cpu_reference(*args[:4], lengths)
+        args[4].fill_(float("nan"))
+        assert flag_gems.grouped_mm_w8a8(*args) is None
+        gems_assert_equal(args[4].cpu(), expected)
