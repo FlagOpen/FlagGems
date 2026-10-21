@@ -237,6 +237,7 @@ from .clamp import (
 )
 from .clip import clip, clip_
 from .col2im import col2im
+from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
@@ -1022,6 +1023,8 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "column_stack",
+    "column_stack_out",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
