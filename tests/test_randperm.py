@@ -24,7 +24,7 @@ device = flag_gems.device
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame", reason="aten dose not support int64 temply"
+    flag_gems.vendor_name == "enflame", reason="aten ref(sort) error"
 )
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
