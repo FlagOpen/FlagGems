@@ -26,6 +26,7 @@ import array
 import logging
 import math
 import numbers
+import struct
 from functools import reduce
 from operator import or_
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -117,6 +118,38 @@ def check_tensor_list(tensors: Sequence[torch.Tensor]) -> List[torch.Tensor]:
             if not isinstance(t, torch.Tensor):
                 raise TypeError("argument 'self' must be tuple of Tensors")
     return list(tensors)
+
+
+def _ternary_operand_lists(
+    a: Any, b: Any, c: Any
+) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
+    """``check_tensor_list`` on a ternary op's three operand lists at once.
+
+    The answers and the exceptions are those of three :func:`check_tensor_list`
+    calls followed by the two ``_check_same_length`` calls: each list's type,
+    emptiness and elements are examined in turn, and only then do the lengths
+    have to agree.  The passing path is three ``isinstance`` tests, three
+    ``map``s and three ``list`` copies instead of five calls re-testing the
+    same things; a failing test hands that list back to the original function
+    so the message is unchanged.
+    """
+    if not (
+        isinstance(a, (list, tuple))
+        and isinstance(b, (list, tuple))
+        and isinstance(c, (list, tuple))
+    ):
+        for lst in (a, b, c):
+            check_tensor_list(lst)
+    if not a or not all(map(_IS_TENSOR, a)):
+        check_tensor_list(a)
+    if not b or not all(map(_IS_TENSOR, b)):
+        check_tensor_list(b)
+    if not c or not all(map(_IS_TENSOR, c)):
+        check_tensor_list(c)
+    if len(a) != len(b) or len(a) != len(c):
+        _check_same_length(a, b, "tensor list")
+        _check_same_length(a, c, "tensor list")
+    return list(a), list(b), list(c)
 
 
 def is_flat_addressable(t: torch.Tensor) -> bool:
@@ -1690,6 +1723,12 @@ def _resolve_scalars(
     all-empty tensor list -- where the launch is skipped -- the call returns
     the promoted empty outputs instead of failing early here.
     """
+    if type(scalars) is float:
+        # A plain float is the common form and is already its own common
+        # value; reaching the same answer through the three ``isinstance``
+        # tests below (one of them against the ``numbers.Real`` ABC) costs
+        # 0.4us a call.
+        return [scalars] * len(tensors), scalars, float
     if isinstance(scalars, torch.Tensor):
         if scalars.numel() == 1:
             value = scalars.item()
@@ -2574,11 +2613,11 @@ def foreach_ternary(
     Serves ``addcmul`` / ``addcdiv``, whose value argument is either one number
     or one per tensor.
     """
-    self = check_tensor_list(self)
-    tensor1 = check_tensor_list(tensor1)
-    tensor2 = check_tensor_list(tensor2)
-    _check_same_length(self, tensor1, "tensor list")
-    _check_same_length(self, tensor2, "tensor list")
+    # ``lerp``'s scalar-weight forms hand the same sequence in as the second
+    # and third operand; the identity is what lets the homogeneity check and
+    # the pointer run skip the repeated third.
+    same_bc = tensor1 is tensor2
+    self, tensor1, tensor2 = _ternary_operand_lists(self, tensor1, tensor2)
     values, common, vclass = _resolve_scalars(self, scalars)
     _STATS.reset()
 
@@ -2586,7 +2625,9 @@ def foreach_ternary(
     # general loop below still handles mixed dtypes (each promotion is folded
     # once and reused), views (``_dense``), and disallowed dtypes (which raise
     # from ``check_dtype_supported`` inside the loop).
-    homogeneous = _ternary_homogeneous(self, tensor1, tensor2, allowed_dtypes)
+    homogeneous, operands = _ternary_homogeneous(
+        self, tensor1, tensor2, allowed_dtypes, same_bc
+    )
     if homogeneous is not None:
         device = self[0].device
         dsts = self if inplace else list(map(torch.empty_like, self))
@@ -2601,6 +2642,8 @@ def foreach_ternary(
             homogeneous,
             device,
             common,
+            operands,
+            same_bc,
         )
         return list(self) if inplace else dsts
 
@@ -2707,28 +2750,54 @@ _TERNARY_UPLOAD_TYPES = {
     torch.float64: ("d", torch.float64),
 }
 
+# ``array`` has no half-precision typecode, so the value list of an fp16 call
+# is packed with ``struct`` instead.  bfloat16 has no ``struct`` code either:
+# the float32 blob is rounded through the same cast the generic path used.
+_TERNARY_PACK_CODES = {torch.float16: "e"}
+
 
 def _ternary_upload(values: List[Any], dtype: torch.dtype, device: Any) -> torch.Tensor:
     """Upload one scalar per tensor to ``device`` as a ``len(values)`` buffer.
 
     ``torch.tensor(values).to(device)`` pays the Python ``Tensor.to`` /
-    ``copy_`` registrations on top of the transfer.  Building the host side
-    with ``array`` + ``frombuffer`` keeps it out of the dispatcher, and
+    ``copy_`` registrations on top of the transfer, and ``to`` blocks on the
+    stream: measured inside a full call it cost 32us of host time against 14us
+    for an explicit non-blocking ``aten::copy_``.  Building the host side with
+    ``array`` / ``struct`` + ``frombuffer`` keeps it out of the dispatcher, and
     redispatching ``aten::copy_`` at ``CompositeExplicitAutograd`` skips the
-    Python registration.  The host buffer stays pageable and freshly built,
-    so the staging copy is ordered before the caller can reuse it.
+    Python registration.  The host buffer stays pageable and freshly built, so
+    the staging copy is ordered before the caller can reuse it.
     """
-    spec = _TERNARY_UPLOAD_TYPES.get(dtype)
-    if spec is None or _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
-        # fp16/bf16 have no ``array`` typecode; the generic path is the only
-        # way to build a host tensor of that dtype.
+    if _ATEN_COPY_REDISPATCH is None or _ATEN_COMPOSITE_KEYSET is None:
         return torch.tensor([float(v) for v in values], dtype=dtype).to(
             device, non_blocking=True
         )
-    code, host_dtype = spec
-    host = torch.frombuffer(
-        array.array(code, [float(v) for v in values]), dtype=host_dtype
-    )
+    spec = _TERNARY_UPLOAD_TYPES.get(dtype)
+    if spec is not None:
+        code, host_dtype = spec
+        host = torch.frombuffer(
+            array.array(code, [float(v) for v in values]), dtype=host_dtype
+        )
+    elif dtype is torch.bfloat16:
+        host = torch.tensor(values, dtype=torch.bfloat16)
+        host_dtype = dtype
+    else:
+        code = _TERNARY_PACK_CODES.get(dtype)
+        if code is None:
+            return torch.tensor([float(v) for v in values], dtype=dtype).to(
+                device, non_blocking=True
+            )
+        try:
+            host = torch.frombuffer(
+                struct.pack(f"<{len(values)}{code}", *values), dtype=dtype
+            )
+        except (struct.error, TypeError):
+            # A non-real entry: keep the conversion error the generic path
+            # raised rather than ``struct.error``.
+            return torch.tensor([float(v) for v in values], dtype=dtype).to(
+                device, non_blocking=True
+            )
+        host_dtype = dtype
     out = torch.empty(len(values), dtype=host_dtype, device=device)
     _ATEN_COPY_REDISPATCH(_ATEN_COMPOSITE_KEYSET, out, host, True)
     return out
@@ -2756,44 +2825,53 @@ def _ternary_homogeneous(
     b_l: Sequence[torch.Tensor],
     c_l: Sequence[torch.Tensor],
     allowed_dtypes: Optional[frozenset],
-) -> Optional[torch.dtype]:
+    same_bc: bool = False,
+) -> Tuple[Optional[torch.dtype], Optional[List[torch.Tensor]]]:
     """The shared dtype when every operand agrees, else ``None``.
 
     Three operands of one floating dtype on one device, all dense, need no
     promotion, no densifying and no bucketing: the whole per-tensor
     bookkeeping in :func:`foreach_ternary` is then pure overhead.
 
-    Uniformity of ``(device, dtype)`` is answered in one C++ pass.  The three
-    operand lists are concatenated into a *single* nested list: the grouping
-    key of a tensor in the one list is that tensor's own ``(device, dtype)``,
-    so a single group means all 48 tensors agree on both.  (With the lists
-    passed separately the primitive keys each index off the first list and
+    Uniformity of ``(device, dtype)`` is answered in one C++ pass.  The operand
+    lists are concatenated into a *single* nested list: the grouping key of a
+    tensor in the one list is that tensor's own ``(device, dtype)``, so a
+    single group means all of them agree on both.  (With the lists passed
+    separately the primitive keys each index off the first list and
     deliberately tolerates cross-list float/double/bfloat16 and CPU-float
     operands for optimizer state tensors, which would not be uniformity here
     and, for a genuinely mixed index, raises instead of returning two groups.)
     Contiguity is the one thing that call does not cover and stays a ``map``
     over the unbound predicate.  Both are exact: any heterogeneity the old
     walk rejected still falls through to the general path.
+
+    ``same_bc`` says the caller was handed the *same* sequence as the second
+    and third operand, which is what ``lerp``'s scalar-weight forms do; the
+    third copy then repeats a third of both walks for an answer already in
+    hand, so only the first pair is examined.  The concatenation is returned
+    so the launcher can read the pointer run off it instead of rebuilding it.
     """
     dtype = a_l[0].dtype
     if not dtype.is_floating_point:
-        return None
+        return None, None
     if allowed_dtypes is not None and dtype not in allowed_dtypes:
-        return None
+        return None, None
     if _GROUP_TENSORS is not None:
-        flat = a_l + b_l + c_l
-        if len(_GROUP_TENSORS([flat], False)) != 1:
-            return None
-        return dtype if all(map(_IS_CONTIGUOUS, flat)) else None
+        operands = a_l + b_l if same_bc else a_l + b_l + c_l
+        if len(_GROUP_TENSORS([operands], False)) != 1:
+            return None, None
+        if all(map(_IS_CONTIGUOUS, operands)):
+            return dtype, operands
+        return None, None
     dev = a_l[0].get_device()
     for a, b, c in zip(a_l, b_l, c_l):
         if a.dtype is not dtype or b.dtype is not dtype or c.dtype is not dtype:
-            return None
+            return None, None
         if a.get_device() != dev or b.get_device() != dev or c.get_device() != dev:
-            return None
+            return None, None
         if not (a.is_contiguous() and b.is_contiguous() and c.is_contiguous()):
-            return None
-    return dtype
+            return None, None
+    return dtype, None
 
 
 _TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
@@ -2898,6 +2976,8 @@ def _launch_ternary_group(
     out_dt: torch.dtype,
     device: Any,
     common: Optional[float] = None,
+    operands: Optional[List[torch.Tensor]] = None,
+    same_bc: bool = False,
 ) -> None:
     numels = list(map(torch.Tensor.numel, a_l))
     max_numel = max(numels)
@@ -2915,16 +2995,26 @@ def _launch_ternary_group(
             _TERNARY_GRID_CACHE.pop(next(iter(_TERNARY_GRID_CACHE)))
         _TERNARY_GRID_CACHE[grid_key] = cached_grid
     block, grid = cached_grid
-    # One list display with star-unpacking.  Four ``list``+``map`` calls and
+    # One tuple display with star-unpacking.  Four ``list``+``map`` calls and
     # the concatenations between them measured 4.28us over four sixteen-tensor
-    # lists against 3.77us for this form, for the same pointer run.
-    values = [
-        *map(torch.Tensor.data_ptr, a_l),
-        *map(torch.Tensor.data_ptr, b_l),
-        *map(torch.Tensor.data_ptr, c_l),
-        *map(torch.Tensor.data_ptr, d_l),
-        *numels,
-    ]
+    # lists against 3.77us for this form, for the same pointer run.  A tuple
+    # also spares ``_device_meta`` its own ``tuple(values)`` conversion, and
+    # when the caller's homogeneity check already concatenated the operands
+    # (``operands``) the first three runs are read off it rather than rebuilt.
+    ptr = torch.Tensor.data_ptr
+    if operands is None:
+        prun = (*map(ptr, a_l), *map(ptr, b_l), *map(ptr, c_l))
+    elif same_bc:
+        prun = (*map(ptr, operands), *map(ptr, b_l))
+    else:
+        prun = (*map(ptr, operands),)
+    # An in-place call writes into its inputs, so the destination run repeats
+    # the first pointer run instead of reading it a second time.
+    values = (
+        (*prun, *prun[:nt], *numels)
+        if d_l is a_l
+        else (*prun, *map(ptr, d_l), *numels)
+    )
     meta = _device_meta(values, device)
     s_dtype = out_dt if out_dt.is_floating_point else torch.float32
     # Same treatment as the binary scalar path: the ``.Scalar`` form supplies one
