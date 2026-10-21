@@ -636,11 +636,13 @@ def test_sparse_log_softmax_dispatch():
     idx = torch.tensor([[0, 1], [0, 1]], device=flag_gems.device)
     vals = torch.randn(2, 4, device=flag_gems.device)
     inp = _make_coo(idx, vals, (8, 8, 4), torch.float32)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_log_softmax(inp, 1)
-        res_int = torch.ops.aten._sparse_log_softmax.int(inp, 1, torch.float32)
-        res_out = torch.ops.aten._sparse_log_softmax.out(inp, 1, False, out=res_int)
+    res = flag_gems._sparse_log_softmax(inp, 1)
+    res_int = flag_gems._sparse_log_softmax_int(inp, 1, torch.float32)
+    o = torch.empty_like(inp)
+    res_out = flag_gems._sparse_log_softmax_out(inp, 1, False, out=o)
     ref = torch.ops.aten._sparse_log_softmax(utils.to_reference(inp), 1)
     assert res.shape == ref.shape
     assert torch.equal(res._indices(), ref._indices())
+    assert torch.equal(res_int._indices(), ref._indices())
+    assert res_out is o
     assert torch.equal(res_out._values(), ref._values())

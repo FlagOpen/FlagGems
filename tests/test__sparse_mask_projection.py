@@ -271,6 +271,33 @@ def test_sparse_mask_projection_value_range(dtype, shape, value_range):
     _assert_untouched(mask, mask_before)
 
 
+@pytest.mark.sparse_mask_projection
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
+def test_sparse_mask_projection_wide_values(dtype):
+    """A hybrid ``self`` whose dense block is wider than the 64-column tile."""
+    shape = (64, 6, 100)
+    sparse_dim = 2
+    tail = shape[sparse_dim:]
+    flat = math.prod(shape[:sparse_dim])
+    self_positions = torch.zeros(flat, dtype=torch.bool, device=flag_gems.device)
+    self_positions[::3] = True
+    mask_positions = torch.zeros(flat, dtype=torch.bool, device=flag_gems.device)
+    mask_positions[1::4] = True
+    self_values = tu.make_input(dtype, (int(self_positions.sum()),) + tail, ["-1", "1"])
+    mask_values = tu.make_input(dtype, (int(mask_positions.sum()),) + tail, ["-1", "1"])
+    inp = _positional_operand(
+        shape, sparse_dim, self_positions.nonzero().reshape(-1), self_values
+    )
+    mask = _positional_operand(
+        shape, sparse_dim, mask_positions.nonzero().reshape(-1), mask_values
+    )
+    ref_out = torch.ops.aten._sparse_mask_projection(
+        tu.to_reference(inp), tu.to_reference(mask), False
+    )
+    res_out = flag_gems._sparse_mask_projection(inp, mask, False)
+    _assert_projection(res_out, ref_out, inp)
+
+
 def _duplicate_operands(dtype, shape, duplicate_count):
     """``self`` stores one entry per selected position; ``mask`` repeats them."""
     values = tu.make_input(dtype, shape, ["-1", "1"])
@@ -715,10 +742,10 @@ def test_sparse_mask_projection_dispatch():
     inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
     mask = torch.ops.aten._sparse_mask_projection(inp, inp)
     o = torch.empty_like(mask)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_mask_projection(inp, inp)
-        res_out = torch.ops.aten._sparse_mask_projection.out(inp, inp, out=o)
+    res = flag_gems._sparse_mask_projection(inp, inp)
+    res_out = flag_gems._sparse_mask_projection_out(inp, inp, out=o)
     ref = torch.ops.aten._sparse_mask_projection(inp, inp)
     assert res.shape == ref.shape
     assert torch.equal(res._values(), ref._values())
     assert res_out is o
+    assert torch.equal(res_out._values(), ref._values())

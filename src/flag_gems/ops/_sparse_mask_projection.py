@@ -168,15 +168,19 @@ def _project_kernel(
         lin += ck * sk
     c = tl.load(sc_ptr + lin, mask=mr, other=0)
 
-    offs_t = tl.arange(0, BLOCK_T)
-    m2 = mr[:, None] & (offs_t < T)[None, :]
-    v = tl.load(val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0)
-    hit = (c > 0)[:, None]
-    if ACC:
-        res = tl.where(hit, v * c.to(v.dtype)[:, None], tl.zeros_like(v))
-    else:
-        res = tl.where(hit, v, tl.zeros_like(v))
-    tl.store(out_ptr + rows[:, None] * T + offs_t[None, :], res, mask=m2)
+    # tile the dense axis so T beyond BLOCK_T is still covered
+    for t0 in range(0, T, BLOCK_T):
+        offs_t = t0 + tl.arange(0, BLOCK_T)
+        m2 = mr[:, None] & (offs_t < T)[None, :]
+        v = tl.load(
+            val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0
+        )
+        hit = (c > 0)[:, None]
+        if ACC:
+            res = tl.where(hit, v * c.to(v.dtype)[:, None], tl.zeros_like(v))
+        else:
+            res = tl.where(hit, v, tl.zeros_like(v))
+        tl.store(out_ptr + rows[:, None] * T + offs_t[None, :], res, mask=m2)
 
 
 def _pad8(values):
@@ -266,15 +270,18 @@ def _fused_tiny_kernel(
     eq = (s_lin[:, None] == m_lin[None, :]) & mj[None, :] & mr[:, None]
     cnt = tl.sum(tl.where(eq, 1, 0), axis=1)
 
-    offs_t = tl.arange(0, BLOCK_T)
-    m2 = mr[:, None] & (offs_t < T)[None, :]
-    v = tl.load(s_val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0)
-    hit = (cnt > 0)[:, None]
-    if ACC:
-        res = tl.where(hit, v * cnt.to(v.dtype)[:, None], tl.zeros_like(v))
-    else:
-        res = tl.where(hit, v, tl.zeros_like(v))
-    tl.store(out_ptr + rows[:, None] * T + offs_t[None, :], res, mask=m2)
+    for t0 in range(0, T, BLOCK_T):
+        offs_t = t0 + tl.arange(0, BLOCK_T)
+        m2 = mr[:, None] & (offs_t < T)[None, :]
+        v = tl.load(
+            s_val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0
+        )
+        hit = (cnt > 0)[:, None]
+        if ACC:
+            res = tl.where(hit, v * cnt.to(v.dtype)[:, None], tl.zeros_like(v))
+        else:
+            res = tl.where(hit, v, tl.zeros_like(v))
+        tl.store(out_ptr + rows[:, None] * T + offs_t[None, :], res, mask=m2)
 
 
 @triton.jit

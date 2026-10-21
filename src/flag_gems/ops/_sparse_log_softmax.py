@@ -664,8 +664,9 @@ def _seg_boundaries(sorted_keys):
     by the coordinate space.
     """
     n = int(sorted_keys.numel())
+    # the callers pass keys already ordered by the FlagGems sort kernel, so no
+    # re-sort happens here
     sorted_keys = sorted_keys.contiguous()
-    sorted_keys, perm = sort(sorted_keys)
     slots = torch.empty(n, dtype=torch.int64, device=sorted_keys.device)
     gstart = torch.empty(max(n, 1), dtype=torch.int64, device=sorted_keys.device)
     total = torch.empty(1, dtype=torch.int32, device=sorted_keys.device)
@@ -681,16 +682,7 @@ def _seg_boundaries(sorted_keys):
     gstart_full = torch.empty(ngroups + 1, dtype=torch.int64, device=sorted_keys.device)
     gstart_full[:ngroups] = gstart[:ngroups]
     gstart_full[ngroups] = n
-    unique_keys = gstart_full[:ngroups].to(torch.int64)  # placeholder
-    # 唯一 key 在 group-start 位置
-    first = torch.cat(
-        [
-            torch.ones(1, dtype=torch.bool, device=sorted_keys.device),
-            sorted_keys[1:] != sorted_keys[:-1],
-        ]
-    )
-    unique_keys = sorted_keys[first]
-    return slots, gstart_full, ngroups, unique_keys
+    return slots, gstart_full, ngroups
 
 
 def triton_coalesce(self):
@@ -849,7 +841,7 @@ def _forward_core(self, dim, out_dtype):
             # O(nnz) boundary scan.
             keys = _pool_key(self, dim, indices)
             sorted_keys, perm = sort(keys)
-            _, gstart, ngroups, _ = _seg_boundaries(sorted_keys)
+            _, gstart, ngroups = _seg_boundaries(sorted_keys)
             _group_lse[(ngroups, triton.cdiv(dnumel, _BLOCK_D))](
                 vals, result, gstart, perm, dnumel, f64, via32, BLOCK_D=_BLOCK_D
             )

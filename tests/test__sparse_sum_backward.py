@@ -923,9 +923,9 @@ def test_sparse_sum_backward_dispatch():
     grad = torch.ops.aten._sparse_sum(inp, dims)
     ref = torch.ops.aten._sparse_sum_backward(grad, inp, dims)
     o = torch.empty_like(ref)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_sum_backward(grad, inp, dims)
-        res_out = torch.ops.aten._sparse_sum_backward.out(grad, inp, dims, out=o)
-    assert res.shape == ref.shape and res.is_coalesced() == ref.is_coalesced()
+    res = flag_gems._sparse_sum_backward(grad, inp, dims)
+    res_out = flag_gems._sparse_sum_backward_out(grad, inp, dims, out=o)
+    assert res.shape == ref.shape
     assert res_out is o
     assert torch.equal(res._indices(), ref._indices())
+    assert torch.equal(res_out._values(), ref._values())

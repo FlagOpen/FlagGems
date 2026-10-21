@@ -324,12 +324,6 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
     result_flat = torch.empty_like(o_flat)
     device = o_idx.device
 
-    same_support = (
-        nnz_g == nnz
-        and g_idx.shape == o_idx.shape
-        and bool((g_idx == o_idx).all().item())
-    )
-
     if nnz > 0 and D > 0:
         stride_pack = torch.tensor(
             _sparse_strides(size, sparse_dim) + [stride_k, size_k],
@@ -347,20 +341,18 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
             o_idx, stride_pack, y_keys, nnz, D, sparse_dim, BLOCK=_BLOCK
         )
         sorted_y_keys, perm_y = sort(y_keys)
-        slot_sorted, _, ngroups, unique_keys = _seg_boundaries(sorted_y_keys)
+        slot_sorted, _, ngroups = _seg_boundaries(sorted_y_keys)
         s_buf = torch.zeros(ngroups, dtype=result_flat.dtype, device=device)
         slots = torch.empty(nnz * D, dtype=torch.int64, device=device)
         _ssbd_slot_scatter[grid_out](perm_y, slot_sorted, slots, nnz * D, BLOCK=_BLOCK)
-        # accumulate/apply 的 grad join 用 sorted unique keys 做 bsearch
-        g_coords = unique_keys  # placeholder, replaced below
-
         # A negative dim keeps every stored coordinate in the reduction key, so
         # the only grouping left is by the entry itself; a non-negative dim
         # drops its own digit and entries sharing a key are summed together.
         local = int(dim) < 0 and k == sparse_dim - 1
+        steps = max(1, min(62, (max(nnz_g * D, 1) - 1).bit_length() + 1))
         g_coords = torch.zeros(max(nnz_g * D, 1), dtype=torch.int64, device=device)
         g_perm = torch.arange(max(nnz_g * D, 1), dtype=torch.int64, device=device)
-        if not same_support:
+        if True:
             _ssbd_entry_coords[grid_out](
                 g_idx, stride_pack, g_coords, nnz_g, D, sparse_dim, BLOCK=_BLOCK
             )
@@ -379,8 +371,8 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
                 nnz,
                 D,
                 sparse_dim,
-                same_support,
-                STEPS=10,
+                False,
+                STEPS=steps,
                 BLOCK=_BLOCK,
             )
         _ssbd_apply[grid_out](
@@ -397,9 +389,9 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
             nnz,
             D,
             sparse_dim,
-            same_support,
+            False,
             local,
-            STEPS=10,
+            STEPS=steps,
             BLOCK=_BLOCK,
         )
 

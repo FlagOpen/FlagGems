@@ -221,6 +221,43 @@ def test__sparse_softmax_backward_data(case, dtype):
 
 
 @pytest.mark.sparse_softmax_backward_data
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+def test__sparse_softmax_backward_data_wide_support(dtype):
+    """A grad support whose ``nnz * dense_block`` exceeds the binary-search
+    step budget of a fixed 10-step search: the join must still converge."""
+    shape, dim = (64, 64, 8), 1
+    nnz = 256  # nnz * D = 2048 > 1024
+    flat = torch.arange(nnz, dtype=torch.long, device=flag_gems.device)
+    d0, d1 = flat // 64, flat % 64
+    indices = torch.stack([d0, d1])
+    tail = (8,)
+    grad = torch.sparse_coo_tensor(
+        indices.clone(),
+        tu.make_input(dtype, (nnz,) + tail, ["-1", "1"]),
+        shape,
+        device=flag_gems.device,
+    ).coalesce()
+    output = torch.sparse_coo_tensor(
+        indices,
+        tu.make_input(dtype, (nnz,) + tail, ["-1", "1"]),
+        shape,
+        device=flag_gems.device,
+    ).coalesce()
+    self_tensor = tu.make_input(dtype, (1,), ["-1", "1"])
+
+    ref = torch.ops.aten._sparse_softmax_backward_data(
+        tu.to_reference(grad),
+        tu.to_reference(output),
+        dim,
+        tu.to_reference(self_tensor),
+    )
+    res = flag_gems._sparse_softmax_backward_data(grad, output, dim, self_tensor)
+
+    assert res.is_coalesced()
+    tu.assert_result_close(res, ref)
+
+
+@pytest.mark.sparse_softmax_backward_data
 @pytest.mark.parametrize("shape", tu.selected_cases([(5, 7)], quick=[]))
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_softmax_backward_data_out(shape, dtype):
@@ -370,14 +407,17 @@ def test_sparse_softmax_backward_data_dispatch():
     vals = torch.randn(2, 4, device=flag_gems.device)
     inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
     out = torch.ops.aten._sparse_softmax(inp, 1)
-    grad = torch.sparse_coo_tensor(idx, torch.randn(2, 4, device=flag_gems.device), (8, 8, 4), device=flag_gems.device)
+    grad = torch.sparse_coo_tensor(
+        idx,
+        torch.randn(2, 4, device=flag_gems.device),
+        (8, 8, 4),
+        device=flag_gems.device,
+    )
     ref = torch.ops.aten._sparse_softmax_backward_data(grad, out, 1, inp)
     o = torch.empty_like(ref)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_softmax_backward_data(grad, out, 1, inp)
-        res_out = torch.ops.aten._sparse_softmax_backward_data.out(
-            grad, out, 1, inp, out=o
-        )
+    res = flag_gems._sparse_softmax_backward_data(grad, out, 1, inp)
+    res_out = flag_gems._sparse_softmax_backward_data_out(grad, out, 1, inp, out=o)
     assert res.shape == ref.shape
     assert torch.equal(res._indices(), ref._indices())
     assert res_out is o
+    assert torch.equal(res_out._values(), ref._values())

@@ -281,30 +281,38 @@ def _dense_kernel(
     rr = tl.arange(0, BLOCK_R)
     for oi in range(OUTER):
         base = oi * D * INNER
-        acc = tl.zeros([BLOCK_N, BLOCK_R], dtype=g_vals.dtype.element_ty)
+        acc = tl.zeros([BLOCK_N], dtype=g_vals.dtype.element_ty)
         for d in range(D):
-            co = base + d * INNER + rr
-            m2 = rm[:, None] & (rr < INNER)[None, :]
-            acc += tl.load(
-                g_vals + src[:, None] * CN + co, mask=m2 & hit[:, None], other=0.0
-            )
-        tl.store(r_ptr + rows * OUTER + oi, tl.sum(acc, axis=1), mask=rm)
+            # tile the dense axis so INNER beyond BLOCK_R is still covered
+            for c0 in range(0, INNER, BLOCK_R):
+                co = base + d * INNER + c0 + rr
+                m2 = rm[:, None] & (c0 + rr < INNER)[None, :]
+                acc += tl.sum(
+                    tl.load(
+                        g_vals + src[:, None] * CN + co,
+                        mask=m2 & hit[:, None],
+                        other=0.0,
+                    ),
+                    axis=1,
+                )
+        tl.store(r_ptr + rows * OUTER + oi, acc, mask=rm)
     for oi in range(OUTER):
         base = oi * D * INNER
         for d in range(D):
-            co = base + d * INNER + rr
-            m2 = rm[:, None] & (rr < INNER)[None, :]
-            gv = tl.load(
-                g_vals + src[:, None] * CN + co, mask=m2 & hit[:, None], other=0.0
-            )
-            yv = tl.load(y_vals + rows[:, None] * CN + co, mask=m2, other=0.0)
-            red = tl.load(r_ptr + rows * OUTER + oi, mask=rm, other=0.0)
-            res = gv - tl.exp(yv) * red[:, None]
-            tl.store(
-                o_vals + rows[:, None] * CN + co,
-                res.to(o_vals.dtype.element_ty),
-                mask=m2,
-            )
+            for c0 in range(0, INNER, BLOCK_R):
+                co = base + d * INNER + c0 + rr
+                m2 = rm[:, None] & (c0 + rr < INNER)[None, :]
+                gv = tl.load(
+                    g_vals + src[:, None] * CN + co, mask=m2 & hit[:, None], other=0.0
+                )
+                yv = tl.load(y_vals + rows[:, None] * CN + co, mask=m2, other=0.0)
+                red = tl.load(r_ptr + rows * OUTER + oi, mask=rm, other=0.0)
+                res = gv - tl.exp(yv) * red[:, None]
+                tl.store(
+                    o_vals + rows[:, None] * CN + co,
+                    res.to(o_vals.dtype.element_ty),
+                    mask=m2,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +346,7 @@ def _pool_key(shape, sdim, dim):
     key = [0] * max(sdim, 1)
     for i, a in enumerate(retained):
         key[a] = strides[i]
-    return key[:5], max(run, 1)
+    return key, max(run, 1)
 
 
 def _plain_strides(shape, sdim):

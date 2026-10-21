@@ -428,50 +428,44 @@ def _dense_softmax_kernel(
 # backward kernels
 # ---------------------------------------------------------------------------
 @triton.jit
-def _bw_psum_kernel(
-    g_ptr, o_ptr, ps_ptr, total, m, BLOCK: tl.constexpr, ACC64: tl.constexpr
+def _bw_group_kernel(
+    slot_ptr, g_ptr, o_ptr, sbuf_ptr, total, BLOCK: tl.constexpr, ACC64: tl.constexpr
 ):
+    """Accumulate ``g*out`` per reduce group and dense position.
+
+    ``slot_ptr`` is the per-element compact slot (length ``total``); for
+    ``m > 1`` its group space is the (reduce group, dense position) pair, so
+    the sum is taken per position as the backward requires instead of across
+    positions.
+    """
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
     msk = e < total
+    g = tl.load(slot_ptr + e, mask=msk, other=0)
     gg = tl.load(g_ptr + e, mask=msk, other=0.0)
     oo = tl.load(o_ptr + e, mask=msk, other=0.0)
     if ACC64:
         p = gg.to(tl.float64) * oo.to(tl.float64)
     else:
         p = gg * oo
-    tl.atomic_add(ps_ptr + e // m, p, mask=msk)
-
-
-@triton.jit
-def _bw_group_kernel(
-    gid_ptr, ps_ptr, sbuf_ptr, nnz, BLOCK: tl.constexpr, ACC64: tl.constexpr
-):
-    pid = tl.program_id(0)
-    r = pid * BLOCK + tl.arange(0, BLOCK)
-    msk = r < nnz
-    g = tl.load(gid_ptr + r, mask=msk, other=0)
-    p = tl.load(ps_ptr + r, mask=msk, other=0.0)
     tl.atomic_add(sbuf_ptr + g, p, mask=msk)
 
 
 @triton.jit
 def _bw_write_kernel(
-    gid_ptr,
+    slot_ptr,
     s_ptr,
     g_ptr,
     o_ptr,
     dv_ptr,
     total,
-    m,
     BLOCK: tl.constexpr,
     ACC64: tl.constexpr,
 ):
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
     msk = e < total
-    r = e // m
-    g = tl.load(gid_ptr + r, mask=msk, other=0)
+    g = tl.load(slot_ptr + e, mask=msk, other=0)
     s = tl.load(s_ptr + g, mask=msk, other=0.0)
     gg = tl.load(g_ptr + e, mask=msk, other=0.0)
     oo = tl.load(o_ptr + e, mask=msk, other=0.0)
@@ -693,15 +687,10 @@ def _case_a_forward(cfg, values, out_values):
     nnz = cfg["nnz"]
     m = cfg["m"]
     acc64 = cfg["acc64"]
-    if cfg.get("all_single"):
-        # every group holds exactly one stored entry
-        BLOCK = 1024
-        _ones_kernel[(triton.cdiv(nnz, BLOCK),)](values, out_values, nnz, BLOCK=BLOCK)
-        return
     # The reduce-group ids are compacted into [0, ngroups) with the FlagGems
     # sort kernel, so the group scratch buffers are O(nnz) instead of sized by
-    # the coordinate space.  Needed by every case-A path (the backward reads
-    # the same slots).
+    # the coordinate space.  Computed for every case-A path, including the
+    # all-single shortcut, because the backward reads the same slots.
     total = nnz * m
     if m > 1:
         pair_keys = torch.empty(total, dtype=torch.int64, device=values.device)
@@ -713,6 +702,11 @@ def _case_a_forward(cfg, values, out_values):
         slots, ngroups = _compact_slots(cfg["gid"])
     cfg["slot"] = slots
     cfg["G"] = ngroups
+    if cfg.get("all_single"):
+        # every group holds exactly one stored entry
+        BLOCK = 1024
+        _ones_kernel[(triton.cdiv(nnz, BLOCK),)](values, out_values, nnz, BLOCK=BLOCK)
+        return
     if cfg["contig"]:
         _sparse_contig_kernel[(nnz,)](
             cfg["gid"],
@@ -792,19 +786,15 @@ def _case_a_backward(cfg, grad_out, out_values, dv):
         )
         return
     duck = torch.float64 if acc64 else torch.float32
-    psum = torch.zeros(nnz, dtype=duck, device=device)
-    _bw_psum_kernel[grid](
+    sbuf = torch.zeros(cfg["G"], dtype=duck, device=device)
+    _bw_group_kernel[grid](
+        cfg["slot"],
         grad_out.reshape(nnz, m),
         out_values.reshape(nnz, m),
-        psum,
+        sbuf,
         total,
-        m,
         BLOCK=BLOCK,
         ACC64=acc64,
-    )
-    sbuf = torch.zeros(cfg["G"], dtype=duck, device=device)
-    _bw_group_kernel[(triton.cdiv(nnz, 256),)](
-        cfg["slot"], psum, sbuf, nnz, BLOCK=256, ACC64=acc64
     )
     _bw_write_kernel[grid](
         cfg["slot"],
@@ -813,7 +803,6 @@ def _case_a_backward(cfg, grad_out, out_values, dv):
         out_values.reshape(nnz, m),
         dv.reshape(nnz, m),
         total,
-        m,
         BLOCK=BLOCK,
         ACC64=acc64,
     )

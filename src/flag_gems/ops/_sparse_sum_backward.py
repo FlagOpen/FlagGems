@@ -192,29 +192,6 @@ def _ssb_map(
 
 
 @triton.jit
-def _ssb_hist(
-    sidx_ptr,
-    cnt_ptr,
-    nnz,
-    sidx_s0,
-    sidx_s1,
-    SD: tl.constexpr,
-    SSTRIDES: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    i = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    mask = i < nnz
-    key = tl.zeros([BLOCK], tl.int64)
-    for d in tl.static_range(SD):
-        v = tl.load(sidx_ptr + d * sidx_s0 + i * sidx_s1, mask=mask, other=0).to(
-            tl.int64
-        )
-        key += v * SSTRIDES[d]
-    tl.atomic_add(cnt_ptr + key, 1, mask=mask)
-
-
-@triton.jit
 def _ssb_key_kernel(
     sidx_ptr,
     key_ptr,
@@ -236,6 +213,27 @@ def _ssb_key_kernel(
         )
         key += v * SSTRIDES[d]
     tl.store(key_ptr + i, key, mask=mask)
+
+
+@triton.jit
+def _ssb_unique_coords_kernel(
+    sorted_keys,
+    gstart,
+    out_ptr,
+    nnz_out,
+    SD: tl.constexpr,
+    SIZES: tl.constexpr,
+    SSTRIDES: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Decompose the first key of every sorted group into coordinates."""
+    u = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = u < nnz_out
+    p = tl.load(gstart + u, mask=m, other=0)
+    key = tl.load(sorted_keys + p, mask=m, other=0)
+    for d in tl.static_range(SD):
+        c = (key // SSTRIDES[d]) % SIZES[d]
+        tl.store(out_ptr + d * nnz_out + u, c, mask=m)
 
 
 @triton.jit
@@ -308,22 +306,17 @@ def _sparsify(k, sidx, sparse_sizes, device):
         num_warps=_WARPS,
     )
     sorted_keys, _ = sort(keys)
-    slot_sorted = torch.empty(nnz, dtype=torch.int64, device=device)
+    gstart = torch.empty(nnz, dtype=torch.int64, device=device)
+    slots = torch.empty(nnz, dtype=torch.int64, device=device)
     tot = torch.zeros(1, dtype=torch.int32, device=device)
-    _seg_scan_kernel[(1,)](sorted_keys, slot_sorted, keys, tot, nnz, BLOCK=_AUX_BLOCK)
+    _seg_scan_kernel[(1,)](sorted_keys, gstart, slots, tot, nnz, BLOCK=_AUX_BLOCK)
     nnz_out = int(tot.item())
     if nnz_out == 0:
         return torch.empty((k, 0), dtype=torch.long, device=device), 0
-    first = torch.cat(
-        [
-            torch.ones(1, dtype=torch.bool, device=device),
-            sorted_keys[1:] != sorted_keys[:-1],
-        ]
-    )
-    unique_keys = sorted_keys[first]
     out_idx = torch.empty((k, nnz_out), dtype=torch.long, device=device)
-    _ssb_coords_kernel[(triton.cdiv(nnz_out, _AUX_BLOCK),)](
-        unique_keys,
+    _ssb_unique_coords_kernel[(triton.cdiv(nnz_out, _AUX_BLOCK),)](
+        sorted_keys,
+        gstart,
         out_idx,
         nnz_out,
         SD=k,

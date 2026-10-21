@@ -340,13 +340,13 @@ def _sparse_lookup_gather_kernel(
 def _sparse_lookup_scatter_kernel(
     hit_ptr,
     grad_values_ptr,
-    grad_vals_ptr,
+    grad_c_ptr,
     nnz_m,
     D,
     BLOCK_I: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    """Scatter the incoming value gradient back onto self's stored rows."""
+    """Sum the incoming value gradient per coalesced stored position."""
     pid = tl.program_id(0)
     offs_i = pid * BLOCK_I + tl.arange(0, BLOCK_I)
     mask_i = offs_i < nnz_m
@@ -359,7 +359,55 @@ def _sparse_lookup_scatter_kernel(
         g = tl.load(
             grad_values_ptr + offs_i[:, None] * D + offs_d[None, :], mask=m2, other=0.0
         )
-        tl.atomic_add(grad_vals_ptr + j[:, None] * D + offs_d[None, :], g, mask=m2)
+        tl.atomic_add(grad_c_ptr + j[:, None] * D + offs_d[None, :], g, mask=m2)
+
+
+@triton.jit
+def _sparse_lookup_backprop_kernel(
+    idx_ptr,
+    keys_ptr,
+    grad_c_ptr,
+    grad_vals_ptr,
+    nnz_s,
+    nnz_c,
+    D,
+    STEPS: tl.constexpr,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    P: tl.constexpr,
+    BLOCK_I: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Write the merged gradient to every stored self row.
+
+    Duplicate coordinates coalesce into one merged entry, so every original
+    row whose key matches receives the same summed gradient; the row order of
+    the gradient tensor matches ``self``'s stored order.
+    """
+    pid = tl.program_id(0)
+    offs_i = pid * BLOCK_I + tl.arange(0, BLOCK_I)
+    mask_i = offs_i < nnz_s
+    key = tl.zeros([BLOCK_I], dtype=tl.int64)
+    for k in tl.static_range(P):
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
+        ck = tl.load(idx_ptr + k * nnz_s + offs_i, mask=mask_i, other=0).to(tl.int64)
+        key += ck * sk
+    pos = _bsearch(key, keys_ptr, nnz_c, STEPS)
+    cand = tl.load(keys_ptr + pos, mask=mask_i & (pos < nnz_c), other=-1)
+    hit = mask_i & (pos < nnz_c) & (cand == key)
+    j = tl.where(hit, pos, 0)
+    for od in range(0, D, BLOCK_D):
+        offs_d = od + tl.arange(0, BLOCK_D)
+        mask_d = offs_d < D
+        m2 = hit[:, None] & mask_d[None, :]
+        g = tl.load(grad_c_ptr + j[:, None] * D + offs_d[None, :], mask=m2, other=0.0)
+        tl.store(grad_vals_ptr + offs_i[:, None] * D + offs_d[None, :], g, mask=m2)
 
 
 class _SparseMaskGatherSparse(torch.autograd.Function):
@@ -399,8 +447,11 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
         ctx.self_size = self_size
         ctx.self_coalesced = self_coalesced
         ctx.sparse_dim = sparse_dim
-        ctx.save_for_backward(indices, hit)
         if nnz_m == 0:
+            ctx.saved_strides = [1] * sparse_dim
+            ctx.save_for_backward(
+                indices, hit, torch.empty(0, dtype=torch.int64, device=self_vals.device)
+            )
             return values
 
         # Coalescing sums duplicate coordinates, so the coalesced entries are
@@ -443,6 +494,8 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
         # iterations to converge in the worst case
         STEPS = max(1, (max(nnz_c, 1) - 1).bit_length() + 1)
 
+        ctx.saved_strides = strides
+        ctx.save_for_backward(indices, hit, keys)
         grid = (triton.cdiv(nnz_m, _BLOCK_I),)
         _sparse_lookup_gather_kernel[grid](
             keys,
@@ -465,9 +518,9 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_values):
-        indices, hit = ctx.saved_tensors
+        indices, hit, keys = ctx.saved_tensors
         nnz_m = int(indices.shape[1]) if indices.dim() == 2 else 0
-        nnz_s = int(ctx.self_idx.shape[1]) if ctx.self_idx.dim() == 2 else 0
+        nnz_c = int(keys.shape[0])
         dense_sizes = tuple(int(d) for d in grad_values.shape[1:])
         block = 1
         for d in dense_sizes:
@@ -475,15 +528,39 @@ class _SparseMaskGatherSparse(torch.autograd.Function):
         grad_vals = torch.zeros(
             (nnz_s,) + dense_sizes, dtype=grad_values.dtype, device=grad_values.device
         )
-        if nnz_m > 0 and nnz_s > 0:
+        if nnz_m > 0 and nnz_s > 0 and nnz_c > 0:
             grad_values = grad_values.contiguous()
-            grid = (triton.cdiv(nnz_m, _BLOCK_I),)
-            _sparse_lookup_scatter_kernel[grid](
+            # duplicate mask coordinates map to one merged entry, so their
+            # gradients add up in the coalesced-sized buffer first
+            grad_c = torch.zeros(
+                (nnz_c,) + dense_sizes,
+                dtype=grad_values.dtype,
+                device=grad_values.device,
+            )
+            grid_m = (triton.cdiv(nnz_m, _BLOCK_I),)
+            _sparse_lookup_scatter_kernel[grid_m](
                 hit,
                 grad_values,
-                grad_vals,
+                grad_c,
                 nnz_m,
                 block,
+                BLOCK_I=_BLOCK_I,
+                BLOCK_D=_BLOCK_D,
+                num_warps=_NUM_WARPS,
+            )
+            grid_s = (triton.cdiv(nnz_s, _BLOCK_I),)
+            steps = max(1, (max(nnz_c, 1) - 1).bit_length() + 1)
+            _sparse_lookup_backprop_kernel[grid_s](
+                ctx.self_idx.contiguous().reshape(-1),
+                keys,
+                grad_c,
+                grad_vals,
+                nnz_s,
+                nnz_c,
+                block,
+                STEPS=steps,
+                *_axis_args(ctx.saved_strides),
+                P=ctx.sparse_dim,
                 BLOCK_I=_BLOCK_I,
                 BLOCK_D=_BLOCK_D,
                 num_warps=_NUM_WARPS,
@@ -643,4 +720,5 @@ def sparse_mask(self, mask, out=None):
 
 def sparse_mask_out(self, mask, out):
     """``aten::sparse_mask.out`` overload."""
+    logger.debug("GEMS SPARSE_MASK.OUT")
     return sparse_mask(self, mask, out=out)

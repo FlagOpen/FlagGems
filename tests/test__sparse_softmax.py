@@ -445,6 +445,68 @@ def test__sparse_softmax_backward(case, value_range, dtype):
 
 
 @pytest.mark.sparse_softmax
+@pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
+def test__sparse_softmax_backward_hybrid(dtype):
+    """Hybrid COO (values carry dense dims) backward: the group sum is taken
+    per dense position, not across positions."""
+    shape, sparse_dim, dim = (8, 6, 4), 2, 1
+    dense = shape[sparse_dim:]
+    indices = _linear_coords(shape[:sparse_dim], 24)
+    values = tu.make_input(dtype, (indices.shape[1],) + dense, ["-1", "1"])
+    inp = torch.sparse_coo_tensor(
+        indices, values, shape, dtype=dtype, device=flag_gems.device
+    ).coalesce()
+    inp.requires_grad_(True)
+    upstream = tu.make_input(dtype, (inp._nnz(),) + dense, ["-1", "1"])
+    upstream = torch.sparse_coo_tensor(
+        inp._indices(), upstream, shape, dtype=dtype, device=inp.device
+    )
+
+    ref_inp = tu.to_reference(inp)
+    ref_upstream = tu.to_reference(upstream)
+    ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
+
+    res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
+    (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
+
+    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(res_grad, ref_grad)
+
+
+@pytest.mark.sparse_softmax
+@pytest.mark.parametrize("dtype", _DEFAULT_FORM_DTYPES)
+def test__sparse_softmax_backward_all_single(dtype):
+    """Backward when every reduce group holds exactly one stored entry
+    (2-D sparse, ``dim = k - 1 >= 0``): the group-sum path must still find
+    its compact slots."""
+    idx = torch.tensor([[0, 1, 2, 3], [0, 1, 2, 3]], device=flag_gems.device)
+    vals = tu.make_input(dtype, (4,), ["-1", "1"])
+    inp = torch.sparse_coo_tensor(
+        idx, vals, (8, 4), dtype=dtype, device=flag_gems.device
+    ).coalesce()
+    inp.requires_grad_(True)
+    upstream = torch.sparse_coo_tensor(
+        idx,
+        tu.make_input(dtype, (4,), ["-1", "1"]),
+        (8, 4),
+        dtype=dtype,
+        device=inp.device,
+    )
+
+    ref_inp = tu.to_reference(inp)
+    ref_upstream = tu.to_reference(upstream)
+    ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, 1, False)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
+
+    res_out = flag_gems._sparse_softmax(inp, 1, half_to_float=False)
+    (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
+
+    tu.assert_result_close(res_out, ref_out)
+    tu.assert_result_close(res_grad, ref_grad)
+
+
+@pytest.mark.sparse_softmax
 @pytest.mark.parametrize("case", _SPECIAL_ROWS)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_SCENARIOS)
 def test__sparse_softmax_special_values(case, dtype, scenario):
@@ -553,10 +615,9 @@ def test_sparse_softmax_dispatch():
     )
     ref = torch.ops.aten._sparse_softmax(inp, 1)
     o = torch.empty_like(ref)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_softmax(inp, 1)
-        res_int = torch.ops.aten._sparse_softmax.int(inp, 1, torch.float32)
-        res_out = torch.ops.aten._sparse_softmax.out(inp, 1, False, out=o)
+    res = flag_gems._sparse_softmax(inp, 1)
+    res_int = flag_gems._sparse_softmax_int(inp, 1, torch.float32)
+    res_out = flag_gems._sparse_softmax_out(inp, 1, False, out=o)
     assert res.shape == ref.shape
     assert torch.equal(res._indices(), ref._indices())
     assert torch.allclose(res._values(), ref._values(), atol=1e-6)

@@ -64,6 +64,9 @@ _STRUCTURE_ROWS = tu.selected_cases(
         ((3, 4, 5), 1, 2, (0, 1, 2), (0, 1, 2), True),
         # hybrid COO, two sparse dims with one dense dim
         ((3, 4, 5), 2, 1, (0, 5, 11), (0, 5, 11), True),
+        # hybrid COO whose dense block exceeds the 64-column tile
+        ((3, 4, 130), 2, 0, (0, 3, 7), (0, 3, 7), True),
+        ((3, 4, 130), 2, 0, (0, 3, 7), (1, 5, 7), True),
     ],
     quick=[],
 )
@@ -479,16 +482,19 @@ def test_sparse_log_softmax_backward_data_dispatch():
     vals = torch.randn(2, 4, device=flag_gems.device)
     inp = torch.sparse_coo_tensor(idx, vals, (8, 8, 4), device=flag_gems.device)
     out = torch.ops.aten._sparse_log_softmax(inp, 1)
-    grad = torch.sparse_coo_tensor(idx, torch.randn(2, 4, device=flag_gems.device), (8, 8, 4), device=flag_gems.device)
+    grad = torch.sparse_coo_tensor(
+        idx,
+        torch.randn(2, 4, device=flag_gems.device),
+        (8, 8, 4),
+        device=flag_gems.device,
+    )
     ref = torch.ops.aten._sparse_log_softmax_backward_data(
         utils.to_reference(grad), utils.to_reference(out), 1, utils.to_reference(inp)
     )
     o = torch.empty_like(ref)
-    with flag_gems.use_gems():
-        res = torch.ops.aten._sparse_log_softmax_backward_data(grad, out, 1, inp)
-        res_out = torch.ops.aten._sparse_log_softmax_backward_data.out(
-            grad, out, 1, inp, out=o
-        )
+    res = flag_gems._sparse_log_softmax_backward_data(grad, out, 1, inp)
+    res_out = flag_gems._sparse_log_softmax_backward_data_out(grad, out, 1, inp, out=o)
     assert res.shape == ref.shape and res.is_coalesced() == ref.is_coalesced()
     assert res_out is o
     assert torch.equal(res._indices(), ref._indices())
+    assert torch.equal(res_out._values(), ref._values())
