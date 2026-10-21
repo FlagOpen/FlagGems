@@ -230,8 +230,12 @@ def test__remove_batch_dim_special_scenarios(dtype, scenario):
 @pytest.mark.parametrize("level", [0, 3])
 @pytest.mark.parametrize("dtype", _REMOVE_BATCH_DIM_DTYPES)
 def test__remove_batch_dim_batched(batch_dim, out_dim, level, dtype):
-    inp = tu.make_input(dtype, (3, 5, 14), ["-1", "1"])[..., 1::2]
-    ref_inp = tu.to_reference(inp)
+    base = tu.make_input(dtype, (3, 5, 14), ["-1", "1"])
+    ref_base = tu.to_reference(base)
+    # Transfer the dense parent first: copying the sliced view to CPU can
+    # compact its strides and reset the storage offset being tested below.
+    inp = base[..., 1::2]
+    ref_inp = ref_base[..., 1::2]
     batched = torch.ops.aten._add_batch_dim(inp, batch_dim, level)
     ref_batched = torch.ops.aten._add_batch_dim(ref_inp, batch_dim, level)
     batch_size = inp.size(batch_dim)
