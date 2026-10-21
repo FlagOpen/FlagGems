@@ -2886,6 +2886,21 @@ _TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
 _TERNARY_GRID_CACHE: Dict[Tuple[int, int], Tuple[int, Tuple[int, int]]] = {}
 _TERNARY_GRID_CACHE_LIMIT = 64
 
+# One-entry memo in front of ``_TERNARY_LAUNCH_CACHE``.  A fixed workload
+# reuses the same metadata tensor object (``_device_meta`` hands the cached one
+# back), the same function and the same constexpr set, so the ten-field key is
+# answered by identity instead of being built and hashed: the key holds a
+# tensor, a dtype and a function, and that costs ~1.0us a call against ~0.3us
+# for the comparisons.  Reusing the entry is exact for the same reason the dict
+# cache is: identity of ``meta`` fixes its ``data_ptr`` and its alignment, the
+# other fields are still compared, and the stream and the scalar value are read
+# from the call.  Only the by-value form is memoised: it is the one whose
+# ``scalar_buf`` is the metadata tensor itself, whereas the uploaded form hands
+# in a fresh buffer every call and would only pay the comparisons.  A miss falls
+# through to the dict cache, which repopulates the memo.  Measured +1.6us on the
+# 16-tensor ternary op row, and no cost on the uploaded row.
+_TERNARY_LAST: List[Any] = [None] * 8
+
 
 def _launch_ternary_kernel(
     grid: Tuple[int, int],
@@ -2910,25 +2925,39 @@ def _launch_ternary_kernel(
     miss, an installed launch hook, or a launcher that raises all take
     Triton's normal dispatch.
     """
-    key = (
-        kernel,
-        meta.device,
-        nt,
-        fn,
-        dt_in,
-        dt_out,
-        s_dt,
-        by_value,
-        block,
-        not (meta.data_ptr() & 15),
-    )
-    entry = _TERNARY_LAUNCH_CACHE.get(key)
     runtime = knobs.runtime
+    last = _TERNARY_LAST
+    key = None
     if (
-        entry is not None
+        by_value
+        and last[0] is meta
+        and last[1] is scalar_buf
+        and last[2] is fn
+        and last[3] is kernel
+        and last[4] == (grid, nt, dt_in, dt_out, s_dt, by_value, block)
         and not runtime.launch_enter_hook.calls
         and not runtime.launch_exit_hook.calls
     ):
+        entry = (last[5], last[6], last[7])
+    else:
+        key = (
+            kernel,
+            meta.device,
+            nt,
+            fn,
+            dt_in,
+            dt_out,
+            s_dt,
+            by_value,
+            block,
+            not (meta.data_ptr() & 15),
+        )
+        entry = _TERNARY_LAUNCH_CACHE.get(key)
+        if entry is not None and (
+            runtime.launch_enter_hook.calls or runtime.launch_exit_hook.calls
+        ):
+            entry = None
+    if entry is not None:
         try:
             entry[0](
                 grid[0],
@@ -2951,9 +2980,20 @@ def _launch_ternary_kernel(
                 by_value,
                 block,
             )
+            if key is not None and by_value:
+                last[0] = meta
+                last[1] = scalar_buf
+                last[2] = fn
+                last[3] = kernel
+                last[4] = (grid, nt, dt_in, dt_out, s_dt, by_value, block)
+                last[5] = entry[0]
+                last[6] = entry[1]
+                last[7] = entry[2]
             return
         except Exception:
-            _TERNARY_LAUNCH_CACHE.pop(key, None)
+            last[0] = None
+            if key is not None:
+                _TERNARY_LAUNCH_CACHE.pop(key, None)
     compiled = kernel[grid](
         meta, scalar_buf, scalar_value, fn, nt, dt_in, dt_out, s_dt, by_value, block
     )
