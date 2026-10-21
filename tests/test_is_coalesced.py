@@ -22,10 +22,119 @@ import flag_gems
 
 from . import test_utils as tu
 
-_ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend cannot construct nonempty FP8 sparse values",
-)
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _value_state(value):
+    return (
+        value.dtype,
+        value.device,
+        value.shape,
+        value.layout,
+        value.stride(),
+        value.storage_offset(),
+        value.untyped_storage()._cdata,
+        value.is_conj(),
+        value.is_neg(),
+    )
+
 
 # aten::is_coalesced reports the coalesced bit recorded on a sparse COO tensor.
 # It never sorts, merges or re-derives the coordinates and never writes the
@@ -152,7 +261,7 @@ def _flat_positions(size, nnz, *, ordered):
 def _make_sparse(size, nnz, dtype, *, recorded, ordered, values=None, value_range=None):
     indices = _flat_positions(size, nnz, ordered=ordered)
     if values is None:
-        values = tu.make_input(dtype, (nnz,), list(value_range or ("-1", "1")))
+        values = _make_input(dtype, (nnz,), list(value_range or ("-1", "1")))
     kwargs = {} if recorded is None else {"is_coalesced": recorded}
     return torch.sparse_coo_tensor(
         indices, values, tuple(size), device=flag_gems.device, **kwargs
@@ -174,11 +283,6 @@ def _assert_flag(res_out, ref_out):
             size,
             nnz,
             recorded,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
-                else ()
-            ),
         )
         for dtype in _DTYPES
         for size, nnz, recorded in _MAIN_CASES
@@ -214,11 +318,6 @@ _FLAG_DTYPE_CASES = [
             nnz,
             recorded,
             dtype,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
-                else ()
-            ),
         )
         for size, nnz, recorded, dtype in _FLAG_DTYPE_CASES
     ],
@@ -246,11 +345,6 @@ def test_is_coalesced_value_ranges(size, nnz, recorded, value_range, dtype):
             size,
             nnz,
             recorded,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
-                else ()
-            ),
         )
         for dtype in _DTYPES
         for size, nnz, recorded in _STATE_CASES
@@ -262,6 +356,7 @@ def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
     # comparison helpers expect.
     indices_before = tu.to_reference(inp._indices())
     values_before = tu.to_reference(inp._values())
+    values_state = _value_state(inp._values())
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.is_coalesced(ref_inp)
@@ -274,9 +369,16 @@ def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
     assert inp._indices().dtype == torch.int64
     tu.assert_result_equal(inp._indices(), indices_before)
     values_after = inp._values()
-    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
-        # The metadata query supports complex values; NPU isclose does not.
-        values_after, values_before = values_after.cpu(), values_before.cpu()
+    assert _value_state(values_after) == values_state
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
+        dtype.is_complex or dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ):
+        # Check original device/dtype/view identity before CPU observation.
+        # These devices can store the payload without a comparison kernel.
+        values_after = _copy_to(values_after, "cpu")
+        values_before = _copy_to(values_before, "cpu")
+        if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+            values_after, values_before = values_after.float(), values_before.float()
     tu.assert_result_equal(values_after, values_before)
     assert inp.is_coalesced() == ref_out
 
@@ -289,11 +391,6 @@ def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
             dtype,
             size,
             nnz,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
-                else ()
-            ),
         )
         for dtype in _DTYPES
         for size, nnz in _FLAG_CASES
@@ -321,18 +418,13 @@ def test_is_coalesced_reports_recorded_bit(size, nnz, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
-                else ()
-            ),
         )
         for dtype, scenario in _SPECIAL_CASES
     ],
 )
 def test_is_coalesced_special_values(size, nnz, recorded, dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
-    values = payload.repeat((nnz + payload.numel() - 1) // payload.numel())[:nnz]
+    payload = _make_special_input(dtype, scenario)
+    values = _repeat(payload, (nnz + payload.numel() - 1) // payload.numel())[:nnz]
     inp = _make_sparse(
         size, nnz, dtype, recorded=recorded, ordered=recorded, values=values
     )
