@@ -320,7 +320,10 @@ def te_rmsnorm_fwd(
     """
     del sm_margin
     if zero_centered_gamma:
-        weight = weight.to(torch.float32) + 1.0
+        # TE quantizes gamma = (weight + 1.0) back to the weight dtype; keeping
+        # the fp32 result here leaves a ~1-2 ulp discrepancy vs TE on fp16/bf16
+        # (vs_te precision test fails).  Quantize the same way TE does.
+        weight = (weight.to(torch.float32) + 1.0).to(weight.dtype)
     N = input.shape[-1]
     x = input.contiguous()
     M = x.numel() // N
@@ -362,6 +365,11 @@ def te_rmsnorm_bwd(
     zero_centered_gamma: bool = False,
 ):
     del sm_margin
+    if zero_centered_gamma:
+        # Same TE quantization as forward: gamma = (weight + 1.0) cast back to
+        # the weight dtype, then the kernels run the plain (non-zcg) path.
+        gamma = (gamma.to(torch.float32) + 1.0).to(gamma.dtype)
+        zero_centered_gamma = False
     original_shape = x.shape
     N = gamma.shape[0]
     x_2d = x.reshape(-1, N).contiguous()
