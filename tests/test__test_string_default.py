@@ -23,6 +23,28 @@ from . import test_utils as tu
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
+def _cpu_complex_values(inp):
+    # XPU typed transfers can discard the lazy-negative bit without applying
+    # its value transformation. Copy physical bytes, then restore the view and
+    # lazy flags on CPU so numerical comparison observes the original values.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to("cpu").clone()
+    out = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.shape == inp.shape
+    assert out.stride() == inp.stride() and out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out
+
+
 def _assert_result_equal(result, reference):
     # Check the original ABI before observing complex values on the CPU.
     assert result.dtype == reference.dtype
@@ -36,7 +58,9 @@ def _assert_result_equal(result, reference):
     assert reference.device == (
         torch.device("cpu") if utils.TO_CPU else expected_device
     )
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex():
+    if flag_gems.vendor_name == "kunlunxin" and result.is_complex():
+        result, reference = _cpu_complex_values(result), _cpu_complex_values(reference)
+    elif flag_gems.vendor_name == "ascend" and result.is_complex():
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
