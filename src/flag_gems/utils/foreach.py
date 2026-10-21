@@ -2208,6 +2208,23 @@ def _ternary_upload(values: List[Any], dtype: torch.dtype, device: Any) -> torch
     return out
 
 
+# ATen's own TensorList grouping primitive: one C++ pass over the lists, keyed
+# by ``(device, dtype)``.  Only the *number* of groups is needed to decide
+# whether a call is uniform.  One call over the concatenated 48 tensors
+# measured 4.1us against 8.3us for the per-tensor dtype/device/contiguity walk,
+# and this helper drops from 8.5us to 7.0us in situ (16 x 256^2, one process).
+# Absent on a build without it, in which case the walk below is used.
+try:
+    _GROUP_TENSORS = torch._C._group_tensors_by_device_and_dtype
+except AttributeError:  # pragma: no cover - very old builds
+    _GROUP_TENSORS = None
+
+# ``is_contiguous`` is the only per-tensor predicate the grouping call cannot
+# answer, so it stays a ``map`` over the unbound descriptor (2.8us over 48
+# tensors; the bound-method lookup per tensor is what that avoids).
+_IS_CONTIGUOUS = torch.Tensor.is_contiguous
+
+
 def _ternary_homogeneous(
     a_l: Sequence[torch.Tensor],
     b_l: Sequence[torch.Tensor],
@@ -2218,15 +2235,30 @@ def _ternary_homogeneous(
 
     Three operands of one floating dtype on one device, all dense, need no
     promotion, no densifying and no bucketing: the whole per-tensor
-    bookkeeping in :func:`foreach_ternary` is then pure overhead.  ``get_device``
-    returns an int (``-1`` on CPU) and measured ~1.5us cheaper over 48 tensors
-    than building ``torch.device`` objects to compare.
+    bookkeeping in :func:`foreach_ternary` is then pure overhead.
+
+    Uniformity of ``(device, dtype)`` is answered in one C++ pass.  The three
+    operand lists are concatenated into a *single* nested list: the grouping
+    key of a tensor in the one list is that tensor's own ``(device, dtype)``,
+    so a single group means all 48 tensors agree on both.  (With the lists
+    passed separately the primitive keys each index off the first list and
+    deliberately tolerates cross-list float/double/bfloat16 and CPU-float
+    operands for optimizer state tensors, which would not be uniformity here
+    and, for a genuinely mixed index, raises instead of returning two groups.)
+    Contiguity is the one thing that call does not cover and stays a ``map``
+    over the unbound predicate.  Both are exact: any heterogeneity the old
+    walk rejected still falls through to the general path.
     """
     dtype = a_l[0].dtype
     if not dtype.is_floating_point:
         return None
     if allowed_dtypes is not None and dtype not in allowed_dtypes:
         return None
+    if _GROUP_TENSORS is not None:
+        flat = a_l + b_l + c_l
+        if len(_GROUP_TENSORS([flat], False)) != 1:
+            return None
+        return dtype if all(map(_IS_CONTIGUOUS, flat)) else None
     dev = a_l[0].get_device()
     for a, b, c in zip(a_l, b_l, c_l):
         if a.dtype is not dtype or b.dtype is not dtype or c.dtype is not dtype:
@@ -2239,6 +2271,16 @@ def _ternary_homogeneous(
 
 
 _TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
+
+# ``_pick_block`` searches five block sizes and re-takes the max of the numel
+# list the caller already has, yet its answer and the grid it implies depend
+# only on the length of the list and its largest element, and both repeat from
+# call to call on a fixed workload.  The cache holds the pair; a hit is one
+# dict lookup.  The bound exists because a workload whose shapes keep moving
+# would otherwise accumulate one entry per shape; insertion order is the
+# eviction order, as in the binary executor's grid memo.
+_TERNARY_GRID_CACHE: Dict[Tuple[int, int], Tuple[int, Tuple[int, int]]] = {}
+_TERNARY_GRID_CACHE_LIMIT = 64
 
 
 def _launch_ternary_kernel(
@@ -2333,14 +2375,29 @@ def _launch_ternary_group(
     max_numel = max(numels)
     if max_numel == 0:
         return
-    block = _pick_block(numels)
     nt = len(a_l)
+    grid_key = (nt, max_numel)
+    cached_grid = _TERNARY_GRID_CACHE.get(grid_key)
+    if cached_grid is None:
+        block = _pick_block(numels)
+        # ``triton.cdiv`` is a decorated helper and is far from free at this
+        # size; plain ints give the same ceiling division.
+        cached_grid = (block, (nt, -(-max_numel // block)))
+        if len(_TERNARY_GRID_CACHE) >= _TERNARY_GRID_CACHE_LIMIT:
+            _TERNARY_GRID_CACHE.pop(next(iter(_TERNARY_GRID_CACHE)))
+        _TERNARY_GRID_CACHE[grid_key] = cached_grid
+    block, grid = cached_grid
+    # One list display with star-unpacking.  Four ``list``+``map`` calls and
+    # the concatenations between them measured 4.28us over four sixteen-tensor
+    # lists against 3.77us for this form, for the same pointer run.
     meta = _device_meta(
-        list(map(torch.Tensor.data_ptr, a_l))
-        + list(map(torch.Tensor.data_ptr, b_l))
-        + list(map(torch.Tensor.data_ptr, c_l))
-        + list(map(torch.Tensor.data_ptr, d_l))
-        + numels,
+        [
+            *map(torch.Tensor.data_ptr, a_l),
+            *map(torch.Tensor.data_ptr, b_l),
+            *map(torch.Tensor.data_ptr, c_l),
+            *map(torch.Tensor.data_ptr, d_l),
+            *numels,
+        ],
         device,
     )
     s_dtype = out_dt if out_dt.is_floating_point else torch.float32
@@ -2356,7 +2413,6 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
-    grid = (nt, -(-max_numel // block))
     _launch_ternary_kernel(
         grid,
         nt,
