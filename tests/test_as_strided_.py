@@ -44,6 +44,123 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_storage_view(inp):
+    # Copy physical bytes, retaining the original geometry before decoding.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    return torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+
+
+def _numeric_values(inp):
+    result = _cpu_storage_view(inp)
+    # Decode FP8 before resolving lazy bits: CPU FP8 arithmetic is limited.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device):
+    # Validate the original ABI before observing numerical values on CPU.
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
+def _assert_result_close(result, reference, *, required_device):
+    dtype = result.dtype
+    assert result.device == required_device
+    assert reference.device == (
+        torch.device("cpu") if utils.TO_CPU else required_device
+    )
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()) or (
+        flag_gems.vendor_name == "kunlunxin" and (result.is_neg() or reference.is_neg())
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    else:
+        result = utils.to_cpu(result, reference)
+    torch.testing.assert_close(
+        result,
+        reference,
+        rtol=flag_gems.testing.RESOLUTION[dtype],
+        atol=1e-4,
+        equal_nan=True,
+    )
+
+
 _AS_STRIDED_DTYPES = (
     tu.REQUIRED_DTYPES
     + [torch.bool, torch.complex64]
@@ -79,13 +196,29 @@ def _storage_witness(tensor):
     )
 
 
+def _storage_snapshot(inp):
+    return (
+        inp.untyped_storage().data_ptr(),
+        inp.untyped_storage()._cdata,
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        inp.is_conj(),
+        inp.is_neg(),
+        inp.requires_grad,
+    )
+
+
 def _assert_view_matches(res_out, ref_out, inp, storage_before):
     # Materialised values cannot show that the requested view was installed on
     # the operand itself, so assert identity, strides, offset and buffer reuse.
     assert res_out is inp
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
-    assert res_out.untyped_storage().data_ptr() == storage_before
+    assert _storage_snapshot(res_out) == storage_before
+    assert res_out.is_conj() == ref_out.is_conj()
+    assert res_out.is_neg() == ref_out.is_neg()
+    assert res_out.requires_grad == ref_out.requires_grad
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -105,21 +238,23 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_as_strided__value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     size, stride, offset = _contiguous_view(shape)
     ref_inp = tu.to_reference(inp)
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
     storage_values = tu.to_reference(_storage_witness(inp))
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, offset)
     res_out = flag_gems.as_strided_(inp, size, stride, offset)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
     # The mutation lands on the operand, not on a copy.
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp, required_device=storage_before[2])
     # Reinterpreting the buffer must not rewrite any stored element.
-    tu.assert_result_equal(_storage_witness(inp), storage_values)
+    _assert_result_equal(
+        _storage_witness(inp), storage_values, required_device=storage_before[2]
+    )
 
 
 # Layouts a contiguous (4, 6) buffer can express; each row was accepted by the
@@ -152,20 +287,22 @@ LAYOUT_CASES = _layout_cases(_LAYOUT_ROWS)
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("size,stride,offset,dtype", LAYOUT_CASES)
 def test_as_strided__layouts(size, stride, offset, dtype):
-    inp = tu.make_input(dtype, (4, 6), ["-1", "1"])
+    inp = _make_input(dtype, (4, 6), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
     storage_values = tu.to_reference(_storage_witness(inp))
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, offset)
     res_out = flag_gems.as_strided_(inp, size, stride, offset)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp, required_device=storage_before[2])
     # These views skip elements of the buffer; a candidate that materialises the
     # view inside the same storage would move those skipped bytes.
-    tu.assert_result_equal(_storage_witness(inp), storage_values)
+    _assert_result_equal(
+        _storage_witness(inp), storage_values, required_device=storage_before[2]
+    )
 
 
 def _derive_operand(tensor, layout):
@@ -194,23 +331,25 @@ STRIDED_INPUT_CASES = [
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("shape,layout,size,stride,offset,dtype", STRIDED_INPUT_CASES)
 def test_as_strided__strided_input(shape, layout, size, stride, offset, dtype):
-    base = tu.make_input(dtype, shape, ["-1", "1"])
+    base = _make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _derive_operand(base, layout)
     ref_inp = _derive_operand(ref_base, layout)
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
     storage_values = tu.to_reference(_storage_witness(base))
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, offset)
     res_out = flag_gems.as_strided_(inp, size, stride, offset)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
     assert res_out.untyped_storage().data_ptr() == base.untyped_storage().data_ptr()
     # Only the operand's own metadata may change; its source buffer keeps both
     # its bytes and its own sizes/strides.
-    tu.assert_result_equal(_storage_witness(base), storage_values)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(
+        _storage_witness(base), storage_values, required_device=storage_before[2]
+    )
+    _assert_result_equal(base, ref_base, required_device=storage_before[2])
 
 
 # The three storage_offset call forms, each on an operand that already carries a
@@ -243,12 +382,12 @@ OFFSET_CASES = [
 def test_as_strided__storage_offset_forms(
     base_shape, layout, size, stride, offset_form, offset, dtype
 ):
-    base = tu.make_input(dtype, base_shape, ["-1", "1"])
+    base = _make_input(dtype, base_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _derive_operand(base, layout)
     ref_inp = _derive_operand(ref_base, layout)
     original_offset = inp.storage_offset()
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
     storage_values = tu.to_reference(_storage_witness(base))
 
     if offset_form == "omitted":
@@ -259,14 +398,16 @@ def test_as_strided__storage_offset_forms(
         ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, argument)
         res_out = flag_gems.as_strided_(inp, size, stride, argument)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
     # The native offset contract, asserted directly: omission and None keep the
     # operand's own offset, an explicit value replaces it.
     expected_offset = original_offset if offset_form in ("omitted", "none") else offset
     assert res_out.storage_offset() == expected_offset
     # Only the operand's metadata may change; its source buffer keeps its bytes.
-    tu.assert_result_equal(_storage_witness(base), storage_values)
+    _assert_result_equal(
+        _storage_witness(base), storage_values, required_device=storage_before[2]
+    )
 
 
 CONJ_CASES = _CONJ_DTYPES
@@ -277,17 +418,17 @@ CONJ_CASES = _CONJ_DTYPES
 def test_as_strided__conjugate_view(dtype):
     # Rewriting the metadata of a lazy conjugate view must keep the <=> marker
     # that the view carries.
-    base = tu.make_input(dtype, (4, 6), ["-1", "1"])
+    base = _make_input(dtype, (4, 6), ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = base.conj()
     ref_inp = ref_base.conj()
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, [4, 6], [6, 1], 0)
     res_out = flag_gems.as_strided_(inp, [4, 6], [6, 1], 0)
 
     assert res_out.is_conj() is True
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
 
 
@@ -299,16 +440,16 @@ SPECIAL_VALUE_CASES = tu.selected_cases(
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUE_CASES)
 def test_as_strided__special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     size, stride, offset = _contiguous_view(inp.shape)
     ref_inp = tu.to_reference(inp)
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, offset)
     res_out = flag_gems.as_strided_(inp, size, stride, offset)
 
     # NaN/Inf payloads must survive the metadata rewrite unchanged.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
 
 
@@ -339,23 +480,34 @@ BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("shape,size,stride,offset,overlaps,dtype", BACKWARD_CASES)
 def test_as_strided__backward(shape, size, stride, offset, overlaps, dtype):
+    # Forward metadata views work; native backward needs unsupported FP8
+    # zero_/copy kernels. Real/complex neighbours remain in the original grid.
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        pytest.skip("Native FP8 as_strided backward zero/copy kernels are unavailable")
+    if dtype == torch.complex64 and overlaps:
+        if flag_gems.vendor_name == "kunlunxin":
+            pytest.skip(
+                "Native complex64 overlap backward index_add/sum is unavailable"
+            )
+        if flag_gems.vendor_name == "ascend" and stride != [0, 1]:
+            pytest.skip("Native complex64 overlap backward index_add is unavailable")
     # An in-place operator rejects a leaf requiring grad (and a view of one), so
     # the mutated operand is the non-leaf clone below while the differentiated
     # operand is the independent source leaf it was cloned from.
-    src = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    src = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_src = tu.to_reference(src.detach()).requires_grad_(True)
     inp = src.clone()
     ref_inp = ref_src.clone()
-    upstream = tu.make_input(dtype, tuple(size), ["-1", "1"])
+    upstream = _make_input(dtype, tuple(size), ["-1", "1"])
     # The reference operands live on the configured reference device, which
     # --ref cpu moves to the host, so the reference needs its own upstream.
     ref_upstream = tu.to_reference(upstream)
-    storage_before = inp.untyped_storage().data_ptr()
+    storage_before = _storage_snapshot(inp)
 
     ref_out = torch.ops.aten.as_strided_(ref_inp, size, stride, offset)
     res_out = flag_gems.as_strided_(inp, size, stride, offset)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=storage_before[2])
     _assert_view_matches(res_out, ref_out, inp, storage_before)
 
     # The native operator re-installs the operand as a strided view of its
@@ -365,9 +517,9 @@ def test_as_strided__backward(shape, size, stride, offset, overlaps, dtype):
     res_grad = torch.autograd.grad(res_out, src, grad_outputs=upstream)[0]
 
     if overlaps:
-        tu.assert_result_close(res_grad, ref_grad)
+        _assert_result_close(res_grad, ref_grad, required_device=storage_before[2])
     else:
-        tu.assert_result_equal(res_grad, ref_grad)
+        _assert_result_equal(res_grad, ref_grad, required_device=storage_before[2])
 
 
 _OUT_OF_BOUNDS_ROWS = [
@@ -380,7 +532,7 @@ _OUT_OF_BOUNDS_ROWS = [
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("shape,size,stride,offset", _OUT_OF_BOUNDS_ROWS)
 def test_as_strided__rejects_out_of_bounds(shape, size, stride, offset):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, size, stride, offset)
     # A rejected call must leave the operand untouched.
@@ -392,7 +544,7 @@ def test_as_strided__rejects_out_of_bounds(shape, size, stride, offset):
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("size,stride", [([4, 6], [-6, 1]), ([6, 4], [1, -6])])
 def test_as_strided__rejects_negative_stride(size, stride):
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, size, stride, 0)
 
@@ -403,14 +555,14 @@ def test_as_strided__rejects_negative_stride(size, stride):
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("size,stride", [([4, 6], [6]), ([4], [6, 1])])
 def test_as_strided__rejects_rank_mismatch(size, stride):
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, size, stride, 0)
 
 
 @pytest.mark.as_strided_
 def test_as_strided__rejects_negative_offset():
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, [4, 6], [6, 1], -1)
 
@@ -427,7 +579,7 @@ def test_as_strided__rejects_non_tensor(bad_self):
 def test_as_strided__rejects_non_integer_sequence(size, stride):
     # The schema takes List[int] for size/stride: there is no scalar-size
     # overload, and float extents are rejected.
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.as_strided_(inp, size, stride, 0)
 
@@ -435,7 +587,7 @@ def test_as_strided__rejects_non_integer_sequence(size, stride):
 @pytest.mark.as_strided_
 @pytest.mark.parametrize("is_view", [False, True])
 def test_as_strided__rejects_leaf_requiring_grad(is_view):
-    leaf = tu.make_input(torch.float32, (4, 6), ["-1", "1"]).requires_grad_(True)
+    leaf = _make_input(torch.float32, (4, 6), ["-1", "1"]).requires_grad_(True)
     inp = leaf[:, :] if is_view else leaf
     with pytest.raises(RuntimeError):
         flag_gems.as_strided_(inp, [6, 4], [1, 6], 0)
