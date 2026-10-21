@@ -141,11 +141,28 @@ BAD_CALLS = [
 def _cpu_values(dtype, shape, value_range):
     """Values in ``value_range`` on the operator's only valid device.
 
-    ``tu.make_input`` allocates on ``flag_gems.device``; this composite's body is
-    a CPU kernel, so the shared range resolution is reused and the result moved
-    to the CPU the native contract requires.
+    Resolve the original bounds on CPU: staging through an accelerator can
+    silently narrow float64 before this CPU-only kernel receives the tensor.
     """
-    return tu.make_input(dtype, shape, value_range).to(_CPU)
+    low, high = (tu.resolve_bound(value, dtype) for value in value_range)
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, device=_CPU).bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            inp = torch.full(shape, low, dtype=dtype, device=_CPU)
+        else:
+            inp = torch.testing.make_tensor(
+                shape, dtype=dtype, device=_CPU, low=low, high=high
+            )
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _CPU
+    return inp
 
 
 def _coord_grid(n, out_h, out_w, span=1.5):

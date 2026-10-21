@@ -185,7 +185,22 @@ def test__use_cudnn_rnn_flatten_weight_has_no_side_effect(case):
 def test__use_cudnn_rnn_flatten_weight_rejects_tensor_argument(dtype):
     # ``() -> bool`` takes no operand, so every dtype the spec lists is an
     # invalid argument. These rows make no claim about dtype support.
-    inp = torch.zeros(2, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # These backends can store FP8 but cannot execute device zeros for it.
+        # Keep the original target-device argument and let the API reject it.
+        inp = torch.zeros(2, dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        inp = torch.zeros(2, dtype=dtype, device=flag_gems.device)
+    expected_device = torch.device(flag_gems.device)
+    if expected_device.index is None and expected_device.type != "cpu":
+        expected_device = torch.device(
+            expected_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.dtype == dtype and inp.shape == torch.Size((2,))
+    assert inp.device == expected_device
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._use_cudnn_rnn_flatten_weight(inp)
 
