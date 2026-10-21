@@ -22,6 +22,124 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _zeros(shape, *, dtype, device):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and torch.device(device).type != "cpu"
+    ):
+        inp = _copy_to(torch.zeros(shape, dtype=dtype, device="cpu"), device)
+    else:
+        inp = torch.zeros(shape, dtype=dtype, device=device)
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(device)
+    return inp
+
+
 # aten::numel(Tensor self) -> int is a host-side metadata query: it has a single
 # ``default`` overload (no ``.out``), one tensor operand (no broadcast) and an
 # int result (no backward), so those spec dimensions do not apply. Shape,
@@ -76,28 +194,28 @@ _NON_TENSOR_ARG_CASES = [
 
 def _strided_tensor(kind, dtype, device):
     if kind == "dense":
-        return torch.zeros((4, 6), dtype=dtype, device=device)
+        return _zeros((4, 6), dtype=dtype, device=device)
     if kind == "transpose":
-        return torch.zeros((6, 4), dtype=dtype, device=device).t()
+        return _zeros((6, 4), dtype=dtype, device=device).t()
     if kind == "step_slice":
-        return torch.zeros((8, 8), dtype=dtype, device=device)[::2]
+        return _zeros((8, 8), dtype=dtype, device=device)[::2]
     if kind == "narrowed":
-        return torch.zeros((8, 8), dtype=dtype, device=device).narrow(0, 2, 3)
+        return _zeros((8, 8), dtype=dtype, device=device).narrow(0, 2, 3)
     if kind == "offset_view":
-        base = torch.zeros((6, 6), dtype=dtype, device=device)
+        base = _zeros((6, 6), dtype=dtype, device=device)
         return torch.empty(0, dtype=dtype, device=device).set_(
             base.untyped_storage(), 10, (5,), (2,)
         )
     if kind == "zero_stride":
-        return torch.zeros((4, 1), dtype=dtype, device=device).expand(4, 6)
+        return _zeros((4, 1), dtype=dtype, device=device).expand(4, 6)
     if kind == "empty_1d":
         return torch.empty(0, dtype=dtype, device=device)
     if kind == "empty_3d":
         return torch.empty((0, 3, 4), dtype=dtype, device=device)
     if kind == "scalar":
-        return torch.zeros((), dtype=dtype, device=device)
+        return _zeros((), dtype=dtype, device=device)
     if kind == "conj_view":
-        return torch.zeros((4, 4), dtype=dtype, device=device).conj()
+        return _zeros((4, 4), dtype=dtype, device=device).conj()
     raise ValueError(f"Unknown strided layout kind: {kind!r}")
 
 
@@ -158,6 +276,9 @@ def _strided_state(tensor):
         tuple(tensor.stride()),
         tensor.storage_offset(),
         tensor.data_ptr(),
+        tensor.untyped_storage()._cdata,
+        tensor.dtype,
+        tensor.device,
         tensor.untyped_storage().nbytes(),
         tensor._version,
     )
@@ -165,9 +286,9 @@ def _strided_state(tensor):
 
 def _special_tensor(shape, dtype, scenario):
     count = math.prod(shape)
-    values = tu.make_special_input(dtype, scenario)
+    values = _make_special_input(dtype, scenario)
     repeats = (count + values.numel() - 1) // values.numel()
-    return values.repeat(repeats)[:count].reshape(shape)
+    return _repeat(values, repeats)[:count].reshape(shape)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -187,7 +308,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_numel_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.numel(ref_inp)

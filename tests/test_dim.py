@@ -20,6 +20,116 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _batch_values(values, count):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and values.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        host = _copy_to(values, "cpu").expand(count, -1).contiguous()
+        return _copy_to(host, values.device)
+    return values.expand(count, -1).contiguous()
+
+
 # dim returns the logical rank for dense, COO and CSR layouts.
 _DIM_DTYPES = (
     tu.REQUIRED_DTYPES
@@ -99,7 +209,7 @@ def _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range, seed=0):
             for dim in sparse_shape
         ]
     )
-    values = tu.make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
+    values = _make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
     size = tuple(sparse_shape) + tuple(dense_shape)
     return torch.sparse_coo_tensor(indices, values, size, device=flag_gems.device)
 
@@ -114,13 +224,13 @@ def _make_csr(shape, nnz, dtype, value_range):
     counts[: nnz % rows] += 1
     crow_indices = torch.cat([torch.zeros(1, dtype=torch.long), counts.cumsum(0)])
     col_indices = torch.arange(nnz) - torch.repeat_interleave(crow_indices[:-1], counts)
-    values = tu.make_input(dtype, (nnz,), value_range)
+    values = _make_input(dtype, (nnz,), value_range)
     if len(shape) == 3:
         # Batched CSR: every batch stores the same nnz entries (shared
         # crow/col pattern), so the logical rank is 3.
         crow_indices = crow_indices.expand(shape[0], -1).contiguous()
         col_indices = col_indices.expand(shape[0], -1).contiguous()
-        values = values.expand(shape[0], -1).contiguous()
+        values = _batch_values(values, shape[0])
     return torch.sparse_csr_tensor(
         crow_indices, col_indices, values, shape, device=flag_gems.device
     )
@@ -152,7 +262,7 @@ def _assert_result(res_out, ref_out):
 @pytest.mark.parametrize("shape", _DENSE_SHAPES)
 @pytest.mark.parametrize("dtype", _DIM_DTYPES)
 def test_dim_dense_layouts(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.dim(ref_inp)
@@ -165,7 +275,7 @@ def test_dim_dense_layouts(shape, dtype):
 @pytest.mark.parametrize("shape", [(0,), (0, 5), (2, 0, 3)])
 @pytest.mark.parametrize("dtype", _DIM_DTYPES)
 def test_dim_empty_dense(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     assert inp.numel() == 0
     ref_inp = tu.to_reference(inp)
 
@@ -194,7 +304,7 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
 @pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_dim_dense_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.dim(ref_inp)
@@ -210,7 +320,7 @@ def test_dim_dense_value_ranges(shape, value_range, dtype):
 )
 @pytest.mark.parametrize("dtype", _DIM_DTYPES)
 def test_dim_noncontiguous_dense(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).transpose(0, -1)
+    inp = _make_input(dtype, shape, ["-1", "1"]).transpose(0, -1)
     assert not inp.is_contiguous()
     ref_inp = tu.to_reference(inp)
 
@@ -343,7 +453,7 @@ def test_dim_empty_csr(shape, dtype):
 def test_dim_uncoalesced_coo(dtype):
     sparse_shape, dense_shape = (2, 2), (3,)
     indices = torch.tensor([[0, 0, 1, 1, 0], [0, 1, 0, 1, 0]], dtype=torch.long)
-    values = tu.make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
+    values = _make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
     inp = torch.sparse_coo_tensor(
         indices, values, sparse_shape + dense_shape, device=flag_gems.device
     )
@@ -361,7 +471,7 @@ def test_dim_uncoalesced_coo(dtype):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DIM_DTYPES))
 )
 def test_dim_nan_inf_dense(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).repeat(2)[:6].reshape(2, 3)
+    inp = _repeat(_make_special_input(dtype, scenario), 2)[:6].reshape(2, 3)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.dim(ref_inp)
@@ -375,7 +485,7 @@ def test_dim_nan_inf_dense(dtype, scenario):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DIM_DTYPES))
 )
 def test_dim_nan_inf_coo(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     indices = torch.tensor([[0, 1, 2, 3, 4, 5]], dtype=torch.long)
     inp = torch.sparse_coo_tensor(indices, values, (6,), device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -391,7 +501,7 @@ def test_dim_nan_inf_coo(dtype, scenario):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DIM_DTYPES))
 )
 def test_dim_nan_inf_csr(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     crow_indices = torch.tensor([0, 3, 4, 6], dtype=torch.long)
     col_indices = torch.tensor([0, 1, 2, 1, 0, 2], dtype=torch.long)
     inp = torch.sparse_csr_tensor(
