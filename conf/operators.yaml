@@ -13671,6 +13671,17 @@ ops:
   - MoE
   stages:
   - stable: '4.2'
+- id: mrope
+  description: Applies fused multi-dimensional rotary position embedding to query
+    and key tensors.
+  for:
+  - mrope
+  labels:
+  - fused
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.3'
 - id: mse_loss
   description: Compute the element-wise mean squared error, with optional weighting.
   for:
