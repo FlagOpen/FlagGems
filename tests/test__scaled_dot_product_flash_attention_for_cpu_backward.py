@@ -21,6 +21,31 @@ import flag_gems
 
 from . import test_utils as tu
 
+
+def _cpu_input(dtype, shape, value_range):
+    # This API is host-only. Accelerator staging can silently narrow double
+    # operands before the tensors reach the CPU kernel.
+    low, high = (tu.resolve_bound(value, dtype) for value in value_range)
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            inp = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            inp = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == torch.device("cpu")
+    return inp
+
+
 # `_scaled_dot_product_flash_attention_for_cpu_backward(grad_out, query, key,
 # value, out, logsumexp, dropout_p, is_causal, attn_mask=None, scale=None)` is
 # the CPU attention backward and returns the tuple
@@ -143,17 +168,25 @@ def _operands(
     """
     kv_shape = shape if kv_shape is None else kv_shape
     fwd_kwargs = {} if fwd_kwargs is None else fwd_kwargs
-    query = tu.make_input(dtype, shape, value_range).cpu()
-    key = tu.make_input(dtype, kv_shape, value_range).cpu()
-    value = tu.make_input(dtype, kv_shape, value_range).cpu()
+    query = _cpu_input(dtype, shape, value_range)
+    key = _cpu_input(dtype, kv_shape, value_range)
+    value = _cpu_input(dtype, kv_shape, value_range)
     out, logsumexp = torch.ops.aten._scaled_dot_product_flash_attention_for_cpu(
         query, key, value, **fwd_kwargs
     )
-    grad_out = tu.make_input(dtype, shape, ["-1", "1"]).cpu()
+    grad_out = _cpu_input(dtype, shape, ["-1", "1"])
     if special is not None:
         # The nan/inf payload goes into the upstream gradient, which keeps the
         # forward state finite and reaches both sides identically.
-        payload = tu.make_special_input(dtype, special).flatten().cpu()
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        payload = torch.tensor(payloads[special], dtype=torch.float32, device="cpu").to(
+            dtype
+        )
+        assert payload.dtype == dtype and payload.device == torch.device("cpu")
         count = min(payload.numel(), grad_out.numel())
         grad_out.reshape(-1)[:count] = payload[:count]
     inp = _Operands(grad_out, query, key, value, out, logsumexp)
@@ -239,7 +272,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_with_params(
 def test_scaled_dot_product_flash_attention_for_cpu_backward_with_attn_mask(
     mask_shape, dtype, mask_dtype
 ):
-    mask = tu.make_input(mask_dtype, mask_shape, ["-1", "1"]).cpu()
+    mask = _cpu_input(mask_dtype, mask_shape, ["-1", "1"])
     inp, ref = _operands(
         _MASK_SHAPE, dtype, ["-1", "1"], fwd_kwargs={"attn_mask": mask}
     )
@@ -295,7 +328,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_query_r
     query_shape,
 ):
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
-    query = tu.make_input(_NEG_DTYPE, query_shape, ["-1", "1"]).cpu()
+    query = _cpu_input(_NEG_DTYPE, query_shape, ["-1", "1"])
     with pytest.raises((RuntimeError, IndexError)):
         flag_gems._scaled_dot_product_flash_attention_for_cpu_backward(
             inp.grad_out, query, inp.key, inp.value, inp.out, inp.logsumexp, 0.0, False
@@ -308,7 +341,7 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_bad_mask(
     mask_shape,
 ):
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
-    mask = tu.make_input(_NEG_DTYPE, mask_shape, ["-1", "1"]).cpu()
+    mask = _cpu_input(_NEG_DTYPE, mask_shape, ["-1", "1"])
     with pytest.raises((RuntimeError, IndexError)):
         flag_gems._scaled_dot_product_flash_attention_for_cpu_backward(
             inp.grad_out,
@@ -330,11 +363,12 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_unsupported
 ):
     # No native kernel exists for these dtypes, so the operands are zeros
     # instead of a forward result.
-    q = torch.zeros(_NEG_SHAPE, dtype=dtype, device=flag_gems.device).cpu()
-    grad_out = torch.zeros(_NEG_SHAPE, dtype=dtype, device=flag_gems.device).cpu()
-    logsumexp = torch.zeros(
-        _NEG_SHAPE[:3], dtype=torch.float32, device=flag_gems.device
-    ).cpu()
+    q = torch.zeros(_NEG_SHAPE, dtype=torch.float32, device="cpu").to(dtype)
+    grad_out = torch.zeros(_NEG_SHAPE, dtype=torch.float32, device="cpu").to(dtype)
+    logsumexp = torch.zeros(_NEG_SHAPE[:3], dtype=torch.float32, device="cpu")
+    assert q.dtype == grad_out.dtype == dtype
+    assert q.shape == grad_out.shape == torch.Size(_NEG_SHAPE)
+    assert q.device == grad_out.device == torch.device("cpu")
     with pytest.raises(RuntimeError):
         flag_gems._scaled_dot_product_flash_attention_for_cpu_backward(
             grad_out, q, q, q, q, logsumexp, 0.0, False
@@ -360,8 +394,8 @@ def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_mixed_dtype
 @pytest.mark.underscore_scaled_dot_product_flash_attention_for_cpu_backward
 def test_scaled_dot_product_flash_attention_for_cpu_backward_rejects_head_mismatch():
     inp, _ = _operands(_NEG_SHAPE, _NEG_DTYPE, ["-1", "1"])
-    key = tu.make_input(_NEG_DTYPE, (1, 2, 4, 16), ["-1", "1"]).cpu()
-    value = tu.make_input(_NEG_DTYPE, (1, 2, 4, 16), ["-1", "1"]).cpu()
+    key = _cpu_input(_NEG_DTYPE, (1, 2, 4, 16), ["-1", "1"])
+    value = _cpu_input(_NEG_DTYPE, (1, 2, 4, 16), ["-1", "1"])
     with pytest.raises(RuntimeError):
         flag_gems._scaled_dot_product_flash_attention_for_cpu_backward(
             inp.grad_out, inp.query, key, value, inp.out, inp.logsumexp, 0.0, False
