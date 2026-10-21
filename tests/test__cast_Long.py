@@ -33,6 +33,95 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_CAST_DTYPE = torch.int64
+
+
+def _skip_native_input(dtype, shape):
+    nonempty = all((extent != 0 for extent in shape))
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES and nonempty:
+        pytest.skip("Ascend _cast_Long has no native nonempty FP8 conversion")
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_cast_abi(result, reference, inp):
+    assert inp.device == result.device == _expected_device()
+    assert result.dtype == reference.dtype == _CAST_DTYPE
+    assert result.shape == reference.shape == inp.shape
+    assert result.layout == reference.layout == inp.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+
+
+def _assert_cast_equal(result, reference, inp):
+    _check_cast_abi(result, reference, inp)
+    _assert_tensor_equal(result, reference)
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    _skip_native_input(inp.dtype, inp.shape)
+    reference = tu.to_reference(inp)
+    if (
+        utils.TO_CPU
+        and reference.numel()
+        and (reference.dtype.is_floating_point or reference.is_complex())
+    ):
+        values = reference.real if reference.is_complex() else reference
+        # Check actual floating inputs with Python integer bounds. In
+        # particular, float(INT64_MAX) rounds up to the invalid value 2**63.
+        # Integer inputs bypass this path and keep all their original bits.
+        values = values.to(torch.float64)
+        low, high = float(values.amin()), float(values.amax())
+        bounds = torch.iinfo(_CAST_DTYPE)
+        if (
+            not (math.isfinite(low) and math.isfinite(high))
+            or math.trunc(low) < bounds.min
+            or math.trunc(high) > bounds.max
+        ):
+            pytest.skip(
+                "CPU/device floating-to-integer comparison has no portable value "
+                "for nonfinite or truncated out-of-range inputs"
+            )
+    return reference
+
+
+def _assert_tensor_equal(result, reference):
+    # Snapshot values retain their original dtype, including exact int64 bits.
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if flag_gems.vendor_name == "ascend" and result.dtype == torch.int64:
+        # NPU isclose can merge distinct large integers even at zero tolerance.
+        # Preserve every bit and check the original ABI before CPU observation.
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    _skip_native_input(dtype, shape)
+    result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    _skip_native_input(dtype, (5,))
+    result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
 _INT64_MIN = -9223372036854775808
 _INT64_MAX = 9223372036854775807
 
@@ -170,9 +259,10 @@ def _coordinate_input(shape, dtype):
     offset observes different numbers. Float payloads are fractional with both
     signs, so the truncating cast is not uniform across the tensor.
     """
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-        # These literals are exact in both FP8 formats, which have no dense
-        # arithmetic to build the values with.
+    _skip_native_input(dtype, shape)
+    if dtype in _FP8_DTYPES:
+        # Encode the original literals in the requested FP8 format; the
+        # cast reads that format's rounded payload.
         count = math.prod(shape) if shape else 1
         repeats = count // len(_FP8_FRACTIONAL_VALUES) + 1
         values = (_FP8_FRACTIONAL_VALUES * repeats)[:count]
@@ -365,8 +455,8 @@ def _view_of(base, layout, base_shape):
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape,value_range,dtype", _VALUE_CASES)
 def test__cast_Long(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     # The one-argument call also covers the schema default for non_blocking.
     ref_out = torch.ops.aten._cast_Long(ref_inp)
@@ -374,24 +464,24 @@ def test__cast_Long(shape, value_range, dtype):
 
     # Truncation toward zero is exact, so the cast is compared with zero
     # tolerance rather than with the arithmetic tolerance.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("layout,base_shape,value_range", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _CAST_DTYPES)
 def test__cast_Long_layout(layout, base_shape, value_range, dtype):
-    base = tu.make_input(dtype, base_shape, value_range)
+    base = _make_input(dtype, base_shape, value_range)
     inp = _view_of(base, layout, base_shape)
     ref_base = tu.to_reference(base)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
     # The cast reads the view out of place: the viewed storage stays intact.
-    tu.assert_result_equal(base, ref_base)
+    _assert_tensor_equal(base, ref_base)
 
 
 @pytest.mark.underscore_cast_Long
@@ -400,13 +490,13 @@ def test__cast_Long_layout_defined_values(layout, base_shape, values_kind, dtype
     base = _defined_base(base_shape, values_kind, dtype)
     inp = _view_of(base, layout, base_shape)
     ref_base = tu.to_reference(base)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(base, ref_base)
+    _assert_cast_equal(res_out, ref_out, inp)
+    _assert_tensor_equal(base, ref_base)
 
 
 @pytest.mark.underscore_cast_Long
@@ -414,7 +504,7 @@ def test__cast_Long_layout_defined_values(layout, base_shape, values_kind, dtype
 def test__cast_Long_int64_alias(shape, layout):
     base = _int64_base(shape)
     inp = _view_of(base, layout, shape)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
@@ -423,19 +513,19 @@ def test__cast_Long_int64_alias(shape, layout):
     # a clone of an empty tensor or a distinct view would still satisfy a
     # data_ptr comparison without being the same tensor.
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("kind", _FP64_BOUNDARY_CASES)
 def test__cast_Long_fp64_boundaries(kind):
     inp = _fp64_boundary_input(kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Long
@@ -447,7 +537,7 @@ def test__cast_Long_non_blocking(non_blocking, as_keyword, shape, dtype):
     # candidate that mishandles the flag differs in value as well as in call
     # form.
     inp = _coordinate_input(shape, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     if as_keyword:
         ref_out = torch.ops.aten._cast_Long(ref_inp, non_blocking=non_blocking)
@@ -456,7 +546,7 @@ def test__cast_Long_non_blocking(non_blocking, as_keyword, shape, dtype):
         ref_out = torch.ops.aten._cast_Long(ref_inp, non_blocking)
         res_out = flag_gems._cast_Long(inp, non_blocking)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Long
@@ -466,15 +556,15 @@ def test__cast_Long_non_blocking(non_blocking, as_keyword, shape, dtype):
 )
 def test__cast_Long_preserves_input(shape, dtype):
     inp = _coordinate_input(shape, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
     # A non-int64 input is read out of place, so the source values must survive;
     # the int64 identity case is covered by test__cast_Long_int64_alias.
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_tensor_equal(inp, ref_inp)
 
 
 @pytest.mark.underscore_cast_Long
@@ -483,21 +573,21 @@ def test__cast_Long_preserves_input(shape, dtype):
     tu.selected_cases(tu.special_value_cases(_CAST_FLOAT_DTYPES), quick=[]),
 )
 def test__cast_Long_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Long(ref_inp)
     res_out = flag_gems._cast_Long(inp)
 
     # The non-finite and out-of-range mapping to int64 is implementation defined,
     # so the native result on the active device is the oracle.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_non_bool_non_blocking(shape):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
 
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Long(inp, "yes")
@@ -506,7 +596,7 @@ def test__cast_Long_rejects_non_bool_non_blocking(shape):
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_extra_positional(shape):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
 
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Long(inp, False, True)
@@ -515,7 +605,7 @@ def test__cast_Long_rejects_extra_positional(shape):
 @pytest.mark.underscore_cast_Long
 @pytest.mark.parametrize("shape", _ONE_SHAPE)
 def test__cast_Long_rejects_out_keyword(shape):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     # A float32 buffer: no int64 tensor has to be constructed for a backend that
     # does not support it, and it is the keyword itself that must be rejected.
     out = torch.empty(inp.shape, dtype=torch.float32, device=flag_gems.device)

@@ -22,6 +22,99 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_CAST_DTYPE = torch.int16
+
+
+def _skip_native_input(dtype, shape):
+    nonempty = all((extent != 0 for extent in shape))
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES and nonempty:
+        pytest.skip("Ascend _cast_Short has no native nonempty FP8 conversion")
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype in (torch.bfloat16, torch.complex64)
+        and nonempty
+    ):
+        pytest.skip(
+            "Kunlunxin _cast_Short has no native nonempty bfloat16/complex64 conversion"
+        )
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_cast_abi(result, reference, inp):
+    assert inp.device == result.device == _expected_device()
+    assert result.dtype == reference.dtype == _CAST_DTYPE
+    assert result.shape == reference.shape == inp.shape
+    assert result.layout == reference.layout == inp.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+
+
+def _assert_cast_equal(result, reference, inp):
+    _check_cast_abi(result, reference, inp)
+    tu.assert_result_equal(result, reference)
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    _skip_native_input(inp.dtype, inp.shape)
+    reference = tu.to_reference(inp)
+    if (
+        utils.TO_CPU
+        and reference.numel()
+        and (reference.dtype.is_floating_point or reference.is_complex())
+    ):
+        values = reference.real if reference.is_complex() else reference
+        # Check actual floating inputs with Python integer bounds. In
+        # particular, float(INT64_MAX) rounds up to the invalid value 2**63.
+        # Integer inputs bypass this path and keep all their original bits.
+        values = values.to(torch.float64)
+        low, high = float(values.amin()), float(values.amax())
+        bounds = torch.iinfo(_CAST_DTYPE)
+        if (
+            not (math.isfinite(low) and math.isfinite(high))
+            or math.trunc(low) < bounds.min
+            or math.trunc(high) > bounds.max
+        ):
+            pytest.skip(
+                "CPU/device floating-to-integer comparison has no portable value "
+                "for nonfinite or truncated out-of-range inputs"
+            )
+    return reference
+
+
+def _assert_tensor_equal(result, reference):
+    # Snapshot values retain their original dtype, including exact int64 bits.
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    _skip_native_input(dtype, shape)
+    result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    _skip_native_input(dtype, (5,))
+    result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
 # aten::_cast_Short(Tensor self, bool non_blocking=False) -> Tensor casts to
 # int16.  Coverage decisions, each settled by a probe on the active device:
 # * ``torch.ops.aten._cast_Short`` has no ``out`` overload (``.out`` is not an
@@ -151,6 +244,13 @@ def _defined_payload(dtype, shape):
     the reference on this payload, unlike a uniform range whose truncation is
     constant.
     """
+    _skip_native_input(dtype, shape)
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype in _FP8_DTYPES
+        and any(extent == 0 for extent in shape)
+    ):
+        return torch.empty(shape, dtype=dtype, device=flag_gems.device)
     if dtype.is_complex:
         real = torch.tensor(
             [3.7, -4.2, 0.9, 15.25, -0.75, 8.5],
@@ -247,13 +347,13 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Short(dtype, value_range, shape):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
@@ -261,24 +361,25 @@ def test__cast_Short(dtype, value_range, shape):
 @pytest.mark.parametrize("dtype", CAST_DTYPES)
 def test__cast_Short_defined_values(dtype, shape, layout):
     inp = _apply_layout(_defined_payload(dtype, shape), layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,values", _BOUNDARY_CASES)
 def test__cast_Short_int16_boundaries(dtype, values):
+    _skip_native_input(dtype, (1, len(values)))
     inp = torch.tensor(values, device=flag_gems.device, dtype=dtype).reshape(1, -1)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
@@ -292,13 +393,13 @@ def test__cast_Short_int16_alias(shape, layout):
     inp = _apply_layout(_defined_payload(torch.int16, shape), layout)
     # Values are checked against an independent copy, so the assertion is not
     # satisfied by object identity alone.
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
@@ -308,12 +409,12 @@ def test__cast_Short_lazy_conjugate_view(shape):
     # keeps only the real part, which conjugation leaves unchanged, so the check
     # is that the lazy bit does not corrupt the read.
     inp = _defined_payload(torch.complex64, shape).conj()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
@@ -324,39 +425,39 @@ def test__cast_Short_non_blocking(dtype, non_blocking):
     # sweep uses the signed fractional / edge fixture instead, which keeps the
     # compared result non-trivial.
     inp = _defined_payload(dtype, (20, 320, 15))
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
     kwargs = {"non_blocking": non_blocking}
 
     ref_out = torch.ops.aten._cast_Short(ref_inp, **kwargs)
     res_out = flag_gems._cast_Short(inp, **kwargs)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__cast_Short_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
     # NaN mapping to 0 is part of the native contract on this target, so the
     # exact comparison is applied to the converted int16 results.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Short
 @pytest.mark.parametrize("dtype,shape", _EMPTY_CASES)
 def test__cast_Short_empty(dtype, shape):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"])
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Short(ref_inp)
     res_out = flag_gems._cast_Short(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _NON_TENSOR_INPUTS = [[1, 2, 3], 1.5, None, "abc"]

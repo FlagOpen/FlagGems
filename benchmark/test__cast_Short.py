@@ -20,6 +20,15 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+
+def _unsupported_native_case(dtype, shape):
+    return (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.bfloat16
+        and all(extent != 0 for extent in shape)
+    )
+
+
 # Default workload set; a caller-supplied shape file for op_name "_cast_Short"
 # (or for this class) replaces it without any size cap or filtering.
 CAST_SHAPES = [
@@ -88,6 +97,17 @@ class CastShortBenchmark(OperatorBenchmark):
                         f"Shape {tuple(shape)} must contain non-negative integers."
                     )
 
+    def get_case_iter(self, dtype):
+        for case in super().get_case_iter(dtype):
+            # Keep supported public IDs and custom empty shapes unchanged.
+            if _unsupported_native_case(dtype, case.shape["input"]):
+                if case.case_id in (getattr(base.Config, "case_ids", None) or ()):
+                    raise ValueError(
+                        f"Unsupported benchmark case {case.case_id}: Kunlunxin native _cast_Short has no nonempty bfloat16 conversion"
+                    )
+                continue
+            yield case
+
 
 @pytest.mark.underscore_cast_Short
 def test__cast_Short():
@@ -100,3 +120,13 @@ def test__cast_Short():
         dtypes=BENCH_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_cast_Short
+@pytest.mark.parametrize(
+    "dtype", (torch.bfloat16,) if flag_gems.vendor_name == "kunlunxin" else []
+)
+def test__cast_Short_native_unsupported_nonempty(dtype):
+    pytest.skip(
+        "Kunlunxin native _cast_Short has no nonempty bfloat16 conversion; excluded from timing while empty shapes remain supported"
+    )
