@@ -490,6 +490,13 @@ def test_split_view_writes_through(shape, dim, chunk, dtype):
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,chunk,dtype", BACKWARD_CASES)
 def test_split_backward(shape, dim, chunk, dtype):
+    if (
+        flag_gems.vendor_name in ("ascend", "hygon", "kunlunxin")
+        and dtype in _FP8_DTYPES
+    ):
+        pytest.skip(
+            "Native split backward requires cat, unavailable for FP8 on this backend"
+        )
     inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp)
     upstream = [
