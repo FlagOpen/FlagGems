@@ -20,6 +20,113 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _copy_dense_to(inp, device):
+    # Copy independent storage, then restore the original view and lazy flags.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .to(device)
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.dtype == inp.dtype and result.shape == inp.shape
+    assert (
+        result.stride() == inp.stride()
+        and result.storage_offset() == inp.storage_offset()
+    )
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    if result.device == inp.device and inp.untyped_storage().nbytes():
+        assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    return result
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    return _copy_dense_to(inp, "cpu") if utils.TO_CPU else tu.to_reference(inp)
+
+
+def _numeric_values(inp):
+    # Numerical observation only; callers check the original ABI first.
+    result = _copy_dense_to(inp.detach(), "cpu").resolve_conj().resolve_neg()
+    return result.float() if result.dtype in _FP8_DTYPES else result
+
+
+def _assert_result_equal(result, reference):
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _equal_values(result, snapshot):
+    assert result.dtype == snapshot.dtype and result.shape == snapshot.shape
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex():
+        result, snapshot = _numeric_values(result), _numeric_values(snapshot)
+    return torch.equal(result, snapshot)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=torch.float32, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
 # aten::_reshape_from_tensor(Tensor self, Tensor shape) reshapes `self` to the extents
 # listed in the 1-D int64 metadata tensor `shape`.  Native aliases the operand's
 # storage when the requested target is stride-expressible from the operand's strides
@@ -36,7 +143,7 @@ _VALUE_RANGE = ["-1", "1"]
 def _shape_tensor(*dims):
     # The extents are metadata: native requires a 1-D int64 tensor and reads the
     # entries as host values, so it is created on the CPU.
-    return torch.tensor(list(dims), dtype=torch.long)
+    return torch.tensor(list(dims), dtype=torch.long, device="cpu")
 
 
 def _dtype_is_supported(dtype):
@@ -95,6 +202,20 @@ if utils.fp64_is_supported:
 
 def _observed(tensor):
     # The stored values behind a lazy conjugate or negative view.
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and tensor.device.type != "cpu"
+        and tensor.is_neg()
+    ):
+        assert tensor.device == _expected_device()
+        # Device resolve_neg loses the sign; observe independent physical storage
+        # on CPU, then retain the original observation device and dtype.
+        return (
+            _copy_dense_to(tensor.detach(), "cpu")
+            .resolve_conj()
+            .resolve_neg()
+            .to(tensor.device)
+        )
     return tensor.detach().resolve_conj().resolve_neg()
 
 
@@ -119,27 +240,45 @@ def _assert_alias_semantics(result, operand, reference, reference_operand):
 def _write_first_element(tensor):
     # Indexed assignment is valid for the strided results that sliced operands
     # produce, where view(-1) would raise.
-    tensor[0] = _MUTATION_SENTINEL
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and tensor.device.type != "cpu"
+        and tensor.dtype == torch.float32
+        and tensor.is_neg()
+    ):
+        # Indexed writes ignore the lazy negative flag on this backend. Write
+        # the inverse payload through a flag-cleared alias, keeping the entire
+        # first slice and avoiding the backend's scalar-copy broadcast gap.
+        destination = torch._neg_view(tensor[0])
+        payload = torch.full(
+            destination.shape,
+            -_MUTATION_SENTINEL,
+            dtype=destination.dtype,
+            device="cpu",
+        ).to(destination.device)
+        destination.copy_(payload)
+    else:
+        tensor[0] = _MUTATION_SENTINEL
 
 
 def _assert_mutation_matches(result, operand, reference, reference_operand):
     # A candidate that clones its input, or aliases where native copies, must not slip
     # through: write through both results and require the same observable operand
     # change.
-    tu.assert_result_equal(_observed(result), _observed(reference))
+    _assert_result_equal(_observed(result), _observed(reference))
 
     observed_operand = _observed(operand).clone()
     observed_reference_operand = _observed(reference_operand).clone()
 
     _write_first_element(result)
-    result_changed = not torch.equal(_observed(operand), observed_operand)
+    result_changed = not _equal_values(_observed(operand), observed_operand)
     _write_first_element(reference)
-    reference_changed = not torch.equal(
+    reference_changed = not _equal_values(
         _observed(reference_operand), observed_reference_operand
     )
 
     assert result_changed == reference_changed
-    tu.assert_result_equal(_observed(operand), _observed(reference_operand))
+    _assert_result_equal(_observed(operand), _observed(reference_operand))
 
 
 def _offset_flatten(operand):
@@ -187,17 +326,17 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__reshape_from_tensor_value_range(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(-1)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape_tensor)
 
     # The exact shared result comparison already pins the extent and element count.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 _TARGET_CASES = [
@@ -218,16 +357,16 @@ _TARGET_ROWS = tu.selected_cases(_TARGET_CASES, quick=[])
 @pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("case_name,shape,dims", _TARGET_ROWS)
 def test__reshape_from_tensor_target_shapes(case_name, shape, dims):
-    inp = tu.make_input(torch.float32, shape, _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.float32, shape, _VALUE_RANGE)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(*dims)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape_tensor)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 _LAYOUT_CASES = [
@@ -244,17 +383,17 @@ _LAYOUT_ROWS = tu.selected_cases(_LAYOUT_CASES, quick=[])
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 @pytest.mark.parametrize("case_name,base_shape,transform,dims", _LAYOUT_ROWS)
 def test__reshape_from_tensor_layouts(case_name, base_shape, transform, dims, dtype):
-    base = tu.make_input(dtype, base_shape, _VALUE_RANGE)
+    base = _make_input(dtype, base_shape, _VALUE_RANGE)
     inp = base if transform is None else transform(base)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(*dims)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape_tensor)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 # Two distinct view paths: `(4, 12)[:, ::2]` keeps every other column and its
@@ -279,9 +418,9 @@ _ALIAS_ROWS = tu.selected_cases(_ALIAS_CASES, quick=[])
 def test__reshape_from_tensor_alias_effects(case_name, base_shape, transform, dims):
     # float32 keeps the mutation sentinel representable so the write-through check is
     # meaningful.
-    base = tu.make_input(torch.float32, base_shape, _VALUE_RANGE)
+    base = _make_input(torch.float32, base_shape, _VALUE_RANGE)
     inp = base if transform is None else transform(base)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(*dims)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
@@ -303,9 +442,9 @@ _LAZY_ROWS = tu.selected_cases(_LAZY_CASES, quick=[])
 def test__reshape_from_tensor_lazy_bit_operands(
     case_name, base_shape, dtype, transform
 ):
-    base = tu.make_input(dtype, base_shape, _VALUE_RANGE)
+    base = _make_input(dtype, base_shape, _VALUE_RANGE)
     inp = transform(base)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(-1)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
@@ -314,7 +453,7 @@ def test__reshape_from_tensor_lazy_bit_operands(
     # Values are compared with the lazy bits resolved, but the alias/mutation relation
     # is compared without resolving them: materializing into independent storage is not
     # equivalent to the native result.
-    tu.assert_result_equal(_observed(res_out), _observed(ref_out))
+    _assert_result_equal(_observed(res_out), _observed(ref_out))
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
     _assert_mutation_matches(res_out, inp, ref_out, ref_inp)
 
@@ -331,16 +470,16 @@ _KEYWORD_ROWS = tu.selected_cases(_KEYWORD_CASES, quick=[])
 @pytest.mark.parametrize("case_name,shape,dims", _KEYWORD_ROWS)
 def test__reshape_from_tensor_keyword_shape(case_name, shape, dims):
     # Native also accepts the extents as the keyword argument `shape`.
-    inp = tu.make_input(torch.float32, shape, _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.float32, shape, _VALUE_RANGE)
+    ref_inp = _reference(inp)
 
     shape_tensor = _shape_tensor(*dims)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape=shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape=shape_tensor)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 def _upstream_gradient(reference):
@@ -355,7 +494,10 @@ def _upstream_gradient(reference):
         dtype=torch.float32,
         device=flag_gems.device,
     )
-    return values.reshape(reference.shape).to(dtype=reference.dtype)
+    values = values.reshape(reference.shape)
+    if flag_gems.vendor_name == "ascend" and reference.dtype in _FP8_DTYPES:
+        return values.cpu().to(reference.dtype).to(flag_gems.device)
+    return values.to(dtype=reference.dtype)
 
 
 _BACKWARD_CASES = [
@@ -372,22 +514,30 @@ _BACKWARD_ROWS = tu.selected_cases(_BACKWARD_CASES, quick=[])
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 @pytest.mark.parametrize("case_name,base_shape,transform,dims", _BACKWARD_ROWS)
 def test__reshape_from_tensor_backward(case_name, base_shape, transform, dims, dtype):
-    base = tu.make_input(dtype, base_shape, _VALUE_RANGE).requires_grad_()
+    if (
+        flag_gems.vendor_name == "ascend"
+        and case_name == "offset_strided_copy"
+        and dtype in _FP8_DTYPES
+    ):
+        pytest.skip(
+            "Ascend native _reshape_from_tensor cannot materialize an offset-strided FP8 input"
+        )
+    base = _make_input(dtype, base_shape, _VALUE_RANGE).requires_grad_()
     inp = base if transform is None else transform(base)
-    ref_base = tu.to_reference(base).detach().requires_grad_()
+    ref_base = _reference(base).detach().requires_grad_()
     ref_inp = ref_base if transform is None else transform(ref_base)
 
     shape_tensor = _shape_tensor(*dims)
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape_tensor)
-    tu.assert_result_equal(res_out.detach(), ref_out.detach())
+    _assert_result_equal(res_out.detach(), ref_out.detach())
 
     upstream = _upstream_gradient(ref_out)
-    ref_upstream = tu.to_reference(upstream)
+    ref_upstream = _reference(upstream)
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
 
-    tu.assert_result_equal(res_grad.detach(), ref_grad.detach())
+    _assert_result_equal(res_grad.detach(), ref_grad.detach())
 
 
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
@@ -396,17 +546,17 @@ _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick
 @pytest.mark.underscore_reshape_from_tensor
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
 def test__reshape_from_tensor_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     # A leading singleton target keeps every element addressable for any input shape.
     shape_tensor = _shape_tensor(1, inp.numel())
     ref_out = torch.ops.aten._reshape_from_tensor(ref_inp, shape_tensor)
     res_out = flag_gems._reshape_from_tensor(inp, shape_tensor)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_alias_semantics(res_out, inp, ref_out, ref_inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 _NEGATIVE_DTYPE_CASES = [torch.int32, torch.int16, torch.float32, torch.bool]
@@ -417,8 +567,8 @@ _NEGATIVE_DTYPE_CASES = [torch.int32, torch.int16, torch.float32, torch.bool]
 def test__reshape_from_tensor_rejects_shape_dtype(bad_dtype):
     # Native reads the metadata as int64: any other dtype is rejected before the
     # reshape runs.
-    inp = tu.make_input(torch.float32, (4, 6), _VALUE_RANGE)
-    bad_shape = torch.tensor([24], dtype=bad_dtype)
+    inp = _make_input(torch.float32, (4, 6), _VALUE_RANGE)
+    bad_shape = torch.tensor([24], dtype=bad_dtype, device="cpu")
 
     with pytest.raises(RuntimeError):
         flag_gems._reshape_from_tensor(inp, bad_shape)
@@ -439,8 +589,8 @@ _NEGATIVE_DIMS_CASES = [
 def test__reshape_from_tensor_rejects_invalid_shape(case_name, bad_dims):
     # The rows are handed straight to torch.tensor, so the bare integer builds rank-0
     # metadata and the nested list builds rank-2 metadata.
-    inp = tu.make_input(torch.float32, (4, 6), _VALUE_RANGE)
-    bad_shape = torch.tensor(bad_dims, dtype=torch.long)
+    inp = _make_input(torch.float32, (4, 6), _VALUE_RANGE)
+    bad_shape = torch.tensor(bad_dims, dtype=torch.long, device="cpu")
 
     with pytest.raises(RuntimeError):
         flag_gems._reshape_from_tensor(inp, bad_shape)
@@ -464,7 +614,7 @@ _NEGATIVE_METADATA_CASES = [
 def test__reshape_from_tensor_rejects_non_tensor_metadata(args, kwargs):
     # Native needs the metadata argument: omitting it, passing None, or passing a
     # Python list/int/tuple each raise their own RuntimeError.
-    inp = tu.make_input(torch.float32, (4, 6), _VALUE_RANGE)
+    inp = _make_input(torch.float32, (4, 6), _VALUE_RANGE)
 
     with pytest.raises(RuntimeError):
         flag_gems._reshape_from_tensor(inp, *args, **kwargs)
