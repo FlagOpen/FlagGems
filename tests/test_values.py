@@ -143,7 +143,11 @@ def _assert_equal(actual, expected):
 
 
 def _copy_values(actual, marker):
-    if flag_gems.vendor_name == "ascend" and actual.dtype in _FP8_DTYPES:
+    if (
+        flag_gems.vendor_name == "ascend"
+        and actual.dtype in _FP8_DTYPES
+        and (not actual.is_contiguous() or actual.storage_offset() != 0)
+    ):
         # Write through the same storage, including offset/strided views; keep
         # bytes outside the view unchanged so this still proves aliasing.
         host = _copy_to(actual, "cpu")
@@ -611,6 +615,10 @@ def test_values_special_values(dtype, scenario):
 @pytest.mark.values
 @pytest.mark.parametrize("kind,case,dtype", _BACKWARD_CASES)
 def test_values_backward(kind, case, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin cannot execute native CSR/COO values backward")
+    if flag_gems.vendor_name == "ascend" and kind == "coo":
+        pytest.skip("Ascend native COO values backward has no NPU dispatch kernel")
     values = _make_values(dtype, _case_values_shape(kind, case), ["-1", "1"])
     values = values.requires_grad_(True)
     ref_values = _to_reference(values).detach().requires_grad_(True)
