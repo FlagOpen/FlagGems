@@ -2891,14 +2891,27 @@ _TERNARY_GRID_CACHE_LIMIT = 64
 # back), the same function and the same constexpr set, so the ten-field key is
 # answered by identity instead of being built and hashed: the key holds a
 # tensor, a dtype and a function, and that costs ~1.0us a call against ~0.3us
-# for the comparisons.  Reusing the entry is exact for the same reason the dict
-# cache is: identity of ``meta`` fixes its ``data_ptr`` and its alignment, the
-# other fields are still compared, and the stream and the scalar value are read
-# from the call.  Only the by-value form is memoised: it is the one whose
-# ``scalar_buf`` is the metadata tensor itself, whereas the uploaded form hands
-# in a fresh buffer every call and would only pay the comparisons.  A miss falls
-# through to the dict cache, which repopulates the memo.  Measured +1.6us on the
-# 16-tensor ternary op row, and no cost on the uploaded row.
+# for the comparisons.
+#
+# What is memoised is the *launcher entry* ``(run, function, packed_metadata)``,
+# never a result or a buffer.  That entry is a pure function of the dict key
+# above, and every field of that key is covered here: ``kernel``, ``nt``, ``fn``,
+# the three dtypes, ``by_value`` and ``block`` are compared directly; ``grid``
+# is compared as part of the same tuple; ``meta.device`` and the alignment bit
+# follow from ``meta is last[0]``, since a tensor's device never changes and the
+# bit is a property of its ``data_ptr``.  ``numels`` are not keyed separately --
+# they reach the kernel as data through ``meta`` and also fix ``block``/``grid``,
+# which are compared.  The stream and ``scalar_value`` are read from the call
+# and never cached.  So a changed operand list, list length, dtype, block or
+# device all miss, and an in-place mutation of the metadata tensor's contents
+# cannot matter: the kernel reads that same pointer at run time.
+#
+# Only the by-value form is memoised: it is the one whose ``scalar_buf`` is the
+# metadata tensor itself, whereas the uploaded form hands in a fresh buffer
+# every call and would only pay the comparisons.  A miss falls through to the
+# dict cache, which repopulates the memo.  Measured +1.6us on the 16-tensor
+# ternary oop .ScalarList/.Scalar rows and +1.4us in-place, no cost on the
+# uploaded row.
 _TERNARY_LAST: List[Any] = [None] * 8
 
 
