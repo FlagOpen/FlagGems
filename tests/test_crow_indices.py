@@ -21,6 +21,124 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_values(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_values(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_values(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_values(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_values(inp, dtype, shape)
+
+
+def _make_special_values(dtype, scenario):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_values(inp, dtype, (5,))
+
+
+def _repeat_values(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _assert_values_equal(actual, expected, *, equal_nan=False):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # Retain the original tensor contract before observing FP8 values on
+        # CPU, where decoding avoids the missing device comparison kernels.
+        assert actual.dtype == expected.dtype
+        assert actual.shape == expected.shape and actual.layout == expected.layout
+        assert actual.device == _device(flag_gems.device)
+        assert expected.device == (
+            torch.device("cpu") if utils.TO_CPU else actual.device
+        )
+        actual = _copy_to(actual, "cpu").float()
+        expected = _copy_to(expected, "cpu").float()
+    utils.gems_assert_equal(actual, expected, equal_nan=equal_nan)
+
+
 # crow_indices returns a view of the compressed row pointers in CSR/BSR storage.
 _CSR_DTYPES = (
     utils.ALL_FLOAT_DTYPES
@@ -106,7 +224,7 @@ def _make_input(shape, nnz, dtype, value_range):
     crow = torch.zeros(batch_numel, nrows + 1, dtype=torch.long)
     crow[:, 1:] = torch.cumsum(counts, -1)
     crow = crow.view(batch + (nrows + 1,))
-    values = tu.make_input(dtype, entries_shape, value_range)
+    values = _make_values(dtype, entries_shape, value_range)
     return torch.sparse_csr_tensor(
         crow.to(flag_gems.device),
         cols.to(flag_gems.device),
@@ -116,15 +234,21 @@ def _make_input(shape, nnz, dtype, value_range):
 
 
 def _assert_result(res_out, ref_out, inp, ref_inp):
+    assert inp.dtype == ref_inp.dtype and inp.shape == ref_inp.shape
+    assert inp.layout == ref_inp.layout and inp.device == _device(flag_gems.device)
+    assert ref_inp.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+    assert res_out.dtype == ref_out.dtype and res_out.shape == ref_out.shape
+    assert res_out.layout == ref_out.layout == torch.strided
+    assert res_out.device == inp.device
     # Check exact output, storage aliasing and unchanged input metadata/values.
     tu.assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == torch.ops.aten.crow_indices(inp).data_ptr()
     utils.gems_assert_equal(inp.crow_indices(), ref_inp.crow_indices())
     utils.gems_assert_equal(inp.col_indices(), ref_inp.col_indices())
     if inp.dtype.is_floating_point:
-        utils.gems_assert_equal(inp.values(), ref_inp.values(), equal_nan=True)
+        _assert_values_equal(inp.values(), ref_inp.values(), equal_nan=True)
     else:
-        utils.gems_assert_equal(inp.values(), ref_inp.values())
+        _assert_values_equal(inp.values(), ref_inp.values())
 
 
 @pytest.mark.crow_indices
@@ -137,7 +261,7 @@ def test_crow_indices_index_layouts(case, batch_shape, dense_shape, dtype, index
     plain = torch.tensor(plain, dtype=index_dtype, device=flag_gems.device)
     compressed = compressed.expand(batch_shape + compressed.shape).contiguous()
     plain = plain.expand(batch_shape + plain.shape).contiguous()
-    values = tu.make_input(dtype, batch_shape + values_shape + dense_shape, ["-1", "1"])
+    values = _make_values(dtype, batch_shape + values_shape + dense_shape, ["-1", "1"])
     inp = torch.sparse_compressed_tensor(
         compressed,
         plain,
@@ -233,7 +357,7 @@ def test_crow_indices_unchecked_uncoalesced(dtype):
     crow = torch.tensor([0, 3, 3, 5, 5], dtype=torch.long, device=flag_gems.device)
     cols = torch.tensor([0, 0, 2, 1, 2], dtype=torch.long, device=flag_gems.device)
     assert cols[0].item() == cols[1].item()
-    values = tu.make_input(dtype, (5,), ["-1", "1"])
+    values = _make_values(dtype, (5,), ["-1", "1"])
     inp = torch.sparse_csr_tensor(crow, cols, values.to(flag_gems.device), shape)
     ref_inp = tu.to_reference(inp)
 
@@ -249,7 +373,7 @@ def test_crow_indices_full_storage(dtype):
     shape = (2, 3)
     crow = torch.tensor([0, 3, 6], dtype=torch.long, device=flag_gems.device)
     cols = torch.arange(3).repeat(2).to(flag_gems.device)  # [0, 1, 2, 0, 1, 2]
-    values = tu.make_input(dtype, (6,), ["-1", "1"])
+    values = _make_values(dtype, (6,), ["-1", "1"])
     inp = torch.sparse_csr_tensor(crow, cols, values.to(flag_gems.device), shape)
     assert inp._nnz() == 6
     ref_inp = tu.to_reference(inp)
@@ -270,7 +394,7 @@ def test_crow_indices_nan_inf_values_ignored(dtype, scenario):
     cols = torch.tensor(
         [0, 1, 0, 2, 0, 1, 2], dtype=torch.long, device=flag_gems.device
     )
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:7]
+    values = _repeat_values(_make_special_values(dtype, scenario), 2)[:7]
     inp = torch.sparse_csr_tensor(crow, cols, values, shape)
     ref_inp = tu.to_reference(inp)
 
@@ -282,7 +406,7 @@ def test_crow_indices_nan_inf_values_ignored(dtype, scenario):
 
 @pytest.mark.crow_indices
 def test_crow_indices_dense_raises():
-    inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
+    inp = _make_values(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises((RuntimeError, NotImplementedError)):
         torch.ops.aten.crow_indices(tu.to_reference(inp))
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
@@ -295,7 +419,7 @@ def test_crow_indices_csc_raises():
     row_indices = torch.tensor(
         [0, 1, 0, 1, 0, 1], dtype=torch.long, device=flag_gems.device
     )
-    values = tu.make_input(torch.float32, (6,), ["-1", "1"])
+    values = _make_values(torch.float32, (6,), ["-1", "1"])
     inp = torch.sparse_csc_tensor(
         ccol, row_indices, values.to(flag_gems.device), (2, 3)
     )
