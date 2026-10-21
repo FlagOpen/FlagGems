@@ -573,7 +573,7 @@ def test_new_zeros_host_pinned_output(dtype):
         inp, _TARGET_SIZE, device=torch.device("cpu"), pin_memory=True
     )
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, device=torch.device("cpu"))
     assert res_out.device == torch.device("cpu")
     assert res_out.is_pinned()
     _assert_result_equal(inp, ref_inp)
