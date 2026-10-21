@@ -946,10 +946,19 @@ def _ternary_narrow_body(
     S_DT: tl.constexpr,
     SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
+    SWAP: tl.constexpr,
 ):
-    """The element-indexed body: one operand element per lane."""
-    t = tl.program_id(0)
-    offset = tl.program_id(1) * BLOCK
+    """The element-indexed body: one operand element per lane.
+
+    ``SWAP`` transposes the grid so the tile index travels first; see
+    :func:`foreach_ternary_kernel_p4` for why.
+    """
+    if SWAP:
+        t = tl.program_id(1)
+        offset = tl.program_id(0) * BLOCK
+    else:
+        t = tl.program_id(0)
+        offset = tl.program_id(1) * BLOCK
 
     a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
     b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(A_DT))
@@ -981,6 +990,7 @@ def foreach_ternary_kernel(
     S_DT: tl.constexpr,
     SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
+    SWAP: tl.constexpr,
 ):
     """``NT`` tensors, three tensor inputs and one per-tensor scalar.
 
@@ -1040,6 +1050,7 @@ def foreach_ternary_kernel(
                 S_DT,
                 SCALAR_BY_VALUE,
                 BLOCK,
+                SWAP,
             )
         else:
             _ternary_narrow_body(
@@ -1053,6 +1064,7 @@ def foreach_ternary_kernel(
                 S_DT,
                 SCALAR_BY_VALUE,
                 BLOCK,
+                SWAP,
             )
     else:
         _ternary_narrow_body(
@@ -1066,6 +1078,7 @@ def foreach_ternary_kernel(
             S_DT,
             SCALAR_BY_VALUE,
             BLOCK,
+            SWAP,
         )
 
 
@@ -1081,10 +1094,27 @@ def foreach_ternary_kernel_p4(
     S_DT: tl.constexpr,
     SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
+    SWAP: tl.constexpr,
 ):
-    """Four 16-bit elements per lane; :func:`foreach_ternary_kernel` semantics."""
-    t = tl.program_id(0)
-    offset = tl.program_id(1) * (BLOCK // 4)
+    """Four 16-bit elements per lane; :func:`foreach_ternary_kernel` semantics.
+
+    ``SWAP`` puts the tile index on ``program_id(0)`` and the tensor index on
+    ``program_id(1)``.  The hardware issues blocks in linear program-id order,
+    so with the tensor index first the sixteen tiles of one tensor are adjacent
+    and the grid walks tensor by tensor; transposed it walks tile by tile, which
+    at 1024^2 spreads the live addresses across the list instead of over one
+    16 MiB buffer at a time and measured 0.7us less on the 128 MiB ternary
+    traffic.  Below that size the launch is too short for the difference to
+    survive and the transposed order was 0.07us slower at 512^2, so the caller
+    enables it only from ``_TERNARY_SWAP_MIN_ELEMS`` up (and only for the
+    packed kernel, whose layout this was measured on).
+    """
+    if SWAP:
+        t = tl.program_id(1)
+        offset = tl.program_id(0) * (BLOCK // 4)
+    else:
+        t = tl.program_id(0)
+        offset = tl.program_id(1) * (BLOCK // 4)
 
     a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
     b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(tl.int64))
@@ -3102,8 +3132,13 @@ _TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
 # dict lookup.  The bound exists because a workload whose shapes keep moving
 # would otherwise accumulate one entry per shape; insertion order is the
 # eviction order, as in the binary executor's grid memo.
-_TERNARY_GRID_CACHE: Dict[Tuple[int, int], Tuple[int, Tuple[int, int]]] = {}
+_TERNARY_GRID_CACHE: Dict[Tuple[int, int, bool], Tuple[int, Tuple[int, int]]] = {}
 _TERNARY_GRID_CACHE_LIMIT = 64
+
+# Below this element count the transposed grid costs more than it saves (the
+# crossed threshold was measured on the packed ternary kernel: -0.70us at
+# 1024^2 against +0.07us at 512^2, which is 2^18 elements per tensor).
+_TERNARY_SWAP_MIN_ELEMS = 1 << 20
 
 # One-entry memo in front of ``_TERNARY_LAUNCH_CACHE``.  A fixed workload
 # reuses the same metadata tensor object (``_device_meta`` hands the cached one
@@ -3146,6 +3181,7 @@ def _launch_ternary_kernel(
     s_dt: Any,
     by_value: bool,
     block: int,
+    swap: bool,
     kernel: Callable = foreach_ternary_kernel,
 ) -> None:
     """``foreach_ternary_kernel[grid](...)`` with a cached launcher.
@@ -3166,7 +3202,7 @@ def _launch_ternary_kernel(
         and last[1] is scalar_buf
         and last[2] is fn
         and last[3] is kernel
-        and last[4] == (grid, nt, dt_in, dt_out, s_dt, by_value, block)
+        and last[4] == (grid, nt, dt_in, dt_out, s_dt, by_value, block, swap)
         and not runtime.launch_enter_hook.calls
         and not runtime.launch_exit_hook.calls
     ):
@@ -3182,6 +3218,7 @@ def _launch_ternary_kernel(
             s_dt,
             by_value,
             block,
+            swap,
             not (meta.data_ptr() & 15),
         )
         entry = _TERNARY_LAUNCH_CACHE.get(key)
@@ -3211,13 +3248,14 @@ def _launch_ternary_kernel(
                 s_dt,
                 by_value,
                 block,
+                swap,
             )
             if key is not None and by_value:
                 last[0] = meta
                 last[1] = scalar_buf
                 last[2] = fn
                 last[3] = kernel
-                last[4] = (grid, nt, dt_in, dt_out, s_dt, by_value, block)
+                last[4] = (grid, nt, dt_in, dt_out, s_dt, by_value, block, swap)
                 last[5] = entry[0]
                 last[6] = entry[1]
                 last[7] = entry[2]
@@ -3227,7 +3265,17 @@ def _launch_ternary_kernel(
             if key is not None:
                 _TERNARY_LAUNCH_CACHE.pop(key, None)
     compiled = kernel[grid](
-        meta, scalar_buf, scalar_value, fn, nt, dt_in, dt_out, s_dt, by_value, block
+        meta,
+        scalar_buf,
+        scalar_value,
+        fn,
+        nt,
+        dt_in,
+        dt_out,
+        s_dt,
+        by_value,
+        block,
+        swap,
     )
     if compiled is not None:
         _TERNARY_LAUNCH_CACHE[key] = (
@@ -3256,17 +3304,6 @@ def _launch_ternary_group(
     if max_numel == 0:
         return
     nt = len(a_l)
-    grid_key = (nt, max_numel)
-    cached_grid = _TERNARY_GRID_CACHE.get(grid_key)
-    if cached_grid is None:
-        block = _pick_block(numels)
-        # ``triton.cdiv`` is a decorated helper and is far from free at this
-        # size; plain ints give the same ceiling division.
-        cached_grid = (block, (nt, -(-max_numel // block)))
-        if len(_TERNARY_GRID_CACHE) >= _TERNARY_GRID_CACHE_LIMIT:
-            _TERNARY_GRID_CACHE.pop(next(iter(_TERNARY_GRID_CACHE)))
-        _TERNARY_GRID_CACHE[grid_key] = cached_grid
-    block, grid = cached_grid
     # One tuple display with star-unpacking.  Four ``list``+``map`` calls and
     # the concatenations between them measured 4.28us over four sixteen-tensor
     # lists against 3.77us for this form, for the same pointer run.  A tuple
@@ -3287,6 +3324,27 @@ def _launch_ternary_group(
         if d_l is a_l
         else (*prun, *map(ptr, d_l), *numels)
     )
+    kernel = (
+        foreach_ternary_kernel_p4
+        if _pack_ok((in_dt, out_dt), max_numel, values)
+        else foreach_ternary_kernel
+    )
+    # Transposed grid for the packed kernel at the large end; see the kernel's
+    # docstring for the measurement and for why the narrow path keeps the
+    # tensor-major order.
+    swap = kernel is foreach_ternary_kernel_p4 and max_numel >= _TERNARY_SWAP_MIN_ELEMS
+    grid_key = (nt, max_numel, swap)
+    cached_grid = _TERNARY_GRID_CACHE.get(grid_key)
+    if cached_grid is None:
+        block = _pick_block(numels)
+        # ``triton.cdiv`` is a decorated helper and is far from free at this
+        # size; plain ints give the same ceiling division.
+        tiles = -(-max_numel // block)
+        cached_grid = (block, (tiles, nt) if swap else (nt, tiles))
+        if len(_TERNARY_GRID_CACHE) >= _TERNARY_GRID_CACHE_LIMIT:
+            _TERNARY_GRID_CACHE.pop(next(iter(_TERNARY_GRID_CACHE)))
+        _TERNARY_GRID_CACHE[grid_key] = cached_grid
+    block, grid = cached_grid
     meta = _device_meta(values, device)
     s_dtype = out_dt if out_dt.is_floating_point else torch.float32
     # Same treatment as the binary scalar path: the ``.Scalar`` form supplies one
@@ -3301,11 +3359,6 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
-    kernel = (
-        foreach_ternary_kernel_p4
-        if _pack_ok((in_dt, out_dt), max_numel, values)
-        else foreach_ternary_kernel
-    )
     _launch_ternary_kernel(
         grid,
         nt,
@@ -3318,6 +3371,7 @@ def _launch_ternary_group(
         tl_dtype(s_dtype),
         by_value,
         block,
+        swap,
         kernel,
     )
     _STATS.executor_launches += 1
