@@ -18108,20 +18108,6 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
-- id: slow_conv_dilated2d
-  description: Applies a 2D dilated convolution over an input signal composed of
-    several input planes, using the slow (non-cuDNN) reference path. The operator
-    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
-    and supports an optional bias.
-  for:
-  - slow_conv_dilated2d
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5.0'
 - id: slow_conv2d_backward
   description: |
     Backward computation for the slow reference conv2d, returning the gradients
@@ -18135,6 +18121,7 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+
 - id: slow_conv2d_forward
   description: |
     An internal slow reference implementation of the 2-D convolution forward
@@ -18149,6 +18136,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+
+- id: slow_conv_dilated2d
+  description: Applies a 2D dilated convolution over an input signal composed of
+    several input planes, using the slow (non-cuDNN) reference path. The operator
+    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
+    and supports an optional bias.
+  for:
+  - slow_conv_dilated2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+
 - id: slow_conv_transpose2d
   description: |
     Applies a 2D transposed convolution operator over an input image composed of
@@ -18166,6 +18169,7 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+
 - id: slow_conv_transpose3d
   description: |
     Applies a 3D transposed convolution operator over an input image composed of
