@@ -22,6 +22,124 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _zeros(shape, *, dtype=None, device=None):
+    expected_dtype = dtype if dtype is not None else torch.get_default_dtype()
+    expected_device = _device(device if device is not None else "cpu")
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and (
+        expected_device.type == "cpu"
+        or flag_gems.vendor_name in ("ascend", "kunlunxin")
+    ):
+        # Empty FP8 zero-fill is missing in some CPU builds too. Encoding an
+        # FP32 zero buffer retains every original storage element and view.
+        host = torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype)
+        out = host if expected_device.type == "cpu" else _copy_to(host, device)
+    else:
+        out = torch.zeros(shape, dtype=dtype, device=device)
+    assert out.dtype == expected_dtype and out.device == expected_device
+    assert out.shape == torch.Size(shape)
+    return out
+
+
 # Compare storage element counts, which may differ from logical tensor sizes.
 _HAS_SAME_STORAGE_NUMEL_DTYPES = (
     tu.REQUIRED_DTYPES
@@ -82,25 +200,25 @@ _INVALID_ARG_CASES = [
 def _make_tensor(spec, dtype, device):
     kind, shape = spec
     if kind == "plain":
-        return torch.zeros(shape, dtype=dtype, device=device)
+        return _zeros(shape, dtype=dtype, device=device)
     if kind == "transposed":
-        return torch.zeros((shape[1], shape[0]), dtype=dtype, device=device).t()
+        return _zeros((shape[1], shape[0]), dtype=dtype, device=device).t()
     if kind == "row_view":
-        return torch.zeros(shape, dtype=dtype, device=device)[0]
+        return _zeros(shape, dtype=dtype, device=device)[0]
     if kind == "expanded":
-        base = torch.zeros((shape[0], 1), dtype=dtype, device=device)
+        base = _zeros((shape[0], 1), dtype=dtype, device=device)
         return base.expand(shape)
     if kind == "narrowed":
-        base = torch.zeros(shape, dtype=dtype, device=device)
+        base = _zeros(shape, dtype=dtype, device=device)
         return base.narrow(0, shape[0] // 4, max(shape[0] // 2, 1))
     raise ValueError(f"Unknown tensor spec kind: {kind!r}")
 
 
 def _special_tensor(shape, dtype, scenario):
     numel = math.prod(shape)
-    values = tu.make_special_input(dtype, scenario)
+    values = _make_special_input(dtype, scenario)
     repeats = (numel + values.numel() - 1) // values.numel()
-    return values.repeat(repeats)[:numel].reshape(shape)
+    return _repeat(values, repeats)[:numel].reshape(shape)
 
 
 def _assert_result(res_out, ref_out):
@@ -135,8 +253,8 @@ def test__has_same_storage_numel_layouts(self_spec, other_spec, dtype):
 @pytest.mark.underscore_has_same_storage_numel
 @pytest.mark.parametrize("self_dtype,other_dtype", _CROSS_DTYPE_CASES)
 def test__has_same_storage_numel_cross_dtype(self_dtype, other_dtype):
-    self_t = torch.zeros((4, 4), dtype=self_dtype, device=flag_gems.device)
-    other_t = torch.zeros((16,), dtype=other_dtype, device=flag_gems.device)
+    self_t = _zeros((4, 4), dtype=self_dtype, device=flag_gems.device)
+    other_t = _zeros((16,), dtype=other_dtype, device=flag_gems.device)
     ref_self = self_t.to("cpu") if utils.TO_CPU else self_t
     ref_other = other_t.to("cpu") if utils.TO_CPU else other_t
 
@@ -150,8 +268,8 @@ def test__has_same_storage_numel_cross_dtype(self_dtype, other_dtype):
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _HAS_SAME_STORAGE_NUMEL_DTYPES)
 def test__has_same_storage_numel_shapes(shape, dtype):
-    self_t = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
-    other_t = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    self_t = _zeros(shape, dtype=dtype, device=flag_gems.device)
+    other_t = _zeros(shape, dtype=dtype, device=flag_gems.device)
     ref_self = tu.to_reference(self_t)
     ref_other = tu.to_reference(other_t)
 
@@ -178,8 +296,8 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__has_same_storage_numel_value_ranges(shape, value_range, dtype):
-    self_t = tu.make_input(dtype, shape, value_range)
-    other_t = tu.make_input(dtype, shape, value_range)
+    self_t = _make_input(dtype, shape, value_range)
+    other_t = _make_input(dtype, shape, value_range)
     ref_self = tu.to_reference(self_t)
     ref_other = tu.to_reference(other_t)
 
@@ -209,8 +327,8 @@ def test__has_same_storage_numel_nan_inf(shape, dtype, scenario):
 
 @pytest.mark.underscore_has_same_storage_numel
 def test__has_same_storage_numel_ignores_autograd():
-    self_t = torch.zeros((4, 4), device=flag_gems.device).requires_grad_()
-    other_t = torch.zeros((4, 4), device=flag_gems.device).requires_grad_()
+    self_t = _zeros((4, 4), device=flag_gems.device).requires_grad_()
+    other_t = _zeros((4, 4), device=flag_gems.device).requires_grad_()
     ref_self = self_t.detach()
     ref_other = other_t.detach()
 
@@ -236,7 +354,7 @@ def test__has_same_storage_numel_rejects_non_tensor(self_arg, other_arg):
 
 @pytest.mark.underscore_has_same_storage_numel
 def test__has_same_storage_numel_rejects_missing_argument():
-    inp = torch.zeros((4,), device=flag_gems.device)
+    inp = _zeros((4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten._has_same_storage_numel(inp)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
