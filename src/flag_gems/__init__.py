@@ -147,6 +147,8 @@ _FULL_CONFIG = (
     ("_conj_physical", _conj_physical),
     ("_conj_physical.out", _conj_physical_out),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_convert_indices_from_coo_to_csr", _convert_indices_from_coo_to_csr),
+    ("_convert_indices_from_coo_to_csr.out", _convert_indices_from_coo_to_csr_out),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
