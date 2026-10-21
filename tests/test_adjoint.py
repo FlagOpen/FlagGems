@@ -127,6 +127,7 @@ def _assert_result_close(result, reference, *, required_device, atol=1e-4):
     result, reference = _comparison_values(
         result, reference, required_device=required_device
     )
+    result = utils.to_cpu(result, reference)
     if dtype.is_floating_point or dtype.is_complex:
         if flag_gems.vendor_name == "kunlunxin" and dtype in _FP8_DTYPES:
             # Same original-dtype policy as the shared non-Kunlunxin table;
