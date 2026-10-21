@@ -8263,7 +8263,11 @@ ops:
   description: |
     The `fp8_paged_mqa_logits` operator is used in the decoding phase of DeepSeek sparse attention.
   for:
-  - vllm.utils.deep_gemm.fp8_paged_mqa_logits
+  - fp8_paged_mqa_logits
+  name:
+  - fp8_paged_mqa_logits
+  source:
+  - vllm
   labels:
   - fused
   - vLLM
