@@ -21,10 +21,12 @@ import pickle
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Generator
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
@@ -82,6 +84,7 @@ PARALLEL_RESULT_FILE_ENV = "FLAGGEMS_BENCH_RESULT_FILE"
 torch_device_object = flag_gems.runtime.backend.gen_torch_device_object()
 DEEPGEMM_N_MULTIPLE = 64
 DEEPGEMM_K_MULTIPLE = 128
+
 
 MUL_DEFAULT_SHAPES = [
     ("broadcast", (1, 1), (1, 2048)),
@@ -155,7 +158,7 @@ class BlasBenchmark(Benchmark):
         total_flops = 0
         # shape(m,k)(k,n)
         # total_flops mxnx2k
-        if self.op_name == "mm":
+        if self.op_name in ("mm", "mm_w8a8"):
             total_flops = args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
         # shape(m,n)(n,p)
         # total_flops mxpx(2n+1)
@@ -597,6 +600,13 @@ def _parallel_device_label():
 
 class ParallelBenchmarkMixin:
     SHAPE_CONFIG_KEYS = ()
+    # Operator name used to estimate per-shape cost when splitting shapes
+    # across GPUs; defaults to op_name. Set it when one op_name covers several
+    # precisions that need different cost models.
+    SHAPE_COST_OP_NAME = None
+    # Record the merged metrics in --record json. Opt-in so ops whose kanban
+    # number comes from a dedicated single-process benchmark keep that source.
+    RECORD_PARALLEL_RESULTS = False
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -706,14 +716,23 @@ class ParallelBenchmarkMixin:
             )
         return metric
 
-    def _run_inputs(self, input_items):
+    def _baseline_input(self, input_item):
+        """The external record describes the native callable's input ABI."""
+        return input_item
+
+    def _run_inputs(self, input_items, dtype=None):
         metrics = []
         expected_shapes = self._iter_expected_shapes()
         for input_item in input_items:
             current_shape = next(expected_shapes, None)
             metric = BenchmarkMetrics()
             try:
+                args, kwargs = self.unpack_to_args_kwargs(
+                    self._baseline_input(input_item)
+                )
+                context = self._capture_external_baseline(args, kwargs)
                 metric = self._build_metric_from_input(input_item)
+                self._apply_external_baseline(metric, dtype, context)
             except Exception as e:
                 metric.error_msg = str(e)
                 self._record_failed_shape(current_shape)
@@ -757,11 +776,13 @@ class ParallelBenchmarkMixin:
 
         fixed_overhead = self._get_tuning_fixed_overhead()
 
+        cost_op_name = self.SHAPE_COST_OP_NAME or self.op_name
+
         def estimate_shape_cost(shape):
-            if self.op_name == "mul":
+            if cost_op_name == "mul":
                 return _estimate_mul_shape_cost(shape) + fixed_overhead
 
-            if self.op_name == "sparse_attention":
+            if cost_op_name == "sparse_attention":
                 if len(shape) != 6:
                     return 1 + fixed_overhead
                 batch, seq_len, _, topk, heads, dim = shape
@@ -777,7 +798,7 @@ class ParallelBenchmarkMixin:
                     * 4
                 ) + fixed_overhead
 
-            if self.op_name in {
+            if cost_op_name in {
                 "mm",
                 "addmm",
                 "bmm",
@@ -797,7 +818,7 @@ class ParallelBenchmarkMixin:
                 if normalized_shape is None:
                     return 1 + fixed_overhead
 
-                if self.op_name in {
+                if cost_op_name in {
                     "mm",
                     "bmm",
                     "w8a8_block_fp8_matmul",
@@ -896,6 +917,8 @@ class ParallelBenchmarkMixin:
             "--shape_file",
             tmp_shape_path,
         ]
+        if Config.base_data is not None:
+            cmd.extend(["--base-data", str(Path(Config.base_data.source).resolve())])
         if self.should_forward_parallel_dtype(dtype_name):
             cmd.extend(["--dtypes", dtype_name])
         if Config.user_desired_metrics:
@@ -942,7 +965,7 @@ class ParallelBenchmarkMixin:
     def _run_parallel_dtype(self, dtype):
         required_gpus = int(Config.parallel)
         if required_gpus <= 0:
-            return self._run_inputs(self.get_input_iter(dtype))
+            return self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
         if not _parallel_device_is_available():
             pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
         device_ids = _parallel_device_ids()
@@ -1032,7 +1055,15 @@ class ParallelBenchmarkMixin:
             if Config.parallel > 0 and not os.environ.get(PARALLEL_WORKER_ENV):
                 metrics = self._run_parallel_dtype(dtype)
             else:
-                metrics = self._run_inputs(self.get_input_iter(dtype))
+                metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
+
+            if self.RECORD_PARALLEL_RESULTS and not os.environ.get(
+                PARALLEL_RESULT_FILE_ENV
+            ):
+                # Main process of an opted-in benchmark: record the merged
+                # metrics like a single-process benchmark (--record json).
+                self._emit_result(dtype, metrics)
+                continue
 
             result = BenchmarkResult(
                 level=Config.bench_level.value,
@@ -1055,6 +1086,97 @@ class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             return 2
         return 1
+
+
+_MM_W8A8_FP8_OUT_CACHE = {}
+_MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES = int(
+    os.environ.get("FLAGGEMS_BENCH_MM_W8A8_OUT_CACHE_MAX", "8")
+)
+
+
+def _mm_w8a8_fp8_output_dtype(a):
+    output_dtype = os.environ.get("FLAGGEMS_MM_W8A8_OUTPUT_DTYPE", "bf16").lower()
+    if output_dtype in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if output_dtype in ("fp8", "float8"):
+        fp8_e4m3 = getattr(torch, "float8_e4m3fn", None)
+        fp8_e5m2 = getattr(torch, "float8_e5m2", None)
+        if a.dtype in (fp8_e4m3, fp8_e5m2):
+            return a.dtype
+        if fp8_e4m3 is not None:
+            return fp8_e4m3
+    return torch.bfloat16
+
+
+def _mm_w8a8_fp8_out_cached(a, b, scale_a, scale_b):
+    out_dtype = _mm_w8a8_fp8_output_dtype(a)
+    device_index = a.device.index if a.device.index is not None else -1
+    key = (device_index, a.shape[0], b.shape[1], out_dtype)
+    out = _MM_W8A8_FP8_OUT_CACHE.get(key)
+    if out is None or out.device != a.device:
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=out_dtype)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+        while len(_MM_W8A8_FP8_OUT_CACHE) > _MM_W8A8_FP8_OUT_CACHE_MAX_ENTRIES:
+            _MM_W8A8_FP8_OUT_CACHE.pop(next(iter(_MM_W8A8_FP8_OUT_CACHE)))
+    else:
+        _MM_W8A8_FP8_OUT_CACHE.pop(key)
+        _MM_W8A8_FP8_OUT_CACHE[key] = out
+    return flag_gems.mm_w8a8_fp8_out(a, b, scale_a, scale_b, out=out)
+
+
+def mm_w8a8_fp8_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+    a = torch.randn((m, k), dtype=torch.float32, device=device).to(cur_dtype)
+    weight = torch.randn((n, k), dtype=torch.float32, device=device).to(cur_dtype).t()
+    # Prepare FP8 inputs and external scales before either path is timed.
+    scale_a = torch.full((1,), 0.5, dtype=torch.float32, device=device)
+    scale_b = torch.full((1,), 1.5, dtype=torch.float32, device=device)
+    yield a, weight, scale_a, scale_b
+
+
+class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
+    SHAPE_CONFIG_KEYS = ("mm",)
+    # op_name is the shared kanban id "mm_w8a8"; FP8 keeps the mm GEMM cost.
+    SHAPE_COST_OP_NAME = "mm"
+    RECORD_PARALLEL_RESULTS = True
+
+    def should_forward_parallel_dtype(self, dtype_name):
+        # The CLI excludes FP8; each worker uses the same single FP8 dtype.
+        return False
+
+    def get_input_iter(self, cur_dtype):
+        # torch._scaled_mm requires row-major A and column-major B on CUDA.
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, True)
+
+    def get_parallel_metric_group_size(self, shape):
+        return 1
+
+    def get_latency(self, op, *args, **kwargs):
+        if op is not self.torch_op:
+            # Populate descriptor, output, and autotune caches
+            # before CUDA Graph capture so replay measures the FP8 GEMM only.
+            for _ in range(2):
+                op(*args, **kwargs)
+            torch.cuda.synchronize()
+        return triton.testing.do_bench_cudagraph(
+            lambda: op(*args, **kwargs),
+            rep=Config.repetition,
+            return_mode="median",
+        )
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        if not shape_file_path or not os.path.isfile(shape_file_path):
+            return
+        with open(shape_file_path, "r", encoding="utf-8") as shape_file:
+            yaml_config = yaml.safe_load(shape_file) or {}
+        if "mm" not in yaml_config:
+            return
+        self.shapes = [
+            tuple(shape)
+            for shape in yaml_config["mm"].get("shapes", self.DEFAULT_SHAPES)
+        ]
+        self.shape_desc = yaml_config["mm"].get("shape_desc", self.shape_desc)
 
 
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
@@ -1303,6 +1425,10 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
                 self.output_dtype,
             )
 
+    def _baseline_input(self, input_item):
+        dg_input, _ = input_item
+        return dg_input
+
     def _build_metric_from_input(self, input_item):
         dg_input, gems_input = input_item
         metric = BenchmarkMetrics()
@@ -1484,6 +1610,35 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         torch_op=torch_op,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.mm_w8a8
+def test_mm_w8a8_fp8():
+    if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
+        pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
+
+    def torch_fp8_mm(a, b, scale_a, scale_b):
+        return torch._scaled_mm(
+            a,
+            b,
+            scale_a,
+            scale_b,
+            out_dtype=_mm_w8a8_fp8_output_dtype(a),
+            use_fast_accum=False,
+        )
+
+    bench = ParallelMmW8A8Fp8Benchmark(
+        input_fn=mm_w8a8_fp8_input_fn,
+        op_name="mm_w8a8",
+        torch_op=torch_fp8_mm,
+        dtypes=(
+            [torch.float8_e4m3fn]
+            if flag_gems.vendor_name == "mthreads"
+            else consts.FP8_DTYPES
+        ),
+    )
+    bench.set_gems(_mm_w8a8_fp8_out_cached)
     bench.run()
 
 
