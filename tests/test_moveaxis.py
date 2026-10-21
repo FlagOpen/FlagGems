@@ -17,7 +17,95 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _numeric_values(inp):
+    # Copy bytes before decoding: device FP8 casts and complex comparison may
+    # be unavailable. Rebuild the logical view and its lazy flags on CPU.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    # Decode before resolving lazy negative bits; CPU FP8 neg is unavailable.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device):
+    # Check the original ABI before observing values on CPU. Layout and alias
+    # assertions at each call site still inspect the original device tensors.
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
 
 # Optional dtypes join the grid only when the backend reports the capability;
 # every dtype outside this map stays unconditional, so a supported case is never
@@ -100,14 +188,15 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape,source,destination", SHAPE_ROWS)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_moveaxis_int_axis(shape, source, destination, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    required_device = _expected_device()
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
     snapshot = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
 
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
     _assert_operand_unchanged(inp, snapshot)
 
@@ -136,13 +225,14 @@ INTLIST_ROWS = _intlist_rows(tu.selected_shapes())
 def test_moveaxis_intlist_axis(shape, source, destination, dtype):
     # A metadata move never reads stored values, so the int[] overload runs with
     # one representative range while test_moveaxis_int_axis carries the grid.
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    required_device = _expected_device()
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
@@ -157,13 +247,14 @@ IDENTITY_ROWS = [
 @pytest.mark.parametrize("shape,source,destination", IDENTITY_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_moveaxis_identity_keeps_layout(shape, source, destination, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    required_device = _expected_device()
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
     # Native also hands back a fresh view object for an identity mapping, so the
     # unchanged layout over shared storage is asserted, not object identity.
@@ -195,7 +286,8 @@ NONCONTIG_DTYPES = [
 @pytest.mark.parametrize("shape,state,source,destination", NONCONTIG_ROWS)
 @pytest.mark.parametrize("dtype", NONCONTIG_DTYPES)
 def test_moveaxis_noncontiguous_input(shape, state, source, destination, dtype):
-    base = tu.make_input(dtype, shape, ["-1", "1"])
+    required_device = _expected_device()
+    base = _make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _strided_view(base, state)
     ref_inp = _strided_view(ref_base, state)
@@ -203,7 +295,7 @@ def test_moveaxis_noncontiguous_input(shape, state, source, destination, dtype):
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
@@ -222,7 +314,8 @@ EXPANDED_ROWS = [
 def test_moveaxis_expanded_input(
     base_shape, expanded_shape, source, destination, dtype
 ):
-    base = tu.make_input(dtype, base_shape, ["-1", "1"])
+    required_device = _expected_device()
+    base = _make_input(dtype, base_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = base.expand(expanded_shape)
     ref_inp = ref_base.expand(expanded_shape)
@@ -230,7 +323,7 @@ def test_moveaxis_expanded_input(
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
@@ -239,7 +332,8 @@ def test_moveaxis_expanded_input(
 def test_moveaxis_conjugate_input(source, destination):
     # The lazy conjugate bit is view state that must survive the axis move
     # instead of being materialized.
-    base = tu.make_input(torch.complex64, (6, 4), ["-1", "1"])
+    required_device = _expected_device()
+    base = _make_input(torch.complex64, (6, 4), ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = base.conj()
     ref_inp = ref_base.conj()
@@ -247,7 +341,7 @@ def test_moveaxis_conjugate_input(source, destination):
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out.is_conj() == ref_out.is_conj()
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
@@ -256,19 +350,20 @@ def test_moveaxis_conjugate_input(source, destination):
 @pytest.mark.parametrize("source,destination", [(0, 1), ([0, 1], [1, 0])])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_moveaxis_result_mutation_aliases_input(source, destination, dtype):
-    inp = tu.make_input(dtype, (4, 5), ["-1", "1"])
+    required_device = _expected_device()
+    inp = _make_input(dtype, (4, 5), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     res_out = flag_gems.moveaxis(inp, source, destination)
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     # result[1, 0] is input[0, 1] for both axis forms used here; the identical
     # write on the input comparison below shows the result aliases its input.
     res_out[1, 0] = 3
     ref_out[1, 0] = 3
 
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 EMPTY_ROWS = [
@@ -285,13 +380,14 @@ EMPTY_ROWS = [
 def test_moveaxis_empty_tensor(shape, source, destination):
     # Zero-filled rather than uninitialized: an empty view holds no elements,
     # and the comparison must never read undefined memory.
+    required_device = _expected_device()
     inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
     res_out = flag_gems.moveaxis(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
@@ -314,24 +410,25 @@ BACKWARD_DTYPES = [
 @pytest.mark.parametrize("shape,source,destination", BACKWARD_ROWS)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_moveaxis_backward(shape, source, destination, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    required_device = _expected_device()
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     inp.requires_grad_(True)
     ref_inp.requires_grad_(True)
 
     res_out = flag_gems.moveaxis(inp, source, destination)
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
-    upstream = tu.make_input(dtype, tuple(ref_out.shape), ["-1", "1"])
+    upstream = _make_input(dtype, tuple(ref_out.shape), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     # The gradient with respect to the original leaf is a pure relayout of the
     # upstream gradient, so it is compared exactly.
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
     assert res_grad.shape == inp.shape
 
 
@@ -340,14 +437,15 @@ def test_moveaxis_backward(shape, source, destination, dtype):
     "source,destination", tu.selected_cases([(0, 1), ([0, 1], [1, 0])], quick=[])
 )
 def test_moveaxis_backward_accumulates(source, destination):
-    inp = tu.make_input(torch.float32, (3, 4), ["-1", "1"])
+    required_device = _expected_device()
+    inp = _make_input(torch.float32, (3, 4), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     inp.requires_grad_(True)
     ref_inp.requires_grad_(True)
 
     res_out = flag_gems.moveaxis(inp, source, destination)
     ref_out = torch.ops.aten.moveaxis(ref_inp, source, destination)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     res_loss = res_out.sum()
     ref_loss = ref_out.sum()
@@ -355,7 +453,7 @@ def test_moveaxis_backward_accumulates(source, destination):
     (res_grad,) = torch.autograd.grad(res_loss, inp)
     (ref_grad,) = torch.autograd.grad(ref_loss, ref_inp)
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES), quick=[])
@@ -366,13 +464,14 @@ SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES), quic
 def test_moveaxis_special_values(dtype, scenario):
     # moveaxis computes nothing, so nan/inf payloads must survive unchanged;
     # matching NaNs are the native semantics for this operator.
-    inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
+    required_device = _expected_device()
+    inp = _make_special_input(dtype, scenario).reshape(1, -1)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.moveaxis(ref_inp, 0, 1)
     res_out = flag_gems.moveaxis(inp, 0, 1)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_of(res_out, ref_out, inp, ref_inp)
 
 
@@ -382,21 +481,21 @@ NEG_BASE = (4, 5)
 @pytest.mark.moveaxis
 @pytest.mark.parametrize("bad_dim", [2, -3])
 def test_moveaxis_int_dim_out_of_range(bad_dim):
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((IndexError, RuntimeError)):
         flag_gems.moveaxis(inp, bad_dim, 0)
 
 
 @pytest.mark.moveaxis
 def test_moveaxis_int_destination_out_of_range():
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((IndexError, RuntimeError)):
         flag_gems.moveaxis(inp, 0, 5)
 
 
 @pytest.mark.moveaxis
 def test_moveaxis_intlist_length_mismatch():
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, ValueError, TypeError)):
         flag_gems.moveaxis(inp, [0, 1], [1])
 
@@ -404,7 +503,7 @@ def test_moveaxis_intlist_length_mismatch():
 @pytest.mark.moveaxis
 @pytest.mark.parametrize("source,destination", [([0, 0], [1, 1]), ([0, 1], [1, 1])])
 def test_moveaxis_intlist_repeated_axis(source, destination):
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, ValueError, IndexError)):
         flag_gems.moveaxis(inp, source, destination)
 
@@ -412,14 +511,14 @@ def test_moveaxis_intlist_repeated_axis(source, destination):
 @pytest.mark.moveaxis
 @pytest.mark.parametrize("bad_axis", [0.5, -1.5])
 def test_moveaxis_int_non_integer_axis(bad_axis):
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.moveaxis(inp, bad_axis, 1)
 
 
 @pytest.mark.moveaxis
 def test_moveaxis_intlist_non_integer_axis():
-    inp = tu.make_input(torch.float32, NEG_BASE, ["-1", "1"])
+    inp = _make_input(torch.float32, NEG_BASE, ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.moveaxis(inp, [0.0], [1])
 
