@@ -2232,12 +2232,16 @@ def _launch_binary_group(
     # reading it a second time.
     # The broadcast operand is one repeated single-element tensor, and the
     # kernel only ever dereferences its first entry, so its run is one read.
-    ptrs_b = [b_list[0].data_ptr()] * nt if b_scalar else [t.data_ptr() for t in b_list]
+    ptrs_b = (
+        [b_list[0].data_ptr()] * nt
+        if b_scalar
+        else list(map(_DATA_PTR, b_list))
+    )
     inplace = d_list is a_list
     values = (
         ptrs_a + ptrs_b + ptrs_a + numels
         if inplace
-        else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
+        else ptrs_a + ptrs_b + list(map(_DATA_PTR, d_list)) + numels
     )
     meta = _device_meta(values, device)
     kernel = (
@@ -2848,6 +2852,10 @@ except AttributeError:  # pragma: no cover - very old builds
 # answer, so it stays a ``map`` over the unbound descriptor (2.8us over 48
 # tensors; the bound-method lookup per tensor is what that avoids).
 _IS_CONTIGUOUS = torch.Tensor.is_contiguous
+# Same reasoning for the two scalar accessors the launch plans read per tensor:
+# the unbound descriptor saves a bound-method lookup on every element.
+_NUMEL = torch.Tensor.numel
+_DATA_PTR = torch.Tensor.data_ptr
 
 
 def _ternary_homogeneous(
