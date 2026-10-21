@@ -20,6 +20,131 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_values(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_values(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_values(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_values(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_values(inp, dtype, shape)
+
+
+def _make_special_values(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_values(inp, dtype, (5,))
+
+
+def _repeat_values(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _assert_values_equal(actual, expected, *, equal_nan=False):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        # Retain the original tensor contract before observing FP8 values on
+        # CPU, where decoding avoids the missing device comparison kernels.
+        assert actual.dtype == expected.dtype
+        assert actual.shape == expected.shape and actual.layout == expected.layout
+        assert actual.device == _device(flag_gems.device)
+        assert expected.device == (
+            torch.device("cpu") if utils.TO_CPU else actual.device
+        )
+        actual = _copy_to(actual, "cpu").float()
+        expected = _copy_to(expected, "cpu").float()
+    utils.gems_assert_equal(actual, expected, equal_nan=equal_nan)
+
+
+def _assert_output_equal(actual, expected):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and actual.dtype in _FP8_DTYPES:
+        _assert_values_equal(actual, expected, equal_nan=True)
+    else:
+        tu.assert_result_equal(actual, expected)
+
+
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 # _values returns a non-differentiable view of the COO value storage.
@@ -73,15 +198,21 @@ def _make_coo_input(shape, sparse_dim, nnz, dtype, value_range, seed=0):
             for dim in sparse_shape
         ]
     )
-    values = tu.make_input(dtype, (nnz,) + dense_shape, value_range)
+    values = _make_values(dtype, (nnz,) + dense_shape, value_range)
     return torch.sparse_coo_tensor(indices, values, shape, device=flag_gems.device)
 
 
 def _assert_result(res_out, ref_out, inp, ref_inp):
+    assert inp.dtype == ref_inp.dtype and inp.shape == ref_inp.shape
+    assert inp.layout == ref_inp.layout and inp.device == _device(flag_gems.device)
+    assert ref_inp.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+    assert res_out.dtype == ref_out.dtype and res_out.shape == ref_out.shape
+    assert res_out.layout == ref_out.layout == torch.strided
+    assert res_out.device == inp.device
     # Check exact output, storage aliasing and unchanged input values.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_output_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp._values().data_ptr()
-    utils.gems_assert_equal(inp._values(), ref_inp._values(), equal_nan=True)
+    _assert_values_equal(inp._values(), ref_inp._values(), equal_nan=True)
 
 
 @pytest.mark.underscore_values
@@ -91,10 +222,6 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
-                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -118,10 +245,6 @@ def test__values_layouts(case, dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
-                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -143,12 +266,6 @@ def test__values_value_ranges(case, value_range, dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and not utils.TO_CPU
-                and dtype in _FP8_DTYPES,
-                reason="Ascend device comparison does not support FP8, including empty values",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -173,12 +290,6 @@ def test__values_empty(dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and not utils.TO_CPU
-                and dtype in _FP8_DTYPES,
-                reason="Ascend device comparison does not support FP8, including empty values",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -203,10 +314,6 @@ def test__values_empty_hybrid(dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
-                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -217,7 +324,7 @@ def test__values_full_storage(dtype):
     indices = torch.stack(
         torch.meshgrid(torch.arange(shape[0]), torch.arange(shape[1]), indexing="ij")
     ).reshape(2, nnz)
-    values = tu.make_input(dtype, (nnz,), ["-1", "1"])
+    values = _make_values(dtype, (nnz,), ["-1", "1"])
     inp = torch.sparse_coo_tensor(indices, values, shape, device=flag_gems.device)
     assert inp._nnz() == nnz
     ref_inp = tu.to_reference(inp)
@@ -234,10 +341,6 @@ def test__values_full_storage(dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
-                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-            ),
         )
         for dtype in _VALUES_DTYPES
     ],
@@ -245,7 +348,7 @@ def test__values_full_storage(dtype):
 def test__values_uncoalesced(dtype):
     shape = (3, 4)
     indices = torch.tensor([[0, 0, 1, 2, 0], [1, 1, 2, 3, 1]], dtype=torch.long)
-    values = tu.make_input(dtype, (5,), ["-1", "1"])
+    values = _make_values(dtype, (5,), ["-1", "1"])
     inp = torch.sparse_coo_tensor(indices, values, shape, device=flag_gems.device)
     assert not inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
@@ -263,16 +366,12 @@ def test__values_uncoalesced(dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
-                reason="Ascend cannot construct nonempty FP8 payloads with device casts",
-            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_VALUES_DTYPES))
     ],
 )
 def test__values_nan_inf(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat_values(_make_special_values(dtype, scenario), 2)[:6]
     indices = torch.tensor([[0, 1, 2, 3, 4, 5]], dtype=torch.long)
     inp = torch.sparse_coo_tensor(indices, values, (6,), device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -285,7 +384,7 @@ def test__values_nan_inf(dtype, scenario):
 
 @pytest.mark.underscore_values
 def test__values_dense_raises():
-    inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
+    inp = _make_values(torch.float32, (4, 4), ["-1", "1"])
     with pytest.raises(NotImplementedError):
         torch.ops.aten._values(tu.to_reference(inp))
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
@@ -296,7 +395,7 @@ def test__values_dense_raises():
 def test__values_csr_raises():
     crow_indices = torch.tensor([0, 1, 2], dtype=torch.long)
     col_indices = torch.tensor([0, 1], dtype=torch.long)
-    values = tu.make_input(torch.float32, (2,), ["-1", "1"])
+    values = _make_values(torch.float32, (2,), ["-1", "1"])
     inp = torch.sparse_csr_tensor(
         crow_indices, col_indices, values, (2, 3), device=flag_gems.device
     )
