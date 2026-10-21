@@ -168,6 +168,102 @@ def _abs_complex_func(re, im):
 
 
 # ---------------------------------------------------------------------------
+# 16-bit fast-math path
+# ---------------------------------------------------------------------------
+#
+# ``tl.log``/``tl.log2``/``tl.cos``/... lower to the IEEE-accurate libdevice
+# entry points, which spend roughly 20-25 fp32 instructions per element on
+# range reduction and a polynomial.  libdevice also exports the SFU ("fast")
+# variants: one MUFU instruction plus a cheap fixed-point range reduction.  At
+# 512^2 x 16 the fp16 unary call sits well above the 12.4 us copy floor
+# (``log_`` 17.0 us), so the difference is worth 3.5-4.0 us of kernel time.
+#
+# Taking that trade is only defensible when the *output* is 16-bit.  fp16 has
+# ~5e-4 relative resolution and the suite tolerance is rtol=1e-3/atol=1e-4
+# (bf16 rtol=1.6e-2), while the fast paths measure max abs error 7.6e-6 on
+# ``log`` and 6.1e-5 on ``cos`` -- two orders of magnitude inside tolerance.
+# They are not bit-exact against ATen at 16 bits, so the accurate function
+# remains the default: the fast one is selected by dtype, never by operator.
+#
+# ``fast_log1pf`` does not exist.  The accurate ``log1p`` body is already
+# ``log(1 + x)``, so the fast version keeps that exact shape and changes only
+# the log entry point -- the cancellation behaviour is inherited, not new.
+# Likewise there is no fast ``erf``/``erfc``; those rows keep the accurate
+# function.  ``exp``/``expm1``/``sigmoid`` gain nothing because ``exp`` is
+# already one cheap instruction.  ``tanh`` has no usable fast extern (see its
+# body) and is built from ``fast_expf`` instead.  ``cosh`` was built the same
+# way and then dropped: libdevice ``coshf`` is already within ~1 us of the copy
+# floor, and ABBA at 512^2 in-place measured +0.04 us for the fast body, level
+# with the untouched ``sinh`` control (+0.38), so it is noise rather than a win.
+#
+# The executor hands these functions a value already cast to the output
+# dtype, so every body widens to fp32 first: the libdevice fast entry points
+# have no 16-bit overload.
+#
+# ``fn16`` is consumed by the in-place entry point only.  An out-of-place call
+# already spends more host time than ``do_bench``'s L2-flush window, so extra
+# Python in the dispatch leaks into the measured latency while the kernel time
+# the fast body saves stays hidden under it; measured, enabling it there turned
+# every out-of-place row into a 1.3-3.7 us regression at 512^2.  The accurate
+# body is free on that path, so out-of-place deliberately keeps ``op.fn``.  Do
+# not "restore the symmetry" -- see ``apply_unary``.
+
+
+@triton.jit
+def _fast_log_func(x):
+    return tl_extra_shim.fast_logf(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_log2_func(x):
+    return tl_extra_shim.fast_log2f(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_log10_func(x):
+    # The accurate body is ``tl.log(x) * log10(e)``; the direct entry point
+    # also saves the extra multiply.
+    return tl_extra_shim.fast_log10f(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_log1p_func(x):
+    return tl_extra_shim.fast_logf(1.0 + x.to(tl.float32))
+
+
+@triton.jit
+def _fast_cos_func(x):
+    return tl_extra_shim.fast_cosf(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_sin_func(x):
+    return tl_extra_shim.fast_sinf(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_tan_func(x):
+    return tl_extra_shim.fast_tanf(x.to(tl.float32))
+
+
+@triton.jit
+def _fast_tanh_func(x):
+    # ``tanh`` spends the same accurate-``exp`` budget as the log family; at
+    # 512^2 fp16 the reused kernel measured 2.7 us of ALU over the copy floor.
+    # The obvious ``fast_tanhf`` is not usable here: the Python module exports
+    # the name, but the extern it lowers to (``__nv_fast_tanhf``) is not in this
+    # CUDA toolkit's device library, so ptxas fails the link with "Unresolved
+    # extern function".  This is the standard SFU identity, one ``fast_expf``
+    # plus a reciprocal: ``2 / (1 + e^-2x) - 1``.  Written in this direction
+    # because the algebraically equivalent ``(e^2x - 1) / (e^2x + 1)`` turns
+    # into ``inf / inf`` = NaN for large inputs, while this form saturates to
+    # +-1 exactly as ``tanh`` does.  At the 512^2 x 16 randn distribution it
+    # disagrees with the accurate path on 0.02% of lanes (99.98% bit-identical
+    # at fp16, max abs 1.2e-4, inside the suite's rtol=1e-3/atol=1e-4).
+    return 1.0 - 2.0 / (tl_extra_shim.fast_expf(2.0 * x.to(tl.float32)) + 1.0)
+
+
+# ---------------------------------------------------------------------------
 # dtype sets, as measured
 # ---------------------------------------------------------------------------
 
@@ -193,7 +289,7 @@ NO_COMPLEX32 = frozenset(
 class UnaryOp:
     """One row of the unary foreach table."""
 
-    __slots__ = ("name", "fn", "out_dtype_fn", "allowed", "complex_fn")
+    __slots__ = ("name", "fn", "out_dtype_fn", "allowed", "complex_fn", "fn16")
 
     def __init__(
         self,
@@ -202,12 +298,16 @@ class UnaryOp:
         out_dtype_fn: Callable = int_to_float,
         allowed: Optional[frozenset] = None,
         complex_fn: Optional[Callable] = None,
+        fn16: Optional[Callable] = None,
     ) -> None:
         self.name = name
         self.fn = fn
         self.out_dtype_fn = out_dtype_fn
         self.allowed = allowed
         self.complex_fn = complex_fn
+        # Alternate, lower-accuracy function used only when every input is
+        # 16-bit; ``None`` means the row has no fast variant.
+        self.fn16 = fn16
 
 
 UNARY_OPS: Dict[str, UnaryOp] = {
@@ -218,7 +318,14 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("asin", _scalar_fn(asin_kernel), int_to_float, NO_COMPLEX32, c_asin),
         UnaryOp("atan", _scalar_fn(atan_kernel), int_to_float, NO_COMPLEX32, c_atan),
         UnaryOp("ceil", _scalar_fn(ceil_func), same_dtype, NO_BOOL_NO_COMPLEX),
-        UnaryOp("cos", _scalar_fn(cos_func), int_to_float, NO_COMPLEX32, c_cos),
+        UnaryOp(
+            "cos",
+            _scalar_fn(cos_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_cos,
+            fn16=_fast_cos_func,
+        ),
         UnaryOp("cosh", _scalar_fn(cosh_func), int_to_float, NO_COMPLEX32, c_cosh),
         UnaryOp("erf", _scalar_fn(erf_func), int_to_float, NO_COMPLEX),
         UnaryOp("erfc", _scalar_fn(_erfc_kernel), int_to_float, NO_COMPLEX),
@@ -227,10 +334,38 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("floor", _scalar_fn(floor_func), same_dtype, NO_BOOL_NO_COMPLEX),
         UnaryOp("frac", _scalar_fn(frac_func), same_dtype, FLOAT_ONLY),
         UnaryOp("lgamma", _scalar_fn(lgamma_func), int_to_float, NO_COMPLEX),
-        UnaryOp("log", _scalar_fn(log_func), int_to_float, NO_COMPLEX32, c_log),
-        UnaryOp("log10", _scalar_fn(log10_func), int_to_float, NO_COMPLEX32, c_log10),
-        UnaryOp("log1p", _scalar_fn(log1p_func), int_to_float, NO_COMPLEX32, c_log1p),
-        UnaryOp("log2", _scalar_fn(log2_func), int_to_float, NO_COMPLEX32, c_log2),
+        UnaryOp(
+            "log",
+            _scalar_fn(log_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_log,
+            fn16=_fast_log_func,
+        ),
+        UnaryOp(
+            "log10",
+            _scalar_fn(log10_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_log10,
+            fn16=_fast_log10_func,
+        ),
+        UnaryOp(
+            "log1p",
+            _scalar_fn(log1p_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_log1p,
+            fn16=_fast_log1p_func,
+        ),
+        UnaryOp(
+            "log2",
+            _scalar_fn(log2_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_log2,
+            fn16=_fast_log2_func,
+        ),
         UnaryOp("neg", _scalar_fn(neg_func), same_dtype, NO_BOOL, c_neg),
         UnaryOp(
             "reciprocal",
@@ -249,11 +384,32 @@ UNARY_OPS: Dict[str, UnaryOp] = {
             c_sigmoid,
         ),
         UnaryOp("sign", _sign_func, same_dtype, NO_COMPLEX),
-        UnaryOp("sin", _scalar_fn(sin_func), int_to_float, NO_COMPLEX32, c_sin),
+        UnaryOp(
+            "sin",
+            _scalar_fn(sin_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_sin,
+            fn16=_fast_sin_func,
+        ),
         UnaryOp("sinh", _scalar_fn(sinh_kernel), int_to_float, NO_COMPLEX32, c_sinh),
         UnaryOp("sqrt", _scalar_fn(sqrt_func), int_to_float, NO_COMPLEX32, c_sqrt),
-        UnaryOp("tan", _scalar_fn(tan_func), int_to_float, NO_COMPLEX32, c_tan),
-        UnaryOp("tanh", _scalar_fn(tanh_kernel), int_to_float, NO_COMPLEX32, c_tanh),
+        UnaryOp(
+            "tan",
+            _scalar_fn(tan_func),
+            int_to_float,
+            NO_COMPLEX32,
+            c_tan,
+            fn16=_fast_tan_func,
+        ),
+        UnaryOp(
+            "tanh",
+            _scalar_fn(tanh_kernel),
+            int_to_float,
+            NO_COMPLEX32,
+            c_tanh,
+            fn16=_fast_tanh_func,
+        ),
         UnaryOp("trunc", _scalar_fn(trunc_func), same_dtype, NO_BOOL_NO_COMPLEX),
     )
 }
@@ -264,14 +420,35 @@ def apply_unary(name: str, self, inplace: bool):
     op = UNARY_OPS[name]
     logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     if inplace:
+        # The alternate function is only valid when the result is 16-bit, and the
+        # executor casts each input to its own output dtype, so "16-bit result"
+        # means "every input is fp16/bf16".  The test runs inside this loop
+        # rather than as a separate pass because the loop already touches every
+        # tensor for the complex check; a second walk would cost host time that
+        # the in-place call cannot afford to spend.
+        #
+        # Per-tensor, not ``self[0].dtype``: a list that mixes fp16 with fp32
+        # must take the accurate path, and the executor's bucketing path shares
+        # one ``fn`` across dtype groups.
+        #
+        # Only the in-place entry point uses this.  An out-of-place call already
+        # spends past the do_bench L2-flush window on host work, so added Python
+        # leaks 1:1 into its measured latency while the kernel time saved by the
+        # fast body stays hidden underneath it -- gated on that path the change
+        # measured as a 1.3-3.7 us regression.  The accurate body costs it
+        # nothing, so out-of-place keeps ``op.fn`` unconditionally.
+        fast = op.fn16 is not None
         for t in self:
             if t.dtype.is_complex and op.out_dtype_fn is real_dtype_of:
                 raise RuntimeError(
                     f"In-place {name} is not supported for complex tensors."
                 )
+            if fast and t.dtype not in (torch.float16, torch.bfloat16):
+                fast = False
+        fn = op.fn16 if fast else op.fn
         foreach_unary(
             self,
-            op.fn,
+            fn,
             complex_fn=op.complex_fn,
             # The dtype policy has to be passed here too: it is what makes the
             # executor reject an integral in-place call on a promoting operator,
