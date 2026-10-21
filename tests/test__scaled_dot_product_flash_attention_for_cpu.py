@@ -29,7 +29,27 @@ from . import test_utils as tu
 
 def _cpu_input(dtype, shape, value_range):
     """Shared value-range grid localized to the CPU-only kernel."""
-    return tu.make_input(dtype, shape, value_range).cpu()
+    # Allocate on the required host device. Accelerator staging can narrow
+    # float64, turning both valid double workloads and invalid masks into FP32.
+    low, high = (tu.resolve_bound(value, dtype) for value in value_range)
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            inp = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            inp = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == torch.device("cpu")
+    return inp
 
 
 def _qkv(dtype, shape, value_range):
