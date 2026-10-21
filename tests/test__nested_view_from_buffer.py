@@ -129,7 +129,7 @@ def _assert_dense_equal(result, reference):
     )
 
 
-def _snapshot(inp):
+def _identity(inp):
     storage = inp.untyped_storage()
     identity = (
         storage._cdata,
@@ -144,6 +144,12 @@ def _snapshot(inp):
         inp.is_conj(),
         inp.requires_grad,
     )
+    return identity
+
+
+def _snapshot(inp):
+    identity = _identity(inp)
+    storage = inp.untyped_storage()
     raw = (
         torch.empty(0, dtype=torch.uint8, device=inp.device)
         .set_(storage, 0, (storage.nbytes(),), (1,))
@@ -155,8 +161,8 @@ def _snapshot(inp):
 
 
 def _unchanged(inp, before):
-    identity, raw = _snapshot(inp)
-    assert identity == before[0]
+    assert _identity(inp) == before[0]
+    _, raw = _snapshot(inp)
     torch.testing.assert_close(raw, before[1], rtol=0, atol=0)
 
 
@@ -392,6 +398,11 @@ def test_nested_view_from_buffer_special_values(dtype, scenario):
 @pytest.mark.underscore_nested_view_from_buffer
 @pytest.mark.parametrize("dtype", tu.selected_cases(BACKWARD_DTYPES, quick=[]))
 def test_nested_view_from_buffer_backward(dtype):
+    if flag_gems.vendor_name in ("hygon", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Native nested-view backward cannot concatenate FP8 gradients")
     # Offsets [0, 4] tile the whole buffer: with gapped metadata the native
     # backward returns a gradient sized by the covered span, not by the buffer.
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]

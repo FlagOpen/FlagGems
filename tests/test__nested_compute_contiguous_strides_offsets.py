@@ -34,6 +34,9 @@ def _candidate(sizes):
         sizes.shape,
         sizes.stride(),
         sizes.storage_offset(),
+        sizes.is_neg(),
+        sizes.is_conj(),
+        sizes.requires_grad,
     )
     before = (
         torch.empty(0, dtype=torch.uint8, device="cpu")
@@ -53,6 +56,9 @@ def _candidate(sizes):
             sizes.shape,
             sizes.stride(),
             sizes.storage_offset(),
+            sizes.is_neg(),
+            sizes.is_conj(),
+            sizes.requires_grad,
         ) == identity
         after = torch.empty(0, dtype=torch.uint8, device="cpu").set_(
             after_storage, 0, (after_storage.nbytes(),), (1,)

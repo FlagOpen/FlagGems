@@ -130,7 +130,10 @@ def _nested(components, *, dtype, device=None):
     if (
         components
         and dtype in _FP8_DTYPES
-        and (flag_gems.vendor_name in ("hygon", "kunlunxin") or target.type == "cpu")
+        and (
+            flag_gems.vendor_name in ("hygon", "kunlunxin", "metax")
+            or target.type == "cpu"
+        )
     ):
         # The operator queries metadata, while legacy GPU cat lacks FP8.
         # Pack identical bytes and attach the original contiguous component layouts.
@@ -175,7 +178,11 @@ def _to_reference(inp):
         # with the same component payloads, not a shared reference alias.
         parts = [_physical_cpu(x).to(inp.device) for x in inp.unbind()]
         return _nested(parts, dtype=inp.dtype, device=inp.device)
-    if inp.dtype in _FP8_DTYPES and flag_gems.vendor_name in ("hygon", "kunlunxin"):
+    if inp.dtype in _FP8_DTYPES and flag_gems.vendor_name in (
+        "hygon",
+        "kunlunxin",
+        "metax",
+    ):
         return _nested(list(inp.unbind()), dtype=inp.dtype, device=inp.device)
     return tu.to_reference(inp)
 
@@ -204,28 +211,63 @@ def _reference(inp):
     return getattr(torch.ops.aten, _NATIVE_OP_NAME)(inp)
 
 
-def _candidate(inp):
-    if (
-        not isinstance(inp, torch.Tensor)
-        or not inp.is_nested
-        or inp.layout != torch.strided
-    ):
-        return getattr(flag_gems, _NATIVE_OP_NAME)(inp)
-    parts, metadata = _geometry(inp)
-    storage = (parts[0] if parts else inp.values()).untyped_storage()
-    identity = (storage._cdata, storage.data_ptr(), storage.nbytes())
-    payload = _physical_bytes(parts[0] if parts else inp.values())
-    abi = (inp.device, inp.dtype, inp.layout, inp.requires_grad)
-    result = getattr(flag_gems, _NATIVE_OP_NAME)(inp)
-    after, after_metadata = _geometry(inp)
-    storage = (after[0] if after else inp.values()).untyped_storage()
-    assert (storage._cdata, storage.data_ptr(), storage.nbytes()) == identity
-    assert (inp.device, inp.dtype, inp.layout, inp.requires_grad) == abi
-    torch.testing.assert_close(
-        _physical_bytes(after[0] if after else inp.values()), payload, rtol=0, atol=0
+def _dense_identity(inp):
+    storage = inp.untyped_storage()
+    return (
+        storage._cdata,
+        storage.data_ptr(),
+        storage.nbytes(),
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        tuple(inp.shape),
+        inp.stride(),
+        inp.storage_offset(),
+        inp.is_neg(),
+        inp.is_conj(),
+        inp.requires_grad,
     )
-    for before_value, after_value in zip(metadata, after_metadata):
-        torch.testing.assert_close(after_value, before_value, rtol=0, atol=0)
+
+
+def _candidate(inp):
+    if not isinstance(inp, torch.Tensor):
+        return getattr(flag_gems, _NATIVE_OP_NAME)(inp)
+    abi = (inp.device, inp.dtype, inp.layout, inp.requires_grad)
+    if not inp.is_nested:
+        parts, metadata = [inp], ()
+    elif inp.layout == torch.strided:
+        parts, metadata = _geometry(inp)
+        if not parts:
+            parts = [inp.values()]
+    else:
+        # Even an unsupported jagged input must remain read-only on error.
+        parts = [inp.values(), inp.offsets()]
+        if inp.lengths() is not None:
+            parts.append(inp.lengths())
+        metadata = ()
+    identities = [_dense_identity(x) for x in parts]
+    payloads = [_physical_bytes(x) for x in parts]
+    try:
+        result = getattr(flag_gems, _NATIVE_OP_NAME)(inp)
+    finally:
+        assert (inp.device, inp.dtype, inp.layout, inp.requires_grad) == abi
+        if not inp.is_nested:
+            after, after_metadata = [inp], ()
+        elif inp.layout == torch.strided:
+            after, after_metadata = _geometry(inp)
+            if not after:
+                after = [inp.values()]
+        else:
+            after = [inp.values(), inp.offsets()]
+            if inp.lengths() is not None:
+                after.append(inp.lengths())
+            after_metadata = ()
+        assert len(after) == len(parts)
+        assert [_dense_identity(x) for x in after] == identities
+        for value, payload in zip(after, payloads):
+            torch.testing.assert_close(_physical_bytes(value), payload, rtol=0, atol=0)
+        for before_value, after_value in zip(metadata, after_metadata):
+            torch.testing.assert_close(after_value, before_value, rtol=0, atol=0)
     return result
 
 
@@ -248,7 +290,7 @@ _COMPONENT_DTYPES = (
 def _make_input(num_tensors, num_dims, dtype, seed=0, value_range=_DEFAULT_VALUE_RANGE):
     # Vary the leading extent per component; keep trailing dimensions fixed.
     gen = torch.Generator("cpu").manual_seed(seed)
-    lengths = torch.randint(1, 9, (num_tensors,), generator=gen).tolist()
+    lengths = torch.randint(1, 9, (num_tensors,), generator=gen, device="cpu").tolist()
     components = [
         _make_dense_input(dtype, (length,) + (4,) * (num_dims - 1), value_range)
         for length in lengths
@@ -257,7 +299,7 @@ def _make_input(num_tensors, num_dims, dtype, seed=0, value_range=_DEFAULT_VALUE
 
 
 def _make_strided_view_input(dtype, device=None):
-    if flag_gems.vendor_name in ("hygon", "kunlunxin"):
+    if flag_gems.vendor_name in ("hygon", "kunlunxin", "metax"):
         pytest.skip(
             "Native nested buffer views require storage size equal to summed component sizes"
         )
@@ -343,7 +385,7 @@ def test__nested_tensor_storage_offsets_with_empty_components(dtype):
     gen = torch.Generator("cpu").manual_seed(1)
     components = []
     for _ in range(num_tensors):
-        length = int(torch.randint(0, 4, (1,), generator=gen).item())
+        length = int(torch.randint(0, 4, (1,), generator=gen, device="cpu").item())
         components.append(_make_dense_input(dtype, (length, 4), _DEFAULT_VALUE_RANGE))
     inp = _nested(components, dtype=dtype)
     ref_inp = _to_reference(inp)
@@ -389,7 +431,7 @@ def test__nested_tensor_storage_offsets_value_ranges(dtype, value_range):
 def test__nested_tensor_storage_offsets_nan_inf(dtype, scenario):
     num_tensors = 4
     gen = torch.Generator("cpu").manual_seed(0)
-    lengths = torch.randint(1, 9, (num_tensors,), generator=gen).tolist()
+    lengths = torch.randint(1, 9, (num_tensors,), generator=gen, device="cpu").tolist()
     special = _make_special_input(dtype, scenario)
     components = []
     for length in lengths:
