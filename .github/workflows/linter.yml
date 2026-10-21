@@ -50,7 +50,7 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung fetch,
+    # Robust checkout: probes SSH then HTTP ~15s each, hard-kills a hung fetch,
     # rotates links across rounds (see the action). @master ref so it resolves
     # from the runner's _actions cache before any checkout. ssh-key empty on
     # fork PRs -> SSH skipped, token HTTP used. The action also registers the
