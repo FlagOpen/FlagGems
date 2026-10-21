@@ -263,7 +263,7 @@ def _candidate(inp, *, out=None):
     after = _cpu_storage_view(inp)
 
     def bytes_of(t):
-        return torch.empty(0, dtype=torch.uint8).set_(
+        return torch.empty(0, dtype=torch.uint8, device="cpu").set_(
             t.untyped_storage(), 0, (t.untyped_storage().nbytes(),), (1,)
         )
 

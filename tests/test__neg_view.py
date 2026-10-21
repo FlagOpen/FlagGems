@@ -153,7 +153,7 @@ def _candidate(inp):
     before = _cpu_storage_view(inp)
     storage = inp.untyped_storage()
     raw_before = (
-        torch.empty(0, dtype=torch.uint8)
+        torch.empty(0, dtype=torch.uint8, device="cpu")
         .set_(before.untyped_storage(), 0, (before.untyped_storage().nbytes(),), (1,))
         .clone()
     )
@@ -180,7 +180,7 @@ def _candidate(inp):
         inp.requires_grad,
     ) == geometry
     after = _cpu_storage_view(inp)
-    raw_after = torch.empty(0, dtype=torch.uint8).set_(
+    raw_after = torch.empty(0, dtype=torch.uint8, device="cpu").set_(
         after.untyped_storage(), 0, (after.untyped_storage().nbytes(),), (1,)
     )
     torch.testing.assert_close(raw_after, raw_before, rtol=0, atol=0)
