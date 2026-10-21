@@ -59,6 +59,7 @@ _DTYPES = [
     if _dtype_supported(dtype)
 ]
 _FLOAT_DTYPES = [dtype for dtype in _DTYPES if dtype.is_floating_point]
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 # Location of the active non-CPU backend; None on a CPU backend, where the
 # backend-location rows cannot be expressed.
@@ -72,6 +73,37 @@ def _assert_matches_native(res_out, ref_out):
     assert res_out is ref_out
 
 
+def _copy_cpu_payload(destination, source):
+    # Retain the original allocator, including its page-locked host storage.
+    # Ascend supports byte copies but not the FP32-to-FP8 factory conversion.
+    assert source.device.type == "cpu"
+    assert source.dtype == destination.dtype and source.shape == destination.shape
+    assert source.is_contiguous() and destination.is_contiguous()
+    nbytes = source.untyped_storage().nbytes()
+    assert destination.untyped_storage().nbytes() == nbytes
+    pointer = destination.untyped_storage().data_ptr()
+    pinned = torch.ops.aten.is_pinned(destination)
+
+    def bytes_view(tensor):
+        return torch.empty(0, dtype=torch.uint8, device=tensor.device).set_(
+            tensor.untyped_storage(), 0, (nbytes,), (1,)
+        )
+
+    bytes_view(destination).copy_(bytes_view(source).to(destination.device))
+    assert destination.untyped_storage().data_ptr() == pointer
+    assert torch.ops.aten.is_pinned(destination) is pinned
+
+
+def _cpu_input(dtype, shape, value_range):
+    # Same floating-point recipe as tu.make_input, encoded on the CPU.
+    low, high = (tu.resolve_bound(value, dtype) for value in value_range)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
 def _storage_tensor(storage, shape, dtype, value_range=None):
     if storage == "pinned-host":
         inp = torch.empty(shape, dtype=dtype, device="cpu", pin_memory=True)
@@ -82,7 +114,17 @@ def _storage_tensor(storage, shape, dtype, value_range=None):
     else:
         raise ValueError(storage)
     if value_range is not None:
-        inp.copy_(tu.make_input(dtype, shape, value_range).to(inp.device))
+        if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+            _copy_cpu_payload(inp, _cpu_input(dtype, shape, value_range))
+        else:
+            inp.copy_(tu.make_input(dtype, shape, value_range).to(inp.device))
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    device = torch.device(flag_gems.device if storage == "backend" else "cpu")
+    if device.index is None and device.type != "cpu":
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.device == device
     return inp
 
 
@@ -147,6 +189,10 @@ def test_is_pinned_backend_storage(shape, dtype, value_range):
 # omission, explicit None, a device object, a device string, positional and
 # keyword passing, and both the True and the False outcome. All rows stay in
 # quick mode.
+# Kunlunxin's native query reports pinned host allocation even with an explicit
+# CPU device argument. Keep these four rows and both call forms, and compare
+# the candidate independently with the native call below.
+_PINNED_HOST_CPU_ARG = flag_gems.vendor_name == "kunlunxin"
 _DEVICE_MATRIX_ROWS = [
     pytest.param("pinned-host", None, "omitted", True, id="pinned-host/omitted"),
     pytest.param(
@@ -157,21 +203,29 @@ _DEVICE_MATRIX_ROWS = [
         "pinned-host",
         torch.device("cpu"),
         "positional",
-        False,
+        _PINNED_HOST_CPU_ARG,
         id="pinned-host/cpu-device-positional",
     ),
     pytest.param(
         "pinned-host",
         torch.device("cpu"),
         "keyword",
-        False,
+        _PINNED_HOST_CPU_ARG,
         id="pinned-host/cpu-device-keyword",
     ),
     pytest.param(
-        "pinned-host", "cpu", "positional", False, id="pinned-host/cpu-str-positional"
+        "pinned-host",
+        "cpu",
+        "positional",
+        _PINNED_HOST_CPU_ARG,
+        id="pinned-host/cpu-str-positional",
     ),
     pytest.param(
-        "pinned-host", "cpu", "keyword", False, id="pinned-host/cpu-str-keyword"
+        "pinned-host",
+        "cpu",
+        "keyword",
+        _PINNED_HOST_CPU_ARG,
+        id="pinned-host/cpu-str-keyword",
     ),
     pytest.param("plain-host", None, "omitted", False, id="plain-host/omitted"),
     pytest.param(
@@ -439,12 +493,28 @@ def test_is_pinned_conjugate_view_of_pinned_complex(shape):
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_FLOAT_DTYPES), quick=[])
 
 
+def _special_pinned_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        source = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = torch.empty((5,), dtype=dtype, device="cpu", pin_memory=True)
+        _copy_cpu_payload(inp, source.to(dtype))
+    else:
+        inp = tu.make_special_input(dtype, scenario).cpu().pin_memory()
+    assert inp.dtype == dtype and inp.shape == (5,) and inp.device.type == "cpu"
+    return inp
+
+
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_is_pinned_special_payload(dtype, scenario):
     # The shared helper drops the inf scenarios the dtype cannot represent.
-    inp = tu.make_special_input(dtype, scenario).cpu().pin_memory()
-    ref_inp = tu.make_special_input(dtype, scenario).cpu().pin_memory()
+    inp = _special_pinned_input(dtype, scenario)
+    ref_inp = _special_pinned_input(dtype, scenario)
 
     ref_out = torch.ops.aten.is_pinned(ref_inp)
     res_out = flag_gems.is_pinned(inp)
