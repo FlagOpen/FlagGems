@@ -206,6 +206,122 @@ _OPTIONAL_KEYWORD_CASES = [
 ]
 
 
+def _check_payload_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin tensor transfer narrows float64 payloads to float32")
+
+
+def _cpu_encoded(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+        torch.float8_e4m3fnuz,
+        torch.float8_e5m2fnuz,
+        torch.float64,
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    _check_payload_dtype(dtype)
+    if not _cpu_encoded(dtype):
+        return tu.make_input(dtype, shape, value_range)
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        values = torch.full(shape, low, dtype=torch.float32, device="cpu").to(dtype)
+    else:
+        values = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    result = values.to(flag_gems.device)
+    assert result.dtype == dtype
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    _check_payload_dtype(dtype)
+    if not _cpu_encoded(dtype):
+        return tu.make_special_input(dtype, scenario)
+    # Encode before transfer: device casts may be absent or narrow float64.
+    result = (
+        tu.make_special_input(torch.float32, scenario)
+        .cpu()
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+    assert result.dtype == dtype
+    return result
+
+
+def _component_values(tensor):
+    # Observe physical storage first; FP8 device slicing/casts and complex
+    # comparison are unavailable on some backends. Retain geometry/lazy flags.
+    values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        tensor.untyped_storage().cpu(),
+        tensor.storage_offset(),
+        tensor.size(),
+        tensor.stride(),
+    )
+    if tensor.is_conj():
+        values = values.conj()
+    if tensor.is_neg():
+        values = torch._neg_view(values)
+    return values
+
+
+def _to_reference(tensor):
+    if not utils.TO_CPU:
+        return tu.to_reference(tensor)
+    # Copy storage, not a device-side FP8/complex view operation. Independence
+    # is required even when the source already lives on the CPU.
+    values = _component_values(tensor)
+    result = torch.empty(0, dtype=values.dtype, device="cpu").set_(
+        values.untyped_storage().clone(),
+        values.storage_offset(),
+        values.size(),
+        values.stride(),
+    )
+    if values.is_conj():
+        result = result.conj()
+    if values.is_neg():
+        result = torch._neg_view(result)
+    return result.requires_grad_(tensor.requires_grad)
+
+
+def _assert_component_equal(result, reference):
+    # Candidate device is checked against the original call in _candidate,
+    # before CPU observation; this also covers host-only keyword forms.
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    tu.assert_result_equal(_component_values(result), _component_values(reference))
+
+
+def _candidate(*args, **kwargs):
+    try:
+        device = torch.device(kwargs.get("device", "cpu"))
+    except (RuntimeError, TypeError, ValueError):
+        # Invalid arguments must still reach the injected implementation.
+        flag_gems._sparse_csr_tensor_unsafe(*args, **kwargs)
+        raise AssertionError("candidate accepted an invalid device")
+    if device.type != "cpu" and device.index is None:
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    result = flag_gems._sparse_csr_tensor_unsafe(*args, **kwargs)
+    # A returned result is not a candidate exception. Never let an accessor
+    # RuntimeError satisfy a negative test's pytest.raises around this helper.
+    try:
+        assert isinstance(result, torch.Tensor)
+        assert result.layout == torch.sparse_csr
+        assert result.device == device
+        for component in (result.crow_indices(), result.col_indices(), result.values()):
+            assert component.device == device
+    except Exception as error:
+        raise AssertionError("candidate returned an invalid sparse result") from error
+    return result
+
+
 def _components(crow, col, payload, dtype, *, index_dtype=torch.int32, dense_shape=()):
     """Build the three component tensors of one descriptor on the test device."""
     crow_indices = torch.tensor(crow, dtype=index_dtype, device=flag_gems.device)
@@ -228,9 +344,9 @@ def _reference(size, crow_indices, col_indices, values, *, dtype):
     form under test. ``to_reference`` keeps offsets and strides, so a component
     view arrives in the oracle as the same view.
     """
-    ref_crow = tu.to_reference(crow_indices)
-    ref_col = tu.to_reference(col_indices)
-    ref_values = tu.to_reference(values)
+    ref_crow = _to_reference(crow_indices)
+    ref_col = _to_reference(col_indices)
+    ref_values = _to_reference(values)
     return torch.ops.aten._sparse_csr_tensor_unsafe(
         ref_crow,
         ref_col,
@@ -254,6 +370,7 @@ def _assert_stored_components(out, crow_indices, col_indices, values):
         (out.values(), values),
     ):
         assert stored is not original
+        assert torch._C._is_alias_of(stored, original)
         assert (
             stored.untyped_storage().data_ptr() == original.untyped_storage().data_ptr()
         )
@@ -273,9 +390,9 @@ def _assert_matches_reference(res, ref):
     assert res.dense_dim() == ref.dense_dim()
     assert res.numel() == ref.numel()
     assert res._nnz() == ref._nnz()
-    tu.assert_result_equal(res.crow_indices(), ref.crow_indices())
-    tu.assert_result_equal(res.col_indices(), ref.col_indices())
-    tu.assert_result_equal(res.values(), ref.values())
+    _assert_component_equal(res.crow_indices(), ref.crow_indices())
+    _assert_component_equal(res.col_indices(), ref.col_indices())
+    _assert_component_equal(res.values(), ref.values())
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -295,7 +412,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("size", _CSR_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__sparse_csr_tensor_unsafe_values(size, value_range, dtype):
-    dense = tu.make_input(dtype, size, value_range)
+    dense = _make_input(dtype, size, value_range)
     batch, rows = tuple(size[:-2]), size[-2]
     crow_indices = torch.arange(rows + 1, dtype=torch.int32, device=flag_gems.device)
     col_indices = torch.zeros(rows, dtype=torch.int32, device=flag_gems.device)
@@ -308,7 +425,7 @@ def test__sparse_csr_tensor_unsafe_values(size, value_range, dtype):
     size_arg = list(size)
 
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=dtype)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -335,7 +452,7 @@ def test__sparse_csr_tensor_unsafe_structure(case, index_dtype, dtype):
 
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=dtype)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -363,7 +480,7 @@ def test__sparse_csr_tensor_unsafe_batched(case, dtype):
     )
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=dtype)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -395,7 +512,7 @@ def test__sparse_csr_tensor_unsafe_unchecked_metadata(case):
     )
 
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=torch.float32)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -414,7 +531,7 @@ def test__sparse_csr_tensor_unsafe_unchecked_metadata(case):
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
 )
 def test__sparse_csr_tensor_unsafe_special_values(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario)
+    values = _make_special_input(dtype, scenario)
     rows = values.shape[0]
     crow_indices = torch.arange(rows + 1, dtype=torch.int32, device=flag_gems.device)
     col_indices = torch.zeros(rows, dtype=torch.int32, device=flag_gems.device)
@@ -422,7 +539,7 @@ def test__sparse_csr_tensor_unsafe_special_values(dtype, scenario):
 
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=dtype)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -445,7 +562,7 @@ def test__sparse_csr_tensor_unsafe_optional_keywords(kwargs):
 
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=torch.float32)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -474,7 +591,7 @@ def test__sparse_csr_tensor_unsafe_keeps_component_dtypes(index_dtype):
 
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=torch.float32)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -503,7 +620,7 @@ def test__sparse_csr_tensor_unsafe_stores_component_views():
 
     size_arg = list(size)
     ref = _reference(size_arg, crow_indices, col_indices, values, dtype=torch.float32)
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -522,9 +639,9 @@ def test__sparse_csr_tensor_unsafe_aliases_component_storage():
         [0, 2, 4, 4, 4], [0, 1, 0, 1], [1.0, 2.0, 3.0, 4.0], torch.float32
     )
     size = (4, 4)
-    ref_crow = tu.to_reference(crow_indices)
-    ref_col = tu.to_reference(col_indices)
-    ref_values = tu.to_reference(values)
+    ref_crow = _to_reference(crow_indices)
+    ref_col = _to_reference(col_indices)
+    ref_values = _to_reference(values)
 
     size_arg = list(size)
     ref = torch.ops.aten._sparse_csr_tensor_unsafe(
@@ -535,7 +652,7 @@ def test__sparse_csr_tensor_unsafe_aliases_component_storage():
         dtype=torch.float32,
         device=ref_values.device,
     )
-    res = flag_gems._sparse_csr_tensor_unsafe(
+    res = _candidate(
         crow_indices,
         col_indices,
         values,
@@ -550,7 +667,7 @@ def test__sparse_csr_tensor_unsafe_aliases_component_storage():
     # candidate and on the native result alike (neither one copied).
     values.fill_(7.0)
     ref_values.fill_(7.0)
-    tu.assert_result_equal(res.values(), ref.values())
+    _assert_component_equal(res.values(), ref.values())
     assert bool((res.values() == 7.0).all())
     # The three components stay three independent buffers.
     pointers = {
@@ -569,7 +686,7 @@ def test__sparse_csr_tensor_unsafe_rejects_non_csr_layout(layout):
         [0, 1, 2], [0, 1], [1.0, 2.0], torch.float32
     )
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_csr_tensor_unsafe(
+        _candidate(
             crow_indices,
             col_indices,
             values,
@@ -598,7 +715,7 @@ def test__sparse_csr_tensor_unsafe_rejects_mismatched_dtype(dtype):
         [0, 1, 2], [0, 1], [1.0, 2.0], torch.float32
     )
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_csr_tensor_unsafe(
+        _candidate(
             crow_indices,
             col_indices,
             values,
@@ -620,9 +737,7 @@ def test__sparse_csr_tensor_unsafe_rejects_values_without_matching_dtype(values_
         [0, 1, 2], [0, 1], [1, 2], values_dtype
     )
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_csr_tensor_unsafe(
-            crow_indices, col_indices, values, [2, 2], device=flag_gems.device
-        )
+        _candidate(crow_indices, col_indices, values, [2, 2], device=flag_gems.device)
 
 
 @pytest.mark.underscore_sparse_csr_tensor_unsafe
@@ -632,9 +747,7 @@ def test__sparse_csr_tensor_unsafe_rejects_negative_size(size):
         [0, 1, 2], [0, 1], [1.0, 2.0], torch.float32
     )
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_csr_tensor_unsafe(
-            crow_indices, col_indices, values, size, device=flag_gems.device
-        )
+        _candidate(crow_indices, col_indices, values, size, device=flag_gems.device)
 
 
 @pytest.mark.underscore_sparse_csr_tensor_unsafe
@@ -647,7 +760,7 @@ def test__sparse_csr_tensor_unsafe_rejects_non_tensor_component(position):
     ]
     components[position] = [0, 1]
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_csr_tensor_unsafe(
+        _candidate(
             components[0],
             components[1],
             components[2],
@@ -666,9 +779,7 @@ if _ACCELERATOR:
             [0, 1, 2], [0, 1], [1.0, 2.0], torch.float32
         )
         with pytest.raises(RuntimeError):
-            flag_gems._sparse_csr_tensor_unsafe(
-                crow_indices, col_indices, values, [2, 2]
-            )
+            _candidate(crow_indices, col_indices, values, [2, 2])
 
     @pytest.mark.underscore_sparse_csr_tensor_unsafe
     @pytest.mark.parametrize("position", [0, 1, 2])
@@ -680,7 +791,7 @@ if _ACCELERATOR:
         components = [crow_indices, col_indices, values]
         components[position] = components[position].cpu()
         with pytest.raises(RuntimeError):
-            flag_gems._sparse_csr_tensor_unsafe(
+            _candidate(
                 components[0],
                 components[1],
                 components[2],
@@ -689,13 +800,17 @@ if _ACCELERATOR:
             )
 
     @pytest.mark.underscore_sparse_csr_tensor_unsafe
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "hygon",
+        reason="Hygon ignores pin_memory=True for accelerator sparse components",
+    )
     def test__sparse_csr_tensor_unsafe_rejects_pinned_accelerator_values():
         # pin_memory only applies to dense CPU tensors.
         crow_indices, col_indices, values = _components(
             [0, 1, 2], [0, 1], [1.0, 2.0], torch.float32
         )
         with pytest.raises(RuntimeError):
-            flag_gems._sparse_csr_tensor_unsafe(
+            _candidate(
                 crow_indices,
                 col_indices,
                 values,
@@ -716,17 +831,20 @@ def test__sparse_csr_tensor_unsafe_requires_grad_input(dtype):
     plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
     values_shape = (2,)
     size = [2, 2]
-    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    values = _make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_first, ref_second, ref_values = (
+        _to_reference(t) for t in (compressed, plain, values)
+    )
     ref_out = torch.ops.aten._sparse_csr_tensor_unsafe(
-        compressed,
-        plain,
-        values,
+        ref_first,
+        ref_second,
+        ref_values,
         size,
         dtype=dtype,
         layout=torch.sparse_csr,
-        device=values.device,
+        device=ref_values.device,
     )
-    res_out = flag_gems._sparse_csr_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -740,4 +858,4 @@ def test__sparse_csr_tensor_unsafe_requires_grad_input(dtype):
     assert res_out.requires_grad == ref_out.requires_grad
     assert res_out.grad_fn is ref_out.grad_fn is None
     assert res_out.values().data_ptr() == values.data_ptr()
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(res_out.values(), ref_out.values())
