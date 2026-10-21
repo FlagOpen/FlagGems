@@ -43,8 +43,8 @@ if _HAS_TLE:
         #   pivots(k) int32, written 1-BASED -- the same index space as the
         #   pointer path's `tl.store(PIVOTS + ..., row + 1)` and as
         #   torch.linalg.lu_factor, so `lu_unpack` consumes either one
-        #   unchanged. Partial pivoting is always on (pivot=False is rejected
-        #   before either payload is reached).
+        #   unchanged. Partial pivoting is always on, so both payloads are only
+        #   dispatched for pivot=True; pivot=False keeps the pointer path.
         _LU_SMALL_OBJ = os.path.join(
             os.path.dirname(_HERE), "payload", "obj", "lu_small.o"
         )
@@ -74,7 +74,7 @@ if _HAS_TLE:
         _HAS_TLE = False
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_find_pivot_main_kernel(
     LU,
     PARTIAL_VALUES,
@@ -83,8 +83,8 @@ def _lu_find_pivot_main_kernel(
     N,
     K,
     J,
-    BLOCKS,
-    BLOCK_P,
+    BLOCKS: tl.constexpr,
+    BLOCK_P: tl.constexpr,
 ):
     """Per-block pivot candidate search over 64-row aligned main blocks.
 
@@ -107,7 +107,7 @@ def _lu_find_pivot_main_kernel(
     )
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_find_pivot_tail_kernel(
     LU,
     PARTIAL_VALUES,
@@ -116,10 +116,10 @@ def _lu_find_pivot_tail_kernel(
     N,
     K,
     J,
-    TAIL_START,
+    TAIL_START: tl.constexpr,
     BLOCK_M: tl.constexpr,
-    SLOT,
-    BLOCK_P,
+    SLOT: tl.constexpr,
+    BLOCK_P: tl.constexpr,
 ):
     # Tail segment: rows [TAIL_START, M), BLOCK_M == M - TAIL_START exactly.
     batch = tl.program_id(0)
@@ -134,7 +134,7 @@ def _lu_find_pivot_tail_kernel(
     )
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_finish_pivot_kernel(
     PARTIAL_VALUES,
     PARTIAL_ROWS,
@@ -154,7 +154,7 @@ def _lu_finish_pivot_kernel(
     tl.store(PIVOTS + batch * K + J, row + 1)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_swap_rows_kernel(
     LU,
     U_SCRATCH,
@@ -163,7 +163,7 @@ def _lu_swap_rows_kernel(
     N,
     K,
     J,
-    BLOCKS,
+    BLOCKS: tl.constexpr,
     BLOCK_N: tl.constexpr,
     WRITE_SCRATCH: tl.constexpr,
 ):
@@ -177,21 +177,32 @@ def _lu_swap_rows_kernel(
     pivot = tl.load(base + pivot_row * N + columns, mask=columns < N, other=0.0)
     tl.store(base + J * N + columns, pivot, mask=columns < N)
     tl.store(base + pivot_row * N + columns, current, mask=columns < N)
-    # The pivot row / scaled column are only republished for the tle trailing
-    # update, which reads them from LM; on the pointer path nothing reads them,
-    # so the store is compiled out instead of costing GM traffic per step.
+    # The pivot row is only republished for the tle trailing update, which reads
+    # it from LM; on the pointer path nothing reads it, so the store is compiled
+    # out instead of costing GM traffic per step.
     if WRITE_SCRATCH:
         tl.store(U_SCRATCH + batch * N + columns, pivot, mask=columns < N)
 
 
 @triton.jit
+def _lu_identity_pivots_kernel(PIVOTS, K, BLOCK: tl.constexpr):
+    batch = tl.program_id(0)
+    cols = tl.arange(0, BLOCK)
+    tl.store(
+        PIVOTS + batch * K + cols,
+        (cols + 1).to(tl.int32),
+        mask=cols < K,
+    )
+
+
+@triton.jit(do_not_specialize=["J"])
 def _lu_scale_column_kernel(
     LU,
     L_SCRATCH,
     M,
     N,
     J,
-    BLOCKS,
+    BLOCKS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     WRITE_SCRATCH: tl.constexpr,
 ):
@@ -201,25 +212,33 @@ def _lu_scale_column_kernel(
     rows = J + 1 + block * BLOCK_M + tl.arange(0, BLOCK_M)
     base = LU + batch * M * N
     pivot = tl.load(base + J * N + J)
-    values = tl.load(base + rows * N + J, mask=rows < M, other=0.0)
-    scaled = values / pivot
-    tl.store(base + rows * N + J, scaled, mask=rows < M)
+    valid = rows < M
+    safe_rows = tl.where(valid, rows, 0)
+    values = tl.load(base + safe_rows * N + J)
+    safe_pivot = tl.where(pivot != 0.0, pivot, 1.0)
+    scaled = values / safe_pivot
+    scaled = tl.where(pivot != 0.0, scaled, 0.0)
+    scaled = tl.where(valid, scaled, values)
+    tl.store(base + safe_rows * N + J, scaled)
+    # Same as the pivot row above: only the tle trailing update consumes the
+    # scaled column. `valid` keeps the scratch index below M, so the masked
+    # store cannot reach the next batch's slice.
     if WRITE_SCRATCH:
         tl.store(
             L_SCRATCH + batch * M + block * BLOCK_M + tl.arange(0, BLOCK_M),
             scaled,
-            mask=rows < M,
+            mask=valid,
         )
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_update_trailing_kernel(
     LU,
     M,
     N,
     J,
-    ROWS,
-    BLOCKS,
+    ROWS: tl.constexpr,
+    BLOCKS: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -228,12 +247,16 @@ def _lu_update_trailing_kernel(
     block = pid % BLOCKS
     columns = J + 1 + block * BLOCK_N + tl.arange(0, BLOCK_N)
     base = LU + batch * M * N
-    mask = (row < M) & (columns < N)
-    multiplier = tl.load(base + row * N + J, mask=row < M, other=0.0)
-    pivot_row = tl.load(base + J * N + columns, mask=columns < N, other=0.0)
-    offsets = base + row * N + columns
-    values = tl.load(offsets, mask=mask, other=0.0)
-    tl.store(offsets, values - multiplier * pivot_row, mask=mask)
+    row_valid = row < M
+    col_valid = columns < N
+    safe_row = tl.where(row_valid, row, 0)
+    safe_cols = tl.where(col_valid, columns, 0)
+    offsets = base + safe_row * N + safe_cols
+    multiplier = tl.load(base + safe_row * N + J)
+    pivot_row = tl.load(base + J * N + safe_cols)
+    updated = tl.load(offsets) - multiplier * pivot_row
+    updated = tl.where(row_valid & col_valid, updated, tl.load(offsets))
+    tl.store(offsets, updated)
 
 
 @triton.jit
@@ -287,13 +310,6 @@ def _check_linalg_lu_factor(input, pivot):
 
 def _linalg_lu_factor(input, pivot):
     _check_linalg_lu_factor(input, pivot)
-    if not pivot:
-        raise NotImplementedError(
-            "Kunlunxin linalg_lu_factor does not support pivot=False: "
-            "the vendor lu_factor_ex primitive rejects it and no XPU-safe "
-            "no-pivot kernel is available"
-        )
-
     input_contiguous = input.contiguous()
     m, n = input_contiguous.shape[-2:]
     k = min(m, n)
@@ -305,9 +321,11 @@ def _linalg_lu_factor(input, pivot):
     )
 
     # Small single-batch matrices: one kernel does the whole factorization (the
-    # per-step 4-kernel loop below is launch-bound at this footprint).
+    # per-step 4-kernel loop below is launch-bound at this footprint). Both
+    # payloads pivot internally, so pivot=False stays on the pointer path.
     if (
-        _HAS_TLE
+        pivot
+        and _HAS_TLE
         and input_contiguous.dtype == torch.float32
         and batch == 1
         and m * n <= _LU_SMALL_MAX_MN
@@ -318,7 +336,8 @@ def _linalg_lu_factor(input, pivot):
     # Batched small matrices: one kernel, each core factorizes one matrix in
     # its own LM (removes the "4 kernels x k steps x batch" launch storm).
     if (
-        _HAS_TLE
+        pivot
+        and _HAS_TLE
         and input_contiguous.dtype == torch.float32
         and batch > 1
         and m * n <= _LU_BATCH_MAX_MN
@@ -326,7 +345,10 @@ def _linalg_lu_factor(input, pivot):
         _lu_small_batched_kernel[(1,)](lu, pivots, m, n, k, batch)
         return lu, pivots
 
-    pivot_log = torch.empty_like(pivots)
+    if pivot:
+        pivot_log = torch.empty_like(pivots)
+    else:
+        pivot_log = pivots
     # Segment the pivot search into exact 64-row main blocks plus an exact
     # tail block (tail rows = M % 64).  XPU mis-compiles tl.argmax with masked
     # loads whose valid length is smaller than the block size, so every block
@@ -380,8 +402,12 @@ def _linalg_lu_factor(input, pivot):
         u_scratch = lu
 
     with torch_device_fn.device(input.device):
+        if not pivot:
+            _lu_identity_pivots_kernel[(batch,)](
+                pivots, k, BLOCK=triton.next_power_of_2(k)
+            )
         for j in range(k):
-            if blocks_full:
+            if pivot and blocks_full:
                 _lu_find_pivot_main_kernel[(batch * blocks_full,)](
                     lu,
                     partial_values,
@@ -394,7 +420,7 @@ def _linalg_lu_factor(input, pivot):
                     BLOCK_P=block_p,
                     num_warps=4,
                 )
-            if tail:
+            if pivot and tail:
                 _lu_find_pivot_tail_kernel[(batch,)](
                     lu,
                     partial_values,
@@ -409,31 +435,32 @@ def _linalg_lu_factor(input, pivot):
                     BLOCK_P=block_p,
                     num_warps=4,
                 )
-            _lu_finish_pivot_kernel[(batch,)](
-                partial_values,
-                partial_rows,
-                pivot_log,
-                k,
-                j,
-                BLOCK_P=block_p,
-                num_warps=4,
-            )
-            swap_blocks = triton.cdiv(n, 64)
-            _lu_swap_rows_kernel[(batch * swap_blocks,)](
-                lu,
-                u_scratch,
-                pivot_log,
-                m,
-                n,
-                k,
-                j,
-                BLOCKS=swap_blocks,
-                BLOCK_N=64,
-                WRITE_SCRATCH=use_tle,
-                num_warps=4,
-            )
+            if pivot:
+                _lu_finish_pivot_kernel[(batch,)](
+                    partial_values,
+                    partial_rows,
+                    pivot_log,
+                    k,
+                    j,
+                    BLOCK_P=block_p,
+                    num_warps=4,
+                )
+                swap_blocks = triton.cdiv(n, 64)
+                _lu_swap_rows_kernel[(batch * swap_blocks,)](
+                    lu,
+                    u_scratch,
+                    pivot_log,
+                    m,
+                    n,
+                    k,
+                    j,
+                    BLOCKS=swap_blocks,
+                    BLOCK_N=64,
+                    WRITE_SCRATCH=use_tle,
+                    num_warps=4,
+                )
             if j + 1 < m:
-                scale_blocks = triton.cdiv(m - j - 1, 64)
+                scale_blocks = triton.cdiv(m, 64)
                 _lu_scale_column_kernel[(batch * scale_blocks,)](
                     lu,
                     l_scratch,
@@ -455,8 +482,8 @@ def _linalg_lu_factor(input, pivot):
                         lu_desc, l_desc, u_desc, j, m, n, rb, cb, 64, 128
                     )
                 else:
-                    trailing_rows = m - j - 1
-                    trailing_blocks = triton.cdiv(n - j - 1, 128)
+                    trailing_rows = m
+                    trailing_blocks = triton.cdiv(n, 128)
                     _lu_update_trailing_kernel[
                         (batch * trailing_rows * trailing_blocks,)
                     ](
@@ -469,7 +496,8 @@ def _linalg_lu_factor(input, pivot):
                         BLOCK_N=128,
                         num_warps=4,
                     )
-    pivots.copy_(pivot_log)
+    if pivot:
+        pivots.copy_(pivot_log)
     return lu, pivots
 
 
@@ -494,8 +522,10 @@ def _resolve_linalg_lu_factor_out_args(input, LU, pivots):
     return LU, pivots
 
 
-def linalg_lu_factor_out(input, *, pivot=True, LU=None, pivots=None):
+def linalg_lu_factor_out(input, *, pivot=True, LU=None, pivots=None, out=None):
     logger.debug("GEMS_KUNLUNXIN LINALG_LU_FACTOR_OUT")
+    if out is not None and LU is None and pivots is None:
+        LU, pivots = out
     lu_out, pivots_out = _resolve_linalg_lu_factor_out_args(input, LU, pivots)
     lu, pivots_result = _linalg_lu_factor(input, pivot)
     lu_out.resize_(lu.shape)
