@@ -1060,8 +1060,17 @@ def softmax_backward_kernel_inner(
 
 
 _SB_MR_MAX_N = 4096
-_SB_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 2)]
+# (N upper bound, TILE_M).  TILE_M=4 for N up to 4096: measured on card 3,
+# [4096,4096] fp16 229us (TILE_M=2) -> 147us (4), bf16 371 -> 265, fp32
+# unchanged (252 -> 254); TILE_M=8 is the same as 4 for fp16 and fp32.
+_SB_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 4)]
 _SB_WIDE = 8192
+# Large-N / small-M split (see softmax_backward_kernel_chunk_partial): below
+# _SB_SPLIT_MAX_M rows the per-row kernels leave the device idle, so each row is
+# cut into ~_SB_SPLIT_NS chunks of tile width _SB_SPLIT_W.
+_SB_SPLIT_MAX_M = 64
+_SB_SPLIT_NS = 64
+_SB_SPLIT_W = 4096
 
 
 @triton.jit
@@ -1201,7 +1210,65 @@ def softmax_backward_kernel_tail_pass(
     tl.store(in_grad_ptr + pid * N + PREV + tno, o * (g - scale), mask=tmask)
 
 
+@triton.jit
+def softmax_backward_kernel_chunk_partial(
+    out_ptr,
+    out_grad_ptr,
+    partial_ptr,
+    N,
+    NSPLIT: tl.constexpr,
+    CHUNK: tl.constexpr,
+    W: tl.constexpr,
+):
+    """Row-chunked partial sum of out*out_grad for the large-N / small-M case.
+
+    The per-row kernels launch one program per row, so a 1-D softmax backward
+    (M=1, N=1M) runs on a single program: measured 151-217us for 1M elements vs
+    torch's 62-88us.  Splitting each row into NSPLIT chunks restores the
+    parallelism; the write kernel folds the NSPLIT partials itself, so no third
+    pass is needed.
+    """
+    pid = tl.program_id(0)
+    m = pid // NSPLIT
+    s = pid % NSPLIT
+    base = m * N + s * CHUNK
+    acc = tl.zeros([W], dtype=tl.float32)
+    for start in tl.static_range(0, CHUNK, W):
+        no = start + tl.arange(0, W)
+        mask = s * CHUNK + no < N
+        o = tl.load(out_ptr + base + no, mask=mask, other=0.0).to(tl.float32)
+        g = tl.load(out_grad_ptr + base + no, mask=mask, other=0.0).to(tl.float32)
+        acc += o * g
+    tl.store(partial_ptr + m * NSPLIT + s, tl.sum(acc, 0))
+
+
+@triton.jit
+def softmax_backward_kernel_chunk_write(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    partial_ptr,
+    N,
+    NSPLIT: tl.constexpr,
+    CHUNK: tl.constexpr,
+    W: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    m = pid // NSPLIT
+    s = pid % NSPLIT
+    base = m * N + s * CHUNK
+    j = tl.arange(0, NSPLIT)
+    scale = tl.sum(tl.load(partial_ptr + m * NSPLIT + j), 0)
+    for start in tl.static_range(0, CHUNK, W):
+        no = start + tl.arange(0, W)
+        mask = s * CHUNK + no < N
+        o = tl.load(out_ptr + base + no, mask=mask, other=0.0).to(tl.float32)
+        g = tl.load(out_grad_ptr + base + no, mask=mask, other=0.0).to(tl.float32)
+        tl.store(in_grad_ptr + base + no, o * (g - scale), mask=mask)
+
+
 def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype):
+
     if N <= _SB_MR_MAX_N:
         TILE_M = 4
         for n_hi, tm in _SB_N_TILE_M:
@@ -1231,6 +1298,33 @@ def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype)
                 num_warps=8,
             )
     else:
+        if M < _SB_SPLIT_MAX_M:
+            # Too few rows to fill the device: split each row into chunks.
+            W = _SB_SPLIT_W
+            chunk = triton.cdiv(triton.cdiv(N, _SB_SPLIT_NS), W) * W
+            nsplit = triton.cdiv(N, chunk)
+            partial = torch.empty((M, nsplit), dtype=torch.float32, device=in_grad.device)
+            grid = (M * nsplit,)
+            softmax_backward_kernel_chunk_partial[grid](
+                output,
+                grad_output,
+                partial,
+                N,
+                NSPLIT=nsplit,
+                CHUNK=chunk,
+                W=W,
+            )
+            softmax_backward_kernel_chunk_write[grid](
+                output,
+                grad_output,
+                in_grad,
+                partial,
+                N,
+                NSPLIT=nsplit,
+                CHUNK=chunk,
+                W=W,
+            )
+            return
         if N % _SB_WIDE == 0:
             grid = (M,)
             softmax_backward_kernel_perrow_p2[grid](
