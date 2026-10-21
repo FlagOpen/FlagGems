@@ -1410,6 +1410,14 @@ def _meta_from_values(values: List[int], device: Any) -> torch.Tensor:
 _META_CACHE: Dict[Tuple[Any, int, Tuple[int, ...]], torch.Tensor] = {}
 _META_CACHE_LIMIT = 32
 
+# Last-hit shortcut in front of the memo above.  Building the key (``tuple``
+# over the 4*16 entries plus its hash) measured 1.07us, while the same
+# comparison against a retained copy of the previous value list is a single
+# C-level list compare at 0.09us -- a steady-state call re-launches with the
+# same addresses, because the caching allocator hands back the blocks the
+# previous call released.  [values, stream, device, buffer]
+_LAST_META: List[Any] = [None, None, None, None]
+
 
 def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     """A read-only int64 device tensor holding ``values`` (memoised).
@@ -1424,15 +1432,21 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     if index is None:
         index = torch.cuda.current_device()
     stream = _triton_driver.active.get_current_stream(index)
+    last = _LAST_META
+    if last[1] is stream and last[2] == device and last[0] == values:
+        return last[3]
     key = (device, stream, tuple(values))
     cached = _META_CACHE.get(key)
-    if cached is not None:
-        return cached
-    out = _meta_from_values(values, device)
-    if len(_META_CACHE) >= _META_CACHE_LIMIT:
-        _META_CACHE.pop(next(iter(_META_CACHE)))
-    _META_CACHE[key] = out
-    return out
+    if cached is None:
+        cached = _meta_from_values(values, device)
+        if len(_META_CACHE) >= _META_CACHE_LIMIT:
+            _META_CACHE.pop(next(iter(_META_CACHE)))
+        _META_CACHE[key] = cached
+    last[0] = list(values)
+    last[1] = stream
+    last[2] = device
+    last[3] = cached
+    return cached
 
 
 def _resolve_scalars(
