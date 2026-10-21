@@ -60,6 +60,144 @@ _MAIN_INDEX_DTYPE = torch.int64 if utils.int64_is_supported else torch.int32
 _IS_CPU_BACKEND = torch.device(flag_gems.device).type == "cpu"
 
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device(device=None):
+    device = torch.device(flag_gems.device if device is None else device)
+    if device.type not in ("cpu", "meta") and device.index is None:
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_fp8(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES
+
+
+def _cpu_component(tensor, *, independent=False, decode_fp8=False):
+    assert tensor.layout == torch.strided
+    storage = tensor.untyped_storage().cpu()
+    if independent:
+        storage = storage.clone()
+    result = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        storage, tensor.storage_offset(), tensor.size(), tensor.stride()
+    )
+    # Decode physical FP8 bytes before restoring lazy flags: CPU FP8 negation
+    # kernels need not exist. Reference copies keep their original dtype.
+    if decode_fp8 and tensor.dtype in _FP8_DTYPES:
+        result = result.float()
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _encoded_to_device(tensor, device):
+    assert tensor.device == torch.device("cpu")
+    device = _expected_device(device)
+    raw = torch.empty(0, dtype=torch.uint8, device="cpu").set_(
+        tensor.untyped_storage(), 0, (tensor.untyped_storage().nbytes(),), (1,)
+    )
+    moved = raw.to(device)
+    result = torch.empty(0, dtype=tensor.dtype, device=device).set_(
+        moved.untyped_storage(), tensor.storage_offset(), tensor.size(), tensor.stride()
+    )
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    assert result.dtype == tensor.dtype and result.device == device
+    assert result.shape == tensor.shape and result.stride() == tensor.stride()
+    assert result.storage_offset() == tensor.storage_offset()
+    return result
+
+
+def _make_input(dtype, shape, value_range):
+    if not _cpu_fp8(dtype):
+        result = tu.make_input(dtype, shape, value_range)
+    else:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            values = torch.full(shape, low, dtype=torch.float32, device="cpu").to(dtype)
+        else:
+            values = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = _encoded_to_device(values, _expected_device())
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if not _cpu_fp8(dtype):
+        result = tu.make_special_input(dtype, scenario)
+    else:
+        values = tu.make_special_input(torch.float32, scenario).cpu().to(dtype)
+        result = _encoded_to_device(values, _expected_device())
+    assert result.dtype == dtype and result.device == _expected_device()
+    return result
+
+
+def _to_reference(tensor):
+    if not utils.TO_CPU:
+        return tu.to_reference(tensor)
+    result = _cpu_component(tensor, independent=True)
+    return result.requires_grad_(tensor.requires_grad)
+
+
+def _assert_component_equal(result, reference, *, required_device):
+    assert result.device == required_device
+    assert reference.device == (
+        torch.device("cpu") if utils.TO_CPU else required_device
+    )
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    torch.testing.assert_close(
+        _cpu_component(result, decode_fp8=True),
+        _cpu_component(reference, decode_fp8=True),
+        rtol=0,
+        atol=0,
+        equal_nan=True,
+    )
+
+
+def _assert_exact_component_equal(result, reference, *, required_device):
+    assert result.device == reference.device == required_device
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    # torch.equal differs from equal_nan comparisons: retain its NaN policy.
+    assert torch.equal(
+        _cpu_component(result, decode_fp8=True),
+        _cpu_component(reference, decode_fp8=True),
+    )
+
+
+def _candidate(*args, **kwargs):
+    device = _expected_device(kwargs.get("device", "cpu"))
+    layout = kwargs.get("layout")
+    result = flag_gems._sparse_compressed_tensor_unsafe(*args, **kwargs)
+    # A returned bad result is never an expected native argument exception.
+    try:
+        assert isinstance(result, torch.Tensor)
+        assert layout in (
+            torch.sparse_csr,
+            torch.sparse_csc,
+            torch.sparse_bsr,
+            torch.sparse_bsc,
+        )
+        assert result.layout == layout and result.device == device
+        first, second = _stored_indices(result)
+        assert first.device == second.device == result.values().device == device
+    except Exception as error:
+        raise AssertionError("candidate returned an invalid sparse result") from error
+    return result
+
+
 def _sparse_extents(layout, base, blocks):
     block_rows, block_cols = blocks
     rows, cols = base
@@ -133,7 +271,7 @@ def _description(
     compressed, plain, size = _build_indices(
         layout, batch, base, dense, blocks, nnz, index_dtype
     )
-    values = tu.make_input(
+    values = _make_input(
         values_dtype, _values_shape(layout, batch, nnz, blocks, dense), value_range
     )
     return compressed, plain, values, size
@@ -205,6 +343,7 @@ _DTYPE_RANGE_CASES = [
 def test__sparse_compressed_tensor_unsafe(
     layout, batch, base, dense, blocks, nnz, values_dtype, value_range
 ):
+    required_device = _expected_device()
     compressed, plain, values, size = _description(
         layout,
         batch,
@@ -216,9 +355,9 @@ def test__sparse_compressed_tensor_unsafe(
         values_dtype,
         value_range,
     )
-    ref_compressed = tu.to_reference(compressed)
-    ref_plain = tu.to_reference(plain)
-    ref_values = tu.to_reference(values)
+    ref_compressed = _to_reference(compressed)
+    ref_plain = _to_reference(plain)
+    ref_values = _to_reference(values)
 
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_compressed,
@@ -229,7 +368,7 @@ def test__sparse_compressed_tensor_unsafe(
         layout=layout,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -247,12 +386,22 @@ def test__sparse_compressed_tensor_unsafe(
     assert res_out.device == values.device
     res_compressed, res_plain = _stored_indices(res_out)
     ref_stored_compressed, ref_stored_plain = _stored_indices(ref_out)
-    tu.assert_result_equal(res_compressed, ref_stored_compressed)
-    tu.assert_result_equal(res_plain, ref_stored_plain)
-    tu.assert_result_equal(res_out.values(), ref_out.values())
-    assert torch.equal(res_compressed, compressed)
-    assert torch.equal(res_plain, plain)
-    assert torch.equal(res_out.values(), values)
+    _assert_component_equal(
+        res_compressed, ref_stored_compressed, required_device=required_device
+    )
+    _assert_component_equal(
+        res_plain, ref_stored_plain, required_device=required_device
+    )
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
+    _assert_exact_component_equal(
+        res_compressed, compressed, required_device=required_device
+    )
+    _assert_exact_component_equal(res_plain, plain, required_device=required_device)
+    _assert_exact_component_equal(
+        res_out.values(), values, required_device=required_device
+    )
     # nnz is carried by the plain-index tensor, not by the logical shape.
     assert torch.ops.aten._nnz(res_out) == nnz
 
@@ -272,6 +421,7 @@ _INDEX_DTYPE_DESCRIPTORS = [
 def test__sparse_compressed_tensor_unsafe_index_dtype(
     layout, batch, base, dense, blocks, nnz, index_dtype, value_range
 ):
+    required_device = _expected_device()
     compressed, plain, values, size = _description(
         layout,
         batch,
@@ -284,9 +434,9 @@ def test__sparse_compressed_tensor_unsafe_index_dtype(
         value_range,
     )
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(values),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(values),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -297,7 +447,7 @@ def test__sparse_compressed_tensor_unsafe_index_dtype(
         layout=layout,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -310,9 +460,13 @@ def test__sparse_compressed_tensor_unsafe_index_dtype(
     res_compressed, res_plain = _stored_indices(res_out)
     ref_compressed, ref_plain = _stored_indices(ref_out)
     assert res_out.layout == layout
-    tu.assert_result_equal(res_compressed, ref_compressed)
-    tu.assert_result_equal(res_plain, ref_plain)
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_compressed, ref_compressed, required_device=required_device
+    )
+    _assert_component_equal(res_plain, ref_plain, required_device=required_device)
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
     # The index width is independent of the values dtype and is stored as passed.
     assert res_compressed.dtype == index_dtype
     assert res_plain.dtype == index_dtype
@@ -349,17 +503,18 @@ _UNCHECKED_ROWS = [
 def test__sparse_compressed_tensor_unsafe_accepts_unchecked_descriptions(
     case_id, compressed_data, plain_data, num_values, size, value_range
 ):
+    required_device = _expected_device()
     del case_id
     compressed = torch.tensor(
         compressed_data, dtype=_MAIN_INDEX_DTYPE, device=flag_gems.device
     )
     plain = torch.tensor(plain_data, dtype=_MAIN_INDEX_DTYPE, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (num_values,), value_range)
+    values = _make_input(torch.float32, (num_values,), value_range)
 
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(values),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(values),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -370,7 +525,7 @@ def test__sparse_compressed_tensor_unsafe_accepts_unchecked_descriptions(
         layout=torch.sparse_csr,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -386,12 +541,20 @@ def test__sparse_compressed_tensor_unsafe_accepts_unchecked_descriptions(
     assert res_out.shape == torch.Size(size)
     res_compressed, res_plain = _stored_indices(res_out)
     ref_compressed, ref_plain = _stored_indices(ref_out)
-    tu.assert_result_equal(res_compressed, ref_compressed)
-    tu.assert_result_equal(res_plain, ref_plain)
-    tu.assert_result_equal(res_out.values(), ref_out.values())
-    assert torch.equal(res_compressed, compressed)
-    assert torch.equal(res_plain, plain)
-    assert torch.equal(res_out.values(), values)
+    _assert_component_equal(
+        res_compressed, ref_compressed, required_device=required_device
+    )
+    _assert_component_equal(res_plain, ref_plain, required_device=required_device)
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
+    _assert_exact_component_equal(
+        res_compressed, compressed, required_device=required_device
+    )
+    _assert_exact_component_equal(res_plain, plain, required_device=required_device)
+    _assert_exact_component_equal(
+        res_out.values(), values, required_device=required_device
+    )
     assert torch.ops.aten._nnz(res_out) == plain.numel()
 
 
@@ -407,6 +570,7 @@ _ALIAS_DESCRIPTORS = [
 def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
     layout, base, blocks, nnz
 ):
+    required_device = _expected_device()
     compressed, plain, size = _build_indices(
         layout, (), base, (), blocks, nnz, _MAIN_INDEX_DTYPE
     )
@@ -425,9 +589,9 @@ def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
     values = buffer.reshape(2 * nnz, *block_shape)[1::2]
 
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(values),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(values),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -438,7 +602,7 @@ def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
         layout=layout,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -450,9 +614,13 @@ def test__sparse_compressed_tensor_unsafe_preserves_component_metadata(
 
     res_compressed, res_plain = _stored_indices(res_out)
     ref_compressed, ref_plain = _stored_indices(ref_out)
-    tu.assert_result_equal(res_compressed, ref_compressed)
-    tu.assert_result_equal(res_plain, ref_plain)
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_compressed, ref_compressed, required_device=required_device
+    )
+    _assert_component_equal(res_plain, ref_plain, required_device=required_device)
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
     assert res_out.values().stride() == values.stride()
     assert res_out.values().storage_offset() == values.storage_offset()
     assert res_compressed.stride() == compressed.stride()
@@ -489,6 +657,7 @@ _OPTIONAL_ARGUMENT_CASES = [
 def test__sparse_compressed_tensor_unsafe_optional_arguments(
     case_id, dtype_arg, pin_memory_arg, value_range
 ):
+    required_device = _expected_device()
     del case_id
     compressed, plain, values, size = _description(
         torch.sparse_csr,
@@ -508,9 +677,9 @@ def test__sparse_compressed_tensor_unsafe_optional_arguments(
         kwargs["pin_memory"] = pin_memory_arg
 
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(values),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(values),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -519,16 +688,20 @@ def test__sparse_compressed_tensor_unsafe_optional_arguments(
         list(size),
         **dict(kwargs, device=ref_values.device),
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
-        compressed, plain, values, list(size), **kwargs
-    )
+    res_out = _candidate(compressed, plain, values, list(size), **kwargs)
 
     assert res_out.layout == torch.sparse_csr
     assert res_out.dtype == torch.float32
     res_compressed, res_plain = _stored_indices(res_out)
-    tu.assert_result_equal(res_compressed, _stored_indices(ref_out)[0])
-    tu.assert_result_equal(res_plain, _stored_indices(ref_out)[1])
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_compressed, _stored_indices(ref_out)[0], required_device=required_device
+    )
+    _assert_component_equal(
+        res_plain, _stored_indices(ref_out)[1], required_device=required_device
+    )
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
 
 
 # The constructor is device-generic, so dense CPU components are part of its
@@ -545,25 +718,30 @@ _CPU_CASES = [
     "case_id,kwargs", _CPU_CASES, ids=[row[0] for row in _CPU_CASES]
 )
 def test__sparse_compressed_tensor_unsafe_cpu_components(case_id, kwargs):
+    required_device = torch.device("cpu")
     del case_id
     compressed = torch.tensor([0, 2, 4, 5], dtype=_MAIN_INDEX_DTYPE, device="cpu")
     plain = torch.tensor([0, 1, 2, 0, 1], dtype=_MAIN_INDEX_DTYPE, device="cpu")
-    values = tu.make_input(torch.float32, (5,), ["-1", "1"]).cpu()
+    values = _make_input(torch.float32, (5,), ["-1", "1"]).cpu()
     call_kwargs = {"layout": torch.sparse_csr}
     call_kwargs.update(kwargs)
 
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         compressed.clone(), plain.clone(), values.clone(), [3, 4], **call_kwargs
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
-        compressed, plain, values, [3, 4], **call_kwargs
-    )
+    res_out = _candidate(compressed, plain, values, [3, 4], **call_kwargs)
 
     res_compressed, res_plain = _stored_indices(res_out)
     assert res_out.device == values.device
-    tu.assert_result_equal(res_compressed, _stored_indices(ref_out)[0])
-    tu.assert_result_equal(res_plain, _stored_indices(ref_out)[1])
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_compressed, _stored_indices(ref_out)[0], required_device=required_device
+    )
+    _assert_component_equal(
+        res_plain, _stored_indices(ref_out)[1], required_device=required_device
+    )
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
 
 
 _VIOLATIONS = [
@@ -583,13 +761,15 @@ if not _IS_CPU_BACKEND:
 @pytest.mark.underscore_sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("violation", _VIOLATIONS)
 def test__sparse_compressed_tensor_unsafe_invalid_arguments(violation):
+    if flag_gems.vendor_name == "hygon" and violation == "pin_memory_true":
+        pytest.skip("Hygon accepts accelerator pin_memory=True without pinning")
     compressed = torch.tensor(
         [0, 2, 4, 5], dtype=_MAIN_INDEX_DTYPE, device=flag_gems.device
     )
     plain = torch.tensor(
         [0, 1, 2, 0, 1], dtype=_MAIN_INDEX_DTYPE, device=flag_gems.device
     )
-    values = tu.make_input(torch.float32, (5,), ["-1", "1"])
+    values = _make_input(torch.float32, (5,), ["-1", "1"])
     size = [3, 4]
     kwargs = {
         "dtype": torch.float32,
@@ -615,9 +795,7 @@ def test__sparse_compressed_tensor_unsafe_invalid_arguments(violation):
         raise AssertionError(violation)
 
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems._sparse_compressed_tensor_unsafe(
-            compressed, plain, values, size, **kwargs
-        )
+        _candidate(compressed, plain, values, size, **kwargs)
 
 
 # e4m3fn has no infinity encoding, so tu.special_value_cases emits only its nan
@@ -650,18 +828,24 @@ _SPECIAL_DESCRIPTORS = tu.selected_cases(
 def test__sparse_compressed_tensor_unsafe_special_values(
     values_dtype, scenario, layout, base, blocks
 ):
+    required_device = _expected_device()
     nnz = 5
     compressed, plain, size = _build_indices(
         layout, (), base, (), blocks, nnz, _MAIN_INDEX_DTYPE
     )
-    payload = tu.make_special_input(values_dtype, scenario)
+    payload = _make_special_input(values_dtype, scenario)
     if layout in _BLOCKED_LAYOUTS:
-        payload = payload.reshape(-1, 1, 1).expand(-1, *blocks).reshape(-1, *blocks)
+        if _cpu_fp8(values_dtype):
+            payload = _cpu_component(payload)
+            payload = payload.reshape(-1, 1, 1).expand(-1, *blocks).reshape(-1, *blocks)
+            payload = _encoded_to_device(payload, required_device)
+        else:
+            payload = payload.reshape(-1, 1, 1).expand(-1, *blocks).reshape(-1, *blocks)
 
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(payload),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(payload),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -672,7 +856,7 @@ def test__sparse_compressed_tensor_unsafe_special_values(
         layout=layout,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         payload,
@@ -684,9 +868,15 @@ def test__sparse_compressed_tensor_unsafe_special_values(
 
     assert torch.ops.aten._nnz(res_out) == nnz
     res_compressed, res_plain = _stored_indices(res_out)
-    tu.assert_result_equal(res_compressed, _stored_indices(ref_out)[0])
-    tu.assert_result_equal(res_plain, _stored_indices(ref_out)[1])
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_compressed, _stored_indices(ref_out)[0], required_device=required_device
+    )
+    _assert_component_equal(
+        res_plain, _stored_indices(ref_out)[1], required_device=required_device
+    )
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )
 
 
 @pytest.mark.underscore_sparse_compressed_tensor_unsafe
@@ -699,16 +889,17 @@ def test__sparse_compressed_tensor_unsafe_special_values(
 )
 def test__sparse_compressed_tensor_unsafe_requires_grad_input(dtype, layout):
     # Unsafe factories alias the payload but do not create an autograd edge.
+    required_device = _expected_device()
     compressed = torch.tensor([0, 1, 2], dtype=torch.int64, device=flag_gems.device)
     plain = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
     blocked = layout in (torch.sparse_bsr, torch.sparse_bsc)
     values_shape = (2, 2, 2) if blocked else (2,)
     size = [4, 4] if blocked else [2, 2]
-    values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    values = _make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
     ref_first, ref_second, ref_values = (
-        tu.to_reference(compressed),
-        tu.to_reference(plain),
-        tu.to_reference(values),
+        _to_reference(compressed),
+        _to_reference(plain),
+        _to_reference(values),
     )
     ref_out = torch.ops.aten._sparse_compressed_tensor_unsafe(
         ref_first,
@@ -719,7 +910,7 @@ def test__sparse_compressed_tensor_unsafe_requires_grad_input(dtype, layout):
         layout=layout,
         device=ref_values.device,
     )
-    res_out = flag_gems._sparse_compressed_tensor_unsafe(
+    res_out = _candidate(
         compressed,
         plain,
         values,
@@ -733,4 +924,6 @@ def test__sparse_compressed_tensor_unsafe_requires_grad_input(dtype, layout):
     assert res_out.requires_grad == ref_out.requires_grad
     assert res_out.grad_fn is ref_out.grad_fn is None
     assert res_out.values().data_ptr() == values.data_ptr()
-    tu.assert_result_equal(res_out.values(), ref_out.values())
+    _assert_component_equal(
+        res_out.values(), ref_out.values(), required_device=required_device
+    )

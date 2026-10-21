@@ -363,6 +363,12 @@ def _fill_canonical(tensor):
 @pytest.mark.parametrize("case", _ALLOCATION_CASES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_allocation_structure(case, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and torch.device(flag_gems.device).type != "cpu"
+        and dtype == torch.float64
+    ):
+        pytest.skip("Kunlunxin cannot allocate true float64 compressed values on device")
     layout, dense_dim, size, blocksize, nnz = case
     ref = torch.ops.aten._sparse_compressed_tensor_with_dims(
         nnz,
@@ -618,5 +624,21 @@ def test_written_allocation_densifies_like_reference(case):
 @pytest.mark.underscore_sparse_compressed_tensor_with_dims
 @pytest.mark.parametrize("args,kwargs,exc", _INVALID_CALLS)
 def test_invalid_arguments_are_rejected(args, kwargs, exc):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and kwargs.get("pin_memory") is True
+        and torch.device(kwargs.get("device", "cpu")).type != "cpu"
+    ):
+        # This native form rejects with ValueError on Kunlunxin. Preserve the
+        # rejection contract and do not let a native catch swallow candidate errors.
+        try:
+            torch.ops.aten._sparse_compressed_tensor_with_dims(*args, **kwargs)
+        except (RuntimeError, TypeError, ValueError) as error:
+            native_error_type = type(error)
+        else:
+            pytest.fail("native accepted pin_memory=True for a non-CPU allocation")
+        with pytest.raises(native_error_type):
+            flag_gems._sparse_compressed_tensor_with_dims(*args, **kwargs)
+        return
     with pytest.raises(exc):
         flag_gems._sparse_compressed_tensor_with_dims(*args, **kwargs)

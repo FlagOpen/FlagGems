@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 # _sparse_coo_tensor_unsafe is a metadata constructor: it wraps the caller's
@@ -56,6 +57,98 @@ _FLOAT_DTYPES = [
 _BACKWARD_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.float64]
 
 
+def _check_payload_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin tensor transfer narrows float64 payloads to float32")
+
+
+def _cpu_encoded(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+        torch.float8_e4m3fnuz,
+        torch.float8_e5m2fnuz,
+        torch.float64,
+    )
+
+
+def _check_fixture(tensor, dtype):
+    device = torch.device(flag_gems.device)
+    if device.type != "cpu" and device.index is None:
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert tensor.dtype == dtype and tensor.device == device
+    return tensor
+
+
+def _make_input(dtype, shape, value_range):
+    _check_payload_dtype(dtype)
+    if not _cpu_encoded(dtype):
+        result = _check_fixture(tu.make_input(dtype, shape, value_range), dtype)
+        assert result.shape == torch.Size(shape)
+        return result
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        values = torch.full(shape, low, dtype=torch.float32, device="cpu").to(dtype)
+    else:
+        values = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    result = values.to(flag_gems.device)
+    assert result.shape == torch.Size(shape)
+    return _check_fixture(result, dtype)
+
+
+def _make_special_input(dtype, scenario):
+    _check_payload_dtype(dtype)
+    if not _cpu_encoded(dtype):
+        return _check_fixture(tu.make_special_input(dtype, scenario), dtype)
+    # Encode before transfer: device casts may be absent or narrow float64.
+    result = (
+        tu.make_special_input(torch.float32, scenario)
+        .cpu()
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+    return _check_fixture(result, dtype)
+
+
+def _component_values(tensor):
+    # Observe physical storage first; FP8 device slicing/casts and complex
+    # comparison are unavailable on some backends. Retain geometry/lazy flags.
+    values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        tensor.untyped_storage().cpu(),
+        tensor.storage_offset(),
+        tensor.size(),
+        tensor.stride(),
+    )
+    if tensor.is_conj():
+        values = values.conj()
+    if tensor.is_neg():
+        values = torch._neg_view(values)
+    return values
+
+
+def _to_reference(tensor):
+    if not utils.TO_CPU:
+        return tu.to_reference(tensor)
+    # Copy storage, not a device-side FP8/complex view operation. Independence
+    # is required even when the source already lives on the CPU.
+    values = _component_values(tensor)
+    result = torch.empty(0, dtype=values.dtype, device="cpu").set_(
+        values.untyped_storage().clone(),
+        values.storage_offset(),
+        values.size(),
+        values.stride(),
+    )
+    if values.is_conj():
+        result = result.conj()
+    if values.is_neg():
+        result = torch._neg_view(result)
+    return result.requires_grad_(tensor.requires_grad)
+
+
 def _coo_indices(size, nnz):
     """In-bounds coordinate rows for ``nnz`` entries, shaped (sparse_dim, nnz)."""
     device = flag_gems.device
@@ -68,13 +161,48 @@ def _coo_indices(size, nnz):
     return torch.stack(rows, 0)
 
 
+def _candidate(indices, values, *args, **kwargs):
+    # COO's dtype/device/layout keywords do not select the result metadata:
+    # the native unchecked constructor adopts values' dtype and device.
+    expected_device, expected_dtype = values.device, values.dtype
+    result = flag_gems._sparse_coo_tensor_unsafe(indices, values, *args, **kwargs)
+    try:
+        assert isinstance(result, torch.Tensor)
+        assert result.layout == torch.sparse_coo
+        assert result.device == expected_device
+        assert result.dtype == expected_dtype
+        assert result._indices().device == expected_device
+        assert result._values().device == expected_device
+    except Exception as error:
+        # A malformed returned result must not satisfy a negative test that
+        # expects the candidate call itself to reject an argument.
+        raise AssertionError("candidate returned an invalid COO result") from error
+    return result
+
+
 def _assert_sparse_equal(res_out, ref_out):
-    # A COO comparison alone is not enough: coordinates can be permuted while
-    # the dense materialization stays equal, so indices and values are compared
-    # component by component as well.
-    tu.assert_result_equal(res_out._indices(), ref_out._indices())
-    tu.assert_result_equal(res_out._values(), ref_out._values())
-    tu.assert_result_equal(res_out, ref_out)
+    assert res_out.layout == ref_out.layout == torch.sparse_coo
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape
+    assert ref_out.device == (torch.device("cpu") if utils.TO_CPU else res_out.device)
+    assert res_out.sparse_dim() == ref_out.sparse_dim()
+    assert res_out.dense_dim() == ref_out.dense_dim()
+    assert res_out._nnz() == ref_out._nnz()
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
+    # Ordered coordinates, values and all sparse metadata determine the whole
+    # COO tensor, including duplicate entries and unchecked out-of-range ones.
+    # Observe storage on CPU only after validating the original metadata;
+    # target FP8/complex comparison kernels need not exist for a constructor.
+    for result, reference in (
+        (res_out._indices(), ref_out._indices()),
+        (res_out._values(), ref_out._values()),
+    ):
+        assert result.dtype == reference.dtype
+        assert result.shape == reference.shape
+        assert result.layout == reference.layout == torch.strided
+        assert result.device == res_out.device
+        assert reference.device == ref_out.device
+        tu.assert_result_equal(_component_values(result), _component_values(reference))
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -96,12 +224,12 @@ _DTYPE_RANGE_CASES = [
 def test_sparse_coo_tensor_unsafe(shape, value_range, dtype):
     size = [int(dim) for dim in shape]
     indices = _coo_indices(size, _NNZ)
-    values = tu.make_input(dtype, (_NNZ,), value_range)
+    values = _make_input(dtype, (_NNZ,), value_range)
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size
+        _to_reference(indices), _to_reference(values), size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
     _assert_sparse_equal(res_out, ref_out)
     # The shared assertions do not describe the sparse/dense split of the result.
@@ -131,12 +259,12 @@ def test_sparse_coo_tensor_unsafe_structure(
     size, sparse_dim, dense_shape, nnz, is_coalesced
 ):
     indices = _coo_indices(size[:sparse_dim], nnz)
-    values = tu.make_input(torch.float32, (nnz,) + dense_shape, ["-1", "1"])
+    values = _make_input(torch.float32, (nnz,) + dense_shape, ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), list(size)
+        _to_reference(indices), _to_reference(values), list(size)
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, list(size))
+    res_out = _candidate(indices, values, list(size))
 
     _assert_sparse_equal(res_out, ref_out)
     assert res_out.shape == torch.Size(size)
@@ -153,17 +281,15 @@ def test_sparse_coo_tensor_unsafe_explicit_coalesced(is_coalesced):
     # even though the coordinates arrive unsorted.
     size = [20, 320, 15]
     indices = _coo_indices(size, _NNZ)
-    values = tu.make_input(torch.float32, (_NNZ,), ["-1", "1"])
+    values = _make_input(torch.float32, (_NNZ,), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices),
-        tu.to_reference(values),
+        _to_reference(indices),
+        _to_reference(values),
         size,
         is_coalesced=is_coalesced,
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(
-        indices, values, size, is_coalesced=is_coalesced
-    )
+    res_out = _candidate(indices, values, size, is_coalesced=is_coalesced)
 
     _assert_sparse_equal(res_out, ref_out)
     assert res_out.is_coalesced() is is_coalesced
@@ -175,12 +301,12 @@ def test_sparse_coo_tensor_unsafe_explicit_coalesced(is_coalesced):
 )
 def test_sparse_coo_tensor_unsafe_size_container(size):
     indices = _coo_indices(list(size), _NNZ)
-    values = tu.make_input(torch.float32, (_NNZ,), ["-1", "1"])
+    values = _make_input(torch.float32, (_NNZ,), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size
+        _to_reference(indices), _to_reference(values), size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
     _assert_sparse_equal(res_out, ref_out)
 
@@ -189,12 +315,12 @@ def test_sparse_coo_tensor_unsafe_size_container(size):
 def test_sparse_coo_tensor_unsafe_size_keyword():
     size = [20, 320, 15]
     indices = _coo_indices(size, _NNZ)
-    values = tu.make_input(torch.float32, (_NNZ,), ["-1", "1"])
+    values = _make_input(torch.float32, (_NNZ,), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size=size
+        _to_reference(indices), _to_reference(values), size=size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size=size)
+    res_out = _candidate(indices, values, size=size)
 
     _assert_sparse_equal(res_out, ref_out)
 
@@ -212,9 +338,9 @@ def test_sparse_coo_tensor_unsafe_keeps_caller_storage():
     values = buffer[2:]
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size
+        _to_reference(indices), _to_reference(values), size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
     _assert_sparse_equal(res_out, ref_out)
     assert res_out._indices().data_ptr() == indices.data_ptr()
@@ -236,12 +362,12 @@ def test_sparse_coo_tensor_unsafe_accepts_out_of_range_indices():
     # are stored unchanged instead of being rejected.
     size = [5, 6]
     indices = torch.tensor([[7, 1], [0, 9]], dtype=torch.int64, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (2,), ["-1", "1"])
+    values = _make_input(torch.float32, (2,), ["-1", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size
+        _to_reference(indices), _to_reference(values), size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
     _assert_sparse_equal(res_out, ref_out)
     assert res_out._nnz() == 2
@@ -255,13 +381,13 @@ def test_sparse_coo_tensor_unsafe_accepts_out_of_range_indices():
 )
 def test_sparse_coo_tensor_unsafe_special_values(dtype, scenario):
     size = [16, 32]
-    values = tu.make_special_input(dtype, scenario)
+    values = _make_special_input(dtype, scenario)
     indices = _coo_indices(size, values.numel())
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), tu.to_reference(values), size
+        _to_reference(indices), _to_reference(values), size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
     _assert_sparse_equal(res_out, ref_out)
 
@@ -269,19 +395,23 @@ def test_sparse_coo_tensor_unsafe_special_values(dtype, scenario):
 @pytest.mark.underscore_sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("dtype", tu.selected_cases(_BACKWARD_DTYPES, quick=[]))
 def test_sparse_coo_tensor_unsafe_backward(dtype):
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend COO native backward is unavailable for these dtypes")
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip("Kunlunxin COO to_dense is unavailable for the backward loss")
     size = [20, 320, 15]
     indices = _coo_indices(size, _NNZ)
-    values = tu.make_input(dtype, (_NNZ,), ["-1", "1"]).requires_grad_(True)
-    ref_values = tu.to_reference(values).detach().requires_grad_(True)
+    values = _make_input(dtype, (_NNZ,), ["-1", "1"]).requires_grad_(True)
+    ref_values = _to_reference(values).detach().requires_grad_(True)
     # Distinct weights make each stored entry's gradient observable.
-    weights = tu.make_input(dtype, size, ["0", "1"])
+    weights = _make_input(dtype, size, ["0", "1"])
 
     ref_out = torch.ops.aten._sparse_coo_tensor_unsafe(
-        tu.to_reference(indices), ref_values, size
+        _to_reference(indices), ref_values, size
     )
-    res_out = flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+    res_out = _candidate(indices, values, size)
 
-    ref_weights = tu.to_reference(weights)
+    ref_weights = _to_reference(weights)
     ref_grad = torch.autograd.grad(
         (ref_out.to_dense() * ref_weights).sum(), ref_values
     )[0]
@@ -298,10 +428,10 @@ def test_sparse_coo_tensor_unsafe_backward(dtype):
 def test_sparse_coo_tensor_unsafe_rejects_invalid_indices(indices_dtype, indices_shape):
     # Native contract: coordinates must be an int64 tensor of rank two.
     indices = torch.zeros(indices_shape, dtype=indices_dtype, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (4,), ["-1", "1"])
+    values = _make_input(torch.float32, (4,), ["-1", "1"])
 
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_coo_tensor_unsafe(indices, values, [5, 6])
+        _candidate(indices, values, [5, 6])
 
 
 @pytest.mark.underscore_sparse_coo_tensor_unsafe
@@ -309,16 +439,16 @@ def test_sparse_coo_tensor_unsafe_rejects_invalid_indices(indices_dtype, indices
 def test_sparse_coo_tensor_unsafe_rejects_invalid_size(size):
     # Native contract: the size list must hold one int per sparse + dense dim.
     indices = torch.zeros((2, 1), dtype=torch.int64, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (1,), ["-1", "1"])
+    values = _make_input(torch.float32, (1,), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems._sparse_coo_tensor_unsafe(indices, values, size)
+        _candidate(indices, values, size)
 
 
 @pytest.mark.underscore_sparse_coo_tensor_unsafe
 def test_sparse_coo_tensor_unsafe_rejects_nnz_mismatch():
     indices = torch.zeros((2, 1), dtype=torch.int64, device=flag_gems.device)
-    values = tu.make_input(torch.float32, (3,), ["-1", "1"])
+    values = _make_input(torch.float32, (3,), ["-1", "1"])
 
     with pytest.raises(RuntimeError):
-        flag_gems._sparse_coo_tensor_unsafe(indices, values, [5, 6])
+        _candidate(indices, values, [5, 6])

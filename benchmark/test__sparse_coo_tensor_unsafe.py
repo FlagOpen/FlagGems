@@ -68,16 +68,13 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     tensor_shape, nnz, sparse_dim = plan.builder_args
-    if sparse_dim and nnz:
-        indices = torch.stack(
-            [
-                torch.randint(0, int(dim), (nnz,), dtype=torch.int64, device=device)
-                for dim in tensor_shape[:sparse_dim]
-            ],
-            0,
-        )
-    else:
-        indices = torch.empty((sparse_dim, nnz), dtype=torch.int64, device=device)
+    # Allocate the final coordinate storage once. Stacking sparse_dim full
+    # rows doubles its peak storage (48 GiB for the core 1024^3 descriptor).
+    # Each row still receives the same independent uniform in-bounds samples.
+    indices = torch.empty((sparse_dim, nnz), dtype=torch.int64, device=device)
+    if nnz:
+        for row, extent in enumerate(tensor_shape[:sparse_dim]):
+            indices[row].random_(0, int(extent))
     values = utils.generate_tensor_input(
         (nnz,) + tuple(tensor_shape[sparse_dim:]), dtype, device
     )
