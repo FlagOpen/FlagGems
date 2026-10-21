@@ -53,7 +53,6 @@ from flag_gems.ops._foreach_complex_math import (
 )
 from flag_gems.ops.acos import acos_kernel
 from flag_gems.ops.asin import asin_kernel
-from flag_gems.ops.atan import atan_kernel
 from flag_gems.ops.ceil import ceil_func
 from flag_gems.ops.cos import cos_func
 from flag_gems.ops.cosh import cosh_func
@@ -103,13 +102,23 @@ def _scalar_fn(pointwise_fn) -> Callable:
 # 16-bit approximation path
 # ---------------------------------------------------------------------------
 #
-# ``erf``/``erfc``/``atan``/``lgamma`` spend 20-25 fp32 instructions per element
-# in libdevice's range reduction and polynomial.  A 16-bit result does not need
+# ``erf``/``erfc``/``lgamma`` spend 20-25 fp32 instructions per element in
+# libdevice's range reduction and polynomial.  A 16-bit result does not need
 # that: fp16 has ~5e-4 relative resolution and the suite tolerance is
 # rtol=1e-3/atol=1e-4 (bf16 rtol=1.6e-2).  The fitted minimax bodies below
 # measured, in-place at 512^2 x 16 fp16, erfc 19.97 -> 11.55 us, erf 15.65 ->
-# 11.87 us, atan 15.97 -> 12.22 us and lgamma 31.90 -> 27.81 us.  The
-# coefficients are final exact-minimax (LP) fits -- do not refit them.
+# 11.87 us and lgamma 31.90 -> 27.81 us.  The coefficients are final
+# exact-minimax (LP) fits -- do not refit them.
+#
+# ``atan`` has both bodies.  ``_atan_func`` is accurate to 2 ulp in fp32 and is
+# what out-of-place, fp32 in-place and the complex path run; ``_atan16_func`` is
+# the same reduction with a degree-3 polynomial, which is all a 16-bit *store*
+# can resolve (1 fp16/bf16 ulp worst case over 200k points) and measured
+# 32.50 -> 29.38 us (fp16) and 31.55 -> 30.27 us (bf16) against the body it
+# replaces at 1024^2 x 16.  Being cheaper is not the only reason it is there:
+# the old ``c = (a-1)/(a+1) = 1 - 2/(a+1)`` form cancels when ``a`` is small, so
+# the result there was noise -- ``x = -2.5e-8`` came out as ``0.0`` -- and that
+# body had to go regardless of its speed.
 #
 # ``acos`` and ``asin`` were fitted too and rejected: both are already at the
 # memory floor (measured -0.64 us and -0.13 us against libdevice), so their
@@ -183,30 +192,88 @@ def _approx_erf_func(x):
 
 
 @triton.jit
-def _atan_core_func(c):
-    """``atan(c)`` for ``|c| <= 1``, exact at ``c = 0`` and ``c = +-1``.
+def _atan_func(x):
+    """``atan(x)`` through ``c = min(a, 1/a)``, ``a = |x|``, and one polynomial.
 
-    ``c*(pi/4 + (1 - c*c)*S(v))`` anchors both ends, so the reduction below
-    needs no correction term and the sign is the only thing left to apply.
-    """
-    v = 2.0 * c * c - 1.0
-    s = ((((-0.00021917612 * v + 0.0006003141) * v - 0.002031797) * v
-          + 0.007987845) * v - 0.033714574) * v + 0.17004323
-    return c * (0.7853982 + (1.0 - c * c) * s)
+    ``atan(c) = c*(pi/4 + (1 - c*c)*S(2c*c - 1))`` anchors both ends, so the
+    degree-8 fit needs no correction term, ``1 - c*c`` is evaluated as
+    ``0.5 - 0.5*v`` (which removes the second squaring), and the ``a > 1``
+    branch is one subtraction from ``pi/2``.  It is the same split libdevice
+    uses, minus its two IEEE-correctly-rounded reciprocals: ``fast_dividef`` is
+    a single ``MUFU.RCP``, so no exponent guard, branch and slow-path call.
 
+    Accuracy, measured on 9.4M fp32 values against ``atan`` in double (max
+    / mean ulp distance, share above 1 ulp): this body 2.0 / 0.30 / 0.02%,
+    libdevice 1.0 / 0.13 / 0% but 0.1% of them (all subnormal inputs, where
+    libdevice flushes to zero) are further off than 4 ulp, ATen 1.0 / 0.13 /
+    0%.  Against the libdevice output it replaces, this body agrees within
+    half an ulp on 78% of values, within 1 ulp on 99.9% and within 2 ulp on
+    all of them (subnormals excluded, where it is the *more* accurate of the
+    two); on a 1024^2 x 16 ``randn`` list the same bound holds -- 33.6% of the
+    16.7M fp32 entries differ, 2 ulp worst case.  ATen's own ``atan`` is
+    further from libdevice than that on 0.23% of values, at 2 ulp.  ``+-0``,
+    ``+-1``, ``+-inf``, ``+-pi/2`` and NaN are bit-identical to libdevice.
+    Rounded to fp16, the two agree on all but 0.01% of that list (1 ulp) and
+    in bf16 on every entry.
 
-@triton.jit
-def _approx_atan_func(x):
-    """``atan(x)`` via ``c = (a-1)/(a+1) = 1 - 2/(a+1)``, ``a = |x|``.
+    Cost: measured through the executor kernel at 1024^2 x 16, 46.7 -> 33.0 us
+    (fp16), 47.3 -> 35.4 us (bf16) and 56.0 -> 41.5 us (fp32), i.e. level with
+    ``torch.atan`` on one concatenated tensor (31.9 / 33.1 / 40.0 us), at 32
+    registers and no spills against 38/48.  It is also faster in every dtype at
+    512^2 (16.7/16.5/18.8 -> 12.8/13.3/15.0 us) and 256^2 (9.2/9.6/10.3 ->
+    7.6/7.9/8.4 us).  The exact ``min``/``select`` shape was previously
+    rejected here on a 512^2 in-place measurement (12.35 against 12.22 us);
+    that gap does not reproduce at 1024^2, where the reduction is worth 1.7 us
+    against the ``(a-1)/(a+1)`` form.  The sign is two bit operations, not
+    ``_sgn_where``: on the same polynomial the two element selects measured
+    35.74 against 32.19 us.
 
-    One divide and no select on the result; measured 15.97 -> 12.22 us.  The
-    ``c = min(a, 1/a)`` reduction with a ``pi/2`` correction measured 12.35 us,
-    i.e. the extra select costs more than the divide it saves.
+    This is the only body the out-of-place entry point runs, in every dtype;
+    the in-place 16-bit path takes ``_atan16_func`` instead.
     """
     x = x.to(tl.float32)
     a = tl.abs(x)
-    c = 1.0 - 2.0 * tl_extra_shim.fast_dividef(1.0, a + 1.0)
-    return _sgn_where(0.7853982 + _atan_core_func(c), x)
+    c = tl.minimum(a, tl_extra_shim.fast_dividef(1.0, a))
+    v = 2.0 * c * c - 1.0
+    s = (((((((6.0314509938e-06 * v - 1.5670237190e-05) * v + 4.3488384108e-05) * v
+            - 1.5755316417e-04) * v + 5.6417664746e-04) * v - 2.0681463648e-03) * v
+          + 7.9936748371e-03) * v - 3.3709898591e-02) * v + 1.7004318535e-01
+    core = c * (0.7853982 + (0.5 - 0.5 * v) * s)
+    res = tl.where(a > 1.0, 1.5707964 - core, core)
+    return (res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)).to(
+        tl.float32, bitcast=True
+    )
+
+
+@triton.jit
+def _atan16_func(x):
+    """``atan(x)`` for a 16-bit *store*: ``_atan_func``'s reduction, degree 3.
+
+    Same ``c = min(a, 1/a)`` reduction, same anchored ``c*(pi/4 + (1-c*c)*S)``
+    shape and same sign handling; only the polynomial is shorter.  Degree 3 is
+    the stopping point, not a compromise: over 200k points in ``c`` in (0, 1]
+    the minimax fit's relative error is 3.3e-05, i.e. 0.07 of an fp16 ulp and
+    0.004 of a bf16 ulp, and more coefficients cannot improve a result that is
+    then rounded to 11 (or 8) mantissa bits.  Measured on the harness cells
+    against ``atan`` in float64 rounded to the storage dtype: bf16 agrees
+    bit-for-bit on every entry, fp16 within 1 ulp on every entry (2.8% of them
+    1 ulp away) -- the same 1 ulp worst case as ATen's own ``atan``, which is
+    0.01% away.  ``+-0``, ``+-inf``, ``+-pi/2`` and NaN are exact.
+
+    The ``min`` reduction is what makes this usable near zero, where the body
+    it replaces cancelled: ``atan(x) -> x`` as ``x -> 0``, and ``c = a`` there.
+    """
+    x = x.to(tl.float32)
+    a = tl.abs(x)
+    c = tl.minimum(a, tl_extra_shim.fast_dividef(1.0, a))
+    v = 2.0 * c * c - 1.0
+    s = ((-2.8894221779e-03 * v + 8.2041949608e-03) * v
+         - 3.3429690616e-02) * v + 1.7004555372e-01
+    core = c * (0.7853982 + (0.5 - 0.5 * v) * s)
+    res = tl.where(a > 1.0, 1.5707964 - core, core)
+    return (res.to(tl.int32, bitcast=True) | (x.to(tl.int32, bitcast=True) & -2147483648)).to(
+        tl.float32, bitcast=True
+    )
 
 
 @triton.jit
@@ -486,11 +553,11 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("asin", _scalar_fn(asin_kernel), int_to_float, NO_COMPLEX32, c_asin),
         UnaryOp(
             "atan",
-            _scalar_fn(atan_kernel),
+            _atan_func,
             int_to_float,
             NO_COMPLEX32,
             c_atan,
-            fn16=_approx_atan_func,
+            fn16=_atan16_func,
         ),
         UnaryOp("ceil", _scalar_fn(ceil_func), same_dtype, NO_BOOL_NO_COMPLEX),
         UnaryOp(
