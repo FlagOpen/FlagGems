@@ -20,6 +20,134 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _to_reference(inp):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and inp.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        reference = _copy_to(inp, "cpu" if utils.TO_CPU else inp.device)
+    else:
+        reference = tu.to_reference(inp)
+    assert reference.dtype == inp.dtype and reference.shape == inp.shape
+    assert reference.device == _device("cpu" if utils.TO_CPU else inp.device)
+    assert reference.stride() == inp.stride()
+    assert reference.storage_offset() == inp.storage_offset()
+    assert (reference.is_conj(), reference.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return reference
+
+
+def cpu_is_set_to(self, tensor):
+    """CPU metadata oracle for backends without a usable native Bool result.
+
+    StorageImpl identity, offset, size and stride follow ATen TensorProperties.
+    Unresolved conjugate/negative inputs follow the observed dispatcher behavior.
+    No tensor data is moved or read; empty and dtype-reinterpreted views retain
+    the identity of their actual input storage.
+    """
+    if not isinstance(self, torch.Tensor) or not isinstance(tensor, torch.Tensor):
+        raise TypeError("is_set_to requires two tensors")
+    if self.is_conj() or tensor.is_conj() or self.is_neg() or tensor.is_neg():
+        return False
+    return bool(
+        self.untyped_storage()._cdata == tensor.untyped_storage()._cdata
+        and self.storage_offset() == tensor.storage_offset()
+        and self.size() == tensor.size()
+        and self.stride() == tensor.stride()
+    )
+
+
+def _reference_is_set_to(self, tensor):
+    if flag_gems.vendor_name == "kunlunxin" and self.device.type != "cpu":
+        return cpu_is_set_to(self, tensor)
+    return torch.ops.aten.is_set_to(self, tensor)
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: utils.bf16_is_supported,
     torch.float64: utils.fp64_is_supported,
@@ -124,6 +252,7 @@ def _layout_facts(tensor):
         tuple(tensor.size()),
         tuple(tensor.stride()),
         tensor.dtype,
+        tensor.device,
         tensor.layout,
         tensor.is_conj(),
         tensor.is_neg(),
@@ -153,13 +282,13 @@ _CASES = [
 @pytest.mark.is_set_to
 @pytest.mark.parametrize("kind,expected,shape,dtype", _CASES)
 def test_is_set_to_alias_pairs(kind, expected, shape, dtype):
-    inp = tu.make_input(dtype, shape, _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, _VALUE_RANGE)
+    ref_inp = _to_reference(inp)
     cand_self, cand_other = _build_pair(kind, inp)
     ref_self, ref_other = _build_pair(kind, ref_inp)
     facts = (_layout_facts(cand_self), _layout_facts(cand_other))
 
-    ref_out = torch.ops.aten.is_set_to(ref_self, ref_other)
+    ref_out = _reference_is_set_to(ref_self, ref_other)
     res_out = flag_gems.is_set_to(cand_self, cand_other)
 
     # A Python bool, not a tensor: type and value are compared directly.
@@ -194,13 +323,13 @@ _RANGE_CASES = [
 def test_is_set_to_ignores_element_values(kind, value_range, dtype):
     # Only allocation metadata is compared, so the answer must not depend on the
     # spec's five value ranges; the other relations run once in the pair grid.
-    inp = tu.make_input(dtype, (20, 320, 15), value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, (20, 320, 15), value_range)
+    ref_inp = _to_reference(inp)
     cand_self, cand_other = _build_pair(kind, inp)
     ref_self, ref_other = _build_pair(kind, ref_inp)
     facts = (_layout_facts(cand_self), _layout_facts(cand_other))
 
-    ref_out = torch.ops.aten.is_set_to(ref_self, ref_other)
+    ref_out = _reference_is_set_to(ref_self, ref_other)
     res_out = flag_gems.is_set_to(cand_self, cand_other)
 
     assert type(res_out) is bool
@@ -218,13 +347,13 @@ _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_DTYPES), quick=[])
 @pytest.mark.is_set_to
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_is_set_to_ignores_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario).reshape(1, -1)
+    ref_inp = _to_reference(inp)
     cand_self, cand_other = _build_pair("same_object", inp)
     ref_self, ref_other = _build_pair("same_object", ref_inp)
     facts = (_layout_facts(cand_self), _layout_facts(cand_other))
 
-    ref_out = torch.ops.aten.is_set_to(ref_self, ref_other)
+    ref_out = _reference_is_set_to(ref_self, ref_other)
     res_out = flag_gems.is_set_to(cand_self, cand_other)
 
     assert type(res_out) is bool
@@ -251,12 +380,12 @@ _VIEW_DTYPE_PAIRS = [
 def test_is_set_to_dtype_reinterpretation_view(src_dtype, view_dtype):
     # view(dtype) keeps the storage, offset and byte strides, so the two operands
     # still describe one storage view although their dtypes differ.
-    inp = tu.make_input(src_dtype, (4, 8), _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(src_dtype, (4, 8), _VALUE_RANGE)
+    ref_inp = _to_reference(inp)
     cand_view = inp.view(view_dtype)
     ref_view = ref_inp.view(view_dtype)
 
-    ref_out = torch.ops.aten.is_set_to(ref_inp, ref_view)
+    ref_out = _reference_is_set_to(ref_inp, ref_view)
     res_out = flag_gems.is_set_to(inp, cand_view)
 
     assert type(res_out) is bool
@@ -269,12 +398,12 @@ def test_is_set_to_lazy_conjugate_bit():
     # An unresolved conjugate bit is part of the compared metadata, so a lazy
     # conj view is not set to anything, not even to itself; materializing it
     # (resolve_conj) yields a plain tensor that is set to itself.
-    inp = tu.make_input(torch.complex64, (4, 8), _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.complex64, (4, 8), _VALUE_RANGE)
+    ref_inp = _to_reference(inp)
     lazy = torch.conj(inp)
     ref_lazy = torch.conj(ref_inp)
 
-    ref_out = torch.ops.aten.is_set_to(ref_lazy, ref_lazy)
+    ref_out = _reference_is_set_to(ref_lazy, ref_lazy)
     res_out = flag_gems.is_set_to(lazy, lazy)
 
     assert type(res_out) is bool
@@ -283,7 +412,7 @@ def test_is_set_to_lazy_conjugate_bit():
 
     resolved = lazy.resolve_conj()
     ref_resolved = ref_lazy.resolve_conj()
-    ref_out = torch.ops.aten.is_set_to(ref_resolved, ref_resolved)
+    ref_out = _reference_is_set_to(ref_resolved, ref_resolved)
     res_out = flag_gems.is_set_to(resolved, resolved)
 
     assert type(res_out) is bool
@@ -295,12 +424,12 @@ def test_is_set_to_lazy_conjugate_bit():
 def test_is_set_to_lazy_negative_bit():
     # Same lazy-bit rule as for the conjugate flag, for the negative bit that
     # neg views carry on real dtypes.
-    inp = tu.make_input(torch.float32, (4, 8), _VALUE_RANGE)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.float32, (4, 8), _VALUE_RANGE)
+    ref_inp = _to_reference(inp)
     lazy = torch._neg_view(inp)
     ref_lazy = torch._neg_view(ref_inp)
 
-    ref_out = torch.ops.aten.is_set_to(ref_lazy, ref_lazy)
+    ref_out = _reference_is_set_to(ref_lazy, ref_lazy)
     res_out = flag_gems.is_set_to(lazy, lazy)
 
     assert type(res_out) is bool
@@ -309,7 +438,7 @@ def test_is_set_to_lazy_negative_bit():
 
     resolved = lazy.resolve_neg()
     ref_resolved = ref_lazy.resolve_neg()
-    ref_out = torch.ops.aten.is_set_to(ref_resolved, ref_resolved)
+    ref_out = _reference_is_set_to(ref_resolved, ref_resolved)
     res_out = flag_gems.is_set_to(resolved, resolved)
 
     assert type(res_out) is bool
@@ -333,7 +462,7 @@ _NEGATIVE_ROWS = [
 @pytest.mark.is_set_to
 @pytest.mark.parametrize("position,bad_value", _NEGATIVE_ROWS)
 def test_is_set_to_rejects_non_tensor_operands(position, bad_value):
-    inp = tu.make_input(torch.float32, (4,), _VALUE_RANGE)
+    inp = _make_input(torch.float32, (4,), _VALUE_RANGE)
     args = [inp, inp]
     args[0 if position == "self" else 1] = bad_value
 
@@ -344,12 +473,12 @@ def test_is_set_to_rejects_non_tensor_operands(position, bad_value):
 @pytest.mark.is_set_to
 @pytest.mark.parametrize("offset", [0, 1])
 def test_is_set_to_empty_views_with_offset(offset):
-    base = tu.make_input(torch.float32, (8,), _VALUE_RANGE)
-    ref_base = tu.to_reference(base)
+    base = _make_input(torch.float32, (8,), _VALUE_RANGE)
+    ref_base = _to_reference(base)
     inp, other = base[:0], base[offset:offset]
     ref_inp, ref_other = ref_base[:0], ref_base[offset:offset]
 
-    ref_out = torch.ops.aten.is_set_to(ref_inp, ref_other)
+    ref_out = _reference_is_set_to(ref_inp, ref_other)
     res_out = flag_gems.is_set_to(inp, other)
 
     assert type(res_out) is bool
