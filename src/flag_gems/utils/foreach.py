@@ -2603,7 +2603,7 @@ def _launch_scalar_group(
     alpha: float = 1,
     common: Optional[float] = None,
 ) -> None:
-    numels = [t.numel() for t in srcs]
+    numels = list(map(_NUMEL, srcs))
     max_numel = max(numels)
     if max_numel == 0:
         return
@@ -2622,8 +2622,12 @@ def _launch_scalar_group(
     block, grid = cached_grid
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
-    ptrs = [t.data_ptr() for t in srcs]
-    values = ptrs + (ptrs if dsts is srcs else [t.data_ptr() for t in dsts]) + numels
+    ptrs = list(map(_DATA_PTR, srcs))
+    values = (
+        ptrs
+        + (ptrs if dsts is srcs else list(map(_DATA_PTR, dsts)))
+        + numels
+    )
     meta = _device_meta(values, device)
     # The scalars ride in a device array of the *output* dtype, so integer
     # operators keep integer semantics instead of going through a float.
