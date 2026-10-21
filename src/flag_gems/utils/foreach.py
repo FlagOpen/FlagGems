@@ -211,9 +211,30 @@ _PACK_DTYPES = frozenset((torch.float16, torch.bfloat16))
 # next to the access pattern it enables.
 _PACK_MIN_ELEMS = 1 << 20
 
+# The binary path measured the crossover directly instead of inheriting the
+# constant above.  With a sixteen-tensor list the packed kernel is 0.9us faster
+# at 256^2 (2^16 elements per tensor) and 2.8us faster at 512^2, and it is
+# never slower down to 2^10, where both kernels are launch-bound and the
+# difference is noise.
+#
+# That holds for an in-place group, and only for an in-place group.  The
+# out-of-place wrapper allocates sixteen destinations per call, which makes the
+# call host-bound (58us of host submission against a 24us kernel), so a faster
+# kernel cannot show there while the guard below can: accepting a group pays
+# the ``reduce`` over the metadata values, ~1.6us at this list size, and the
+# measured effect was +2.4 to +3.3us on every out-of-place row at 256^2 and
+# 512^2 while the identical kernel launch into a fixed destination was 2.9us
+# faster.  An in-place call has no allocation, is GPU-bound (31us of host
+# against a 16us kernel at 512^2), and hides the guard -- which is why the
+# threshold below is raised for it alone.
+_PACK_MIN_ELEMS_BINARY_INPLACE = 1 << 16
+
 
 def _pack_ok(
-    dtypes: Sequence[torch.dtype], max_numel: int, values: Sequence[int]
+    dtypes: Sequence[torch.dtype],
+    max_numel: int,
+    values: Sequence[int],
+    min_elems: int = _PACK_MIN_ELEMS,
 ) -> bool:
     """Whether the four-wide packed kernel can serve this group.
 
@@ -224,7 +245,7 @@ def _pack_ok(
     values that are built for the transfer anyway: any value with a low bit set
     rules the packed path out.
     """
-    if max_numel < _PACK_MIN_ELEMS:
+    if max_numel < min_elems:
         return False
     for dt in dtypes:
         if dt not in _PACK_DTYPES:
@@ -1949,15 +1970,21 @@ def _launch_binary_group(
     # The broadcast operand is one repeated single-element tensor, and the
     # kernel only ever dereferences its first entry, so its run is one read.
     ptrs_b = [b_list[0].data_ptr()] * nt if b_scalar else [t.data_ptr() for t in b_list]
+    inplace = d_list is a_list
     values = (
         ptrs_a + ptrs_b + ptrs_a + numels
-        if d_list is a_list
+        if inplace
         else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
     )
     meta = _device_meta(values, device)
     kernel = (
         foreach_binary_kernel_p4
-        if _pack_ok((a_dt, b_dt, d_list[0].dtype), max_numel, values)
+        if _pack_ok(
+            (a_dt, b_dt, d_list[0].dtype),
+            max_numel,
+            values,
+            _PACK_MIN_ELEMS_BINARY_INPLACE if inplace else _PACK_MIN_ELEMS,
+        )
         else foreach_binary_kernel
     )
     _launch_binary_kernel(
