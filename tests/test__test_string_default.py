@@ -24,11 +24,19 @@ _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
 def _assert_result_equal(result, reference):
-    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    # Check the original ABI before observing complex values on the CPU.
     assert result.dtype == reference.dtype
-    if not utils.TO_CPU:
-        assert result.device == reference.device
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
+    assert result.shape == reference.shape and result.layout == reference.layout
+    expected_device = torch.device(flag_gems.device)
+    if expected_device.index is None and expected_device.type not in ("cpu", "meta"):
+        expected_device = torch.device(
+            expected_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert result.device == expected_device
+    assert reference.device == (
+        torch.device("cpu") if utils.TO_CPU else expected_device
+    )
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex():
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
@@ -418,8 +426,17 @@ def test_test_string_default_alias_write_through(dtype):
 
     # The result shares the operand's storage, so a write through it has to show
     # up in the operand rather than in a private copy.
-    res_out.fill_(1)
-    ref_out.fill_(1)
+    if dtype in _FP8_DTYPES or (
+        flag_gems.vendor_name == "kunlunxin" and dtype.is_complex
+    ):
+        # The write-through contract needs a mutation, not a dtype-specific
+        # fill kernel. Encode the same all-one payload on CPU and copy in place.
+        payload = torch.ones(inp.shape, dtype=torch.float32, device="cpu").to(dtype)
+        res_out.copy_(payload.to(res_out.device))
+        ref_out.copy_(payload.to(ref_out.device))
+    else:
+        res_out.fill_(1)
+        ref_out.fill_(1)
     _assert_result_equal(res_out, ref_out)
     _assert_result_equal(inp, ref_inp)
 

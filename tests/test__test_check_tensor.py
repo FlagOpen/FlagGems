@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 # aten::_test_check_tensor is the bool-only self-test behind TORCH_CHECK_TENSOR_ALL:
@@ -263,6 +264,12 @@ def test__test_check_tensor(shape, layout, hole_false):
     parent_before = None if parent is inp else tu.to_reference(parent)
 
     ref_inp = tu.to_reference(inp)
+    if flag_gems.vendor_name == "kunlunxin" and utils.TO_CPU:
+        # XPU-to-CPU transfer compacts bool views. Transfer the contiguous owner
+        # first, then restore the geometry expected by this backend's clone.
+        ref_inp = _view_of(tu.to_reference(parent), shape, layout)
+        assert ref_inp.stride() == inp.stride()
+        assert ref_inp.storage_offset() == inp.storage_offset()
     ref_out = torch.ops.aten._test_check_tensor(ref_inp)
     expected = _layout_facts(ref_out)
 
@@ -299,7 +306,20 @@ def test__test_check_tensor_rejects_false_inside_view(shape, layout):
 @pytest.mark.parametrize("dtype", _NON_BOOL_DTYPES)
 def test__test_check_tensor_rejects_non_bool_dtype(shape, dtype):
     # The native op asserts self.scalar_type() == at::kBool.
-    inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
+        dtype in (torch.float8_e4m3fn, torch.float8_e5m2) or dtype.is_complex
+    ):
+        inp = torch.ones(shape, dtype=torch.float32, device="cpu").to(dtype)
+        inp = inp.to(flag_gems.device)
+    else:
+        inp = torch.ones(shape, dtype=dtype, device=flag_gems.device)
+    expected_device = torch.device(flag_gems.device)
+    if expected_device.index is None and expected_device.type not in ("cpu", "meta"):
+        expected_device = torch.device(
+            expected_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == expected_device
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems._test_check_tensor(inp)
