@@ -18,7 +18,135 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _physical_cpu(inp):
+    # Preserve independent physical storage, view geometry and lazy metadata.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.device == torch.device("cpu") and result.dtype == inp.dtype
+    assert result.shape == inp.shape and result.stride() == inp.stride()
+    assert result.storage_offset() == inp.storage_offset()
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    if inp.untyped_storage().nbytes():
+        assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    return result
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    return _physical_cpu(inp) if utils.TO_CPU else tu.to_reference(inp)
+
+
+def _numeric_values(inp):
+    result = _physical_cpu(inp.detach()).resolve_conj().resolve_neg()
+    return result.float() if result.dtype in _FP8_DTYPES else result
+
+
+def _assert_result_equal(result, reference):
+    # Check the original ABI before observing numerical values on CPU.
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if result.dtype in _FP8_DTYPES or (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and (
+            result.is_complex()
+            or result.is_conj()
+            or result.is_neg()
+            or reference.is_conj()
+            or reference.is_neg()
+            or (
+                flag_gems.vendor_name == "ascend"
+                and result.dtype in (torch.int64, torch.float64)
+            )
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _check_requested_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        pytest.skip(
+            "Kunlunxin tensor transfer narrows float64/complex128 to float32/complex64"
+        )
+
+
+def _cpu_encode(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES
+
+
+def _make_input(dtype, shape, value_range):
+    _check_requested_dtype(dtype)
+    if _cpu_encode(dtype):
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    _check_requested_dtype(dtype)
+    if _cpu_encode(dtype) or (
+        flag_gems.vendor_name == "ascend" and dtype == torch.float64
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
 
 # aten::movedim permutes the axis order and returns a view that aliases the
 # input storage: no element is copied and no value is rounded, so values are
@@ -92,13 +220,13 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("move_index", [0, 1])
 def test_movedim(shape, value_range, dtype, move_index):
     source, destination = _grid_moves(len(shape))[move_index]
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
     res_out = flag_gems.movedim(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
 
@@ -128,13 +256,13 @@ _FORM_ROWS = [
 @pytest.mark.movedim
 @pytest.mark.parametrize("dtype,value_range,shape,source,destination", _FORM_ROWS)
 def test_movedim_dim_forms(dtype, value_range, shape, source, destination):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
     res_out = flag_gems.movedim(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
 
@@ -159,24 +287,24 @@ _LAYOUT_ROWS = tu.selected_cases(
 def _layout_input(kind, shape, dtype, value_range):
     """Build one non-contiguous and/or offset input per layout kind."""
     if kind == "empty":
-        return tu.make_input(dtype, shape, value_range)
+        return _make_input(dtype, shape, value_range)
     if kind == "transposed":
         base_shape = (shape[1], shape[0]) + tuple(shape[2:])
-        return tu.make_input(dtype, base_shape, value_range).transpose(0, 1)
+        return _make_input(dtype, base_shape, value_range).transpose(0, 1)
     wide_shape = (shape[0], shape[1] * 2) + tuple(shape[2:])
-    return tu.make_input(dtype, wide_shape, value_range)[:, 1::2]
+    return _make_input(dtype, wide_shape, value_range)[:, 1::2]
 
 
 @pytest.mark.movedim
 @pytest.mark.parametrize("kind,shape,source,destination,dtype", _LAYOUT_ROWS)
 def test_movedim_preserves_input_layout(kind, shape, source, destination, dtype):
     inp = _layout_input(kind, shape, dtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
     res_out = flag_gems.movedim(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
 
@@ -192,14 +320,14 @@ _CONJ_ROWS = [
 @pytest.mark.movedim
 @pytest.mark.parametrize("dtype,shape,source,destination", _CONJ_ROWS)
 def test_movedim_preserves_conjugate_bit(dtype, shape, source, destination):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).conj()
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"]).conj()
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
     res_out = flag_gems.movedim(inp, source, destination)
 
     assert res_out.is_conj() == ref_out.is_conj()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
 
@@ -221,18 +349,18 @@ _MUTATION_ROWS = tu.selected_cases(
 @pytest.mark.movedim
 @pytest.mark.parametrize("shape,source,destination", _MUTATION_ROWS)
 def test_movedim_view_writes_through(shape, source, destination):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
     res_out = flag_gems.movedim(inp, source, destination)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
     res_out.fill_(2.5)
     ref_out.fill_(2.5)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 # Gradients are taken with respect to the original leaf, so the upstream
@@ -256,22 +384,22 @@ _BACKWARD_ROWS = tu.selected_cases(
 @pytest.mark.movedim
 @pytest.mark.parametrize("dtype,shape,source,destination", _BACKWARD_ROWS)
 def test_movedim_backward(dtype, shape, source, destination):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, source, destination)
-    upstream = tu.make_input(dtype, tuple(ref_out.shape), ["-1", "1"])
-    ref_upstream = tu.to_reference(upstream)
+    upstream = _make_input(dtype, tuple(ref_out.shape), ["-1", "1"])
+    ref_upstream = _reference(upstream)
     res_out = flag_gems.movedim(inp, source, destination)
 
     # The forward relayout is checked before the gradient path is exercised.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 # The shared payloads are 1-D; a lossless reshape gives axis 0 a real move
@@ -285,13 +413,13 @@ _SPECIAL_DTYPES = [dtype for dtype in _DTYPES if dtype.is_floating_point]
     tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
 )
 def test_movedim_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario).reshape(1, -1)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.movedim(ref_inp, [0, 1], [1, 0])
     res_out = flag_gems.movedim(inp, [0, 1], [1, 0])
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view_of(res_out, inp, ref_out, ref_inp)
 
 
@@ -315,7 +443,7 @@ _INVALID_DIM_ROWS = [
 @pytest.mark.movedim
 @pytest.mark.parametrize("shape,source,destination,expected", _INVALID_DIM_ROWS)
 def test_movedim_rejects_invalid_axes(shape, source, destination, expected):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     with pytest.raises(expected):
         flag_gems.movedim(inp, source, destination)
 
