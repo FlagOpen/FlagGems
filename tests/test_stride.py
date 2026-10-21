@@ -20,6 +20,92 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
 # aten::stride is a host-side metadata query: it has no broadcast form and no
 # autograd formula, so those spec dimensions do not apply. Coverage uses both
 # callable overloads, layouts with non-unit or zero strides and non-zero storage
@@ -81,6 +167,15 @@ def _apply_layout(base, layout):
     if layout == "as_strided":
         return torch.as_strided(base, (3, 4), (7, 2), 5)
     if layout == "channels_last":
+        if base.device.type != "cpu" and (
+            flag_gems.vendor_name == "ascend"
+            or (
+                flag_gems.vendor_name == "kunlunxin"
+                and base.dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+            )
+        ):
+            host = _copy_to(base, "cpu").to(memory_format=torch.channels_last)
+            return _copy_to(host, base.device)
         return base.to(memory_format=torch.channels_last)
     raise AssertionError("unknown layout: " + str(layout))
 
@@ -125,6 +220,9 @@ def _layout_facts(tensor):
         tuple(tensor.stride()),
         tensor.storage_offset(),
         tensor.data_ptr(),
+        tensor.untyped_storage()._cdata,
+        tensor.dtype,
+        tensor.device,
     )
 
 
@@ -137,7 +235,7 @@ def _make_coo(shape, nnz, dtype):
             for dim in shape
         ]
     )
-    values = tu.make_input(dtype, (nnz,), ["-1", "1"])
+    values = _make_input(dtype, (nnz,), ["-1", "1"])
     return torch.sparse_coo_tensor(indices, values, shape, device=flag_gems.device)
 
 
@@ -158,7 +256,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_stride_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
     before = _layout_facts(inp)
 
@@ -173,7 +271,7 @@ def test_stride_value_ranges(shape, value_range, dtype):
 @pytest.mark.parametrize("shape,dim", _DIM_CASES)
 @pytest.mark.parametrize("dtype", _STRIDE_DTYPES)
 def test_stride_dim_over_shapes(shape, dim, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     before = _layout_facts(inp)
 
@@ -188,7 +286,7 @@ def test_stride_dim_over_shapes(shape, dim, dtype):
 @pytest.mark.parametrize("storage_shape,layout", _LAYOUT_ROWS)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test_stride_layouts(storage_shape, layout, dtype):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     inp = _apply_layout(base, layout)
     ref_inp = _apply_layout(tu.to_reference(base), layout)
     before = _layout_facts(inp)
@@ -205,7 +303,7 @@ def test_stride_layouts(storage_shape, layout, dtype):
 @pytest.mark.parametrize("dim", [0, -1])
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test_stride_layout_dim(storage_shape, layout, dim, dtype):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     inp = _apply_layout(base, layout)
     ref_inp = _apply_layout(tu.to_reference(base), layout)
 
@@ -220,7 +318,7 @@ def test_stride_layout_dim(storage_shape, layout, dim, dtype):
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 @pytest.mark.parametrize("call_args", [(), (0,)])
 def test_stride_empty_shapes(shape, dtype, call_args):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.stride(ref_inp, *call_args)
@@ -254,7 +352,7 @@ def test_stride_sparse_coo(shape, nnz, dtype, call_args):
 )
 @pytest.mark.parametrize("call_args", [(), (0,)])
 def test_stride_special_values(dtype, scenario, shape, call_args):
-    inp = tu.make_special_input(dtype, scenario).reshape(shape)
+    inp = _make_special_input(dtype, scenario).reshape(shape)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.stride(ref_inp, *call_args)
@@ -269,7 +367,7 @@ def test_stride_special_values(dtype, scenario, shape, call_args):
 @pytest.mark.parametrize("shape", _OOB_SHAPES)
 @pytest.mark.parametrize("side", ["before_first", "after_last"])
 def test_stride_rejects_out_of_range_dim(shape, side):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     dim = -len(shape) - 1 if side == "before_first" else len(shape)
     with pytest.raises((IndexError, RuntimeError, ValueError, TypeError)):
         flag_gems.stride(inp, dim)
@@ -277,7 +375,7 @@ def test_stride_rejects_out_of_range_dim(shape, side):
 
 @pytest.mark.stride
 def test_stride_rejects_dim_on_scalar_tensor():
-    inp = tu.make_input(torch.float32, (), ["-1", "1"])
+    inp = _make_input(torch.float32, (), ["-1", "1"])
 
     with pytest.raises((IndexError, RuntimeError, ValueError, TypeError)):
         flag_gems.stride(inp, 0)
@@ -291,7 +389,7 @@ def test_stride_rejects_non_tensor():
 
 @pytest.mark.stride
 def test_stride_rejects_non_integer_dim():
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((TypeError, ValueError, RuntimeError, NotImplementedError)):
         flag_gems.stride(inp, 1.0)
