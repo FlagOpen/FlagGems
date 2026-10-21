@@ -64,7 +64,7 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-      # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung
+      # Robust checkout: probes SSH then HTTP ~15s each, hard-kills a hung
       # fetch, rotates links across rounds (see the action). @master ref so the
       # action resolves from the runner's _actions cache before any checkout.
       # fetch-depth 0 for base...head diffs; ssh-key empty on fork PRs -> SSH
