@@ -55,11 +55,9 @@ def _numeric_values(inp):
     return result.resolve_conj().resolve_neg()
 
 
-def _assert_result_equal(result, reference, *, required_device=None):
+def _assert_result_equal(result, reference, *, required_device):
     # Check the original ABI before observing values on CPU. Layout and alias
     # assertions at each call site still inspect the original device tensors.
-    if required_device is None:
-        required_device = _expected_device()
     assert result.device == required_device
     assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
     assert result.dtype == reference.dtype
@@ -277,13 +275,15 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_all_size_one_dims(shape, value_range, dtype):
+
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -291,13 +291,15 @@ def test_squeeze_all_size_one_dims(shape, value_range, dtype):
 @pytest.mark.parametrize("shape,dim", _DIM_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_dim(shape, dim, value_range, dtype):
+
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp, dim)
     res_out = flag_gems.squeeze(inp, dim)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -305,13 +307,15 @@ def test_squeeze_dim(shape, dim, value_range, dtype):
 @pytest.mark.parametrize("shape,dims", _DIMS_CASES)
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_squeeze_dims(shape, dims, value_range, dtype):
+
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp, dims)
     res_out = flag_gems.squeeze(inp, dims)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
@@ -319,25 +323,29 @@ def test_squeeze_dims(shape, dims, value_range, dtype):
 @pytest.mark.parametrize("kind", _LAYOUTS)
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 def test_squeeze_noncontiguous_layout(kind, dtype):
+
+    required_device = _expected_device()
     inp = _make_layout_input(kind, dtype)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
 @pytest.mark.squeeze
 def test_squeeze_keeps_conjugate_bit():
+
+    required_device = _expected_device()
     inp = _make_input(torch.complex64, (2, 1, 3), _RANGE).conj()
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out.is_conj()
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
@@ -345,6 +353,8 @@ def test_squeeze_keeps_conjugate_bit():
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 def test_squeeze_result_writes_through_to_input(dtype):
+
+    required_device = _expected_device()
     inp = _make_input(dtype, (2, 1, 3), _RANGE)
     ref_inp = _to_reference(inp)
 
@@ -352,12 +362,12 @@ def test_squeeze_result_writes_through_to_input(dtype):
     res_out = flag_gems.squeeze(inp)
 
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _fill_one(res_out)
     _fill_one(ref_out)
 
-    _assert_result_equal(res_out, ref_out)
-    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 @pytest.mark.squeeze
@@ -371,6 +381,8 @@ def test_squeeze_result_writes_through_to_input(dtype):
     ],
 )
 def test_squeeze_backward(shape, dim, dtype):
+
+    required_device = _expected_device()
     inp = _make_input(dtype, shape, _RANGE).requires_grad_(True)
     ref_inp = _to_reference(inp)
 
@@ -381,7 +393,7 @@ def test_squeeze_backward(shape, dim, dtype):
         res_out = flag_gems.squeeze(inp, dim)
         ref_out = torch.ops.aten.squeeze(ref_inp, dim)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
 
     # grad_outputs must match the squeezed shape, not the input shape.
     upstream = _make_input(dtype, tuple(res_out.shape), _RANGE)
@@ -391,25 +403,29 @@ def test_squeeze_backward(shape, dim, dtype):
     )
 
     assert tuple(res_grad.shape) == tuple(inp.shape)
-    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_squeeze_special_values(dtype, scenario):
+
+    required_device = _expected_device()
     inp = _make_special_input(dtype, scenario).reshape(5, 1, 1)
     ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.squeeze(ref_inp)
     res_out = flag_gems.squeeze(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dim", _NEGATIVE_DIM_CASES)
 def test_squeeze_out_of_range_dim_raises(shape, dim):
+
+    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
@@ -419,6 +435,8 @@ def test_squeeze_out_of_range_dim_raises(shape, dim):
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dims", _NEGATIVE_DIMS_CASES)
 def test_squeeze_out_of_range_dims_raises(shape, dims):
+
+    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
@@ -428,6 +446,8 @@ def test_squeeze_out_of_range_dims_raises(shape, dims):
 @pytest.mark.squeeze
 @pytest.mark.parametrize("dims", [[1, 1], [1, -2], [0, 0, 1]])
 def test_squeeze_duplicate_dims_raises(dims):
+
+    required_device = _expected_device()
     inp = _make_input(torch.float32, (6, 1, 8), _RANGE)
 
     with pytest.raises(RuntimeError):
@@ -436,5 +456,7 @@ def test_squeeze_duplicate_dims_raises(dims):
 
 @pytest.mark.squeeze
 def test_squeeze_rejects_non_tensor():
+
+    required_device = _expected_device()
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.squeeze([1, 2, 3])
