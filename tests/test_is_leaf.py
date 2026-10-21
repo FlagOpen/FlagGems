@@ -20,6 +20,127 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    assert not inp.requires_grad and inp.grad_fn is None
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _check_factory_input(inp, factory, dtype):
+    shapes = {
+        _plain: (4, 6),
+        _view: (24,),
+        _transpose: (6, 4),
+        _narrow: (2, 6),
+        _expand: (3, 6),
+        _clone: (4, 6),
+        _cat: (8, 6),
+        _chunk: (2, 6),
+        _detach: (4, 6),
+        _to_contiguous: (6, 4),
+        _grad_source: (4, 6),
+        _grad_view: (24,),
+        _grad_transpose: (6, 4),
+        _grad_expand: (3, 6),
+        _grad_clone: (4, 6),
+        _out_of_place_detach: (24,),
+        _in_place_detach: (4, 6),
+        _data_alias: (24,),
+        _detach_then_requires_grad: (24,),
+        _parameter: (4, 6),
+        _no_grad_view: (24,),
+        _inference_mode_view: (24,),
+        _mul: (4, 6),
+        _sum: (),
+        _grad_cumsum: (4, 6),
+        _grad_pow: (4, 6),
+        _no_grad_mul: (4, 6),
+        _inference_mode_mul: (4, 6),
+    }
+    _check_input(inp, dtype, shapes[factory])
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: utils.bf16_is_supported,
     torch.float64: utils.fp64_is_supported,
@@ -80,11 +201,16 @@ def _snapshot(tensor):
         tensor.requires_grad,
         tensor.grad_fn is not None,
         tensor.is_leaf,
+        tensor.dtype,
+        tensor.device,
+        tensor.layout,
+        tensor.is_conj(),
+        tensor.is_neg(),
     )
 
 
 def _plain(dtype):
-    return tu.make_input(dtype, _STATE_SHAPE, ["-1", "1"])
+    return _make_input(dtype, _STATE_SHAPE, ["-1", "1"])
 
 
 def _view(dtype):
@@ -109,6 +235,11 @@ def _clone(dtype):
 
 def _cat(dtype):
     operand = _plain(dtype)
+    if flag_gems.vendor_name in ("ascend", "hygon") and dtype in _FP8_DTYPES:
+        # Keep the original operand's payload and the original native cat
+        # recipe. These untracked inputs produce an independent leaf result.
+        host = _copy_to(operand, "cpu")
+        return _copy_to(torch.cat([host, host], dim=0), flag_gems.device)
     return torch.cat([operand, operand], dim=0)
 
 
@@ -258,11 +389,6 @@ _DTYPE_RANGE_CASES = [
     pytest.param(
         dtype,
         value_range,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
     )
     for dtype in _IS_LEAF_DTYPES
     for value_range in (
@@ -280,7 +406,7 @@ _DTYPE_RANGE_CASES = [
     _DTYPE_RANGE_CASES,
 )
 def test_is_leaf(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     before = _snapshot(inp)
 
     ref = torch.ops.aten.is_leaf(inp)
@@ -299,17 +425,13 @@ def test_is_leaf(shape, value_range, dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype in _IS_LEAF_DTYPES
     ],
 )
 def test_is_leaf_leaf_state(factory, dtype):
     inp = factory(dtype)
+    _check_factory_input(inp, factory, dtype)
     before = _snapshot(inp)
 
     ref = torch.ops.aten.is_leaf(inp)
@@ -328,17 +450,13 @@ def test_is_leaf_leaf_state(factory, dtype):
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype in _TRACKED_DTYPES
     ],
 )
 def test_is_leaf_graph_state(factory, expected, dtype):
     inp = factory(dtype)
+    _check_factory_input(inp, factory, dtype)
     before = _snapshot(inp)
 
     ref = torch.ops.aten.is_leaf(inp)
@@ -354,7 +472,16 @@ def test_is_leaf_graph_state(factory, expected, dtype):
 @pytest.mark.parametrize("factory,expected", _ARITH_STATES)
 @pytest.mark.parametrize("dtype", _ARITH_DTYPES)
 def test_is_leaf_arithmetic_state(factory, expected, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.complex64
+        and factory in (_sum, _grad_cumsum, _grad_pow)
+    ):
+        pytest.skip(
+            "Kunlunxin lacks complex64 sum/cumsum/pow for these native graph fixtures"
+        )
     inp = factory(dtype)
+    _check_factory_input(inp, factory, dtype)
     before = _snapshot(inp)
 
     ref = torch.ops.aten.is_leaf(inp)
@@ -373,11 +500,6 @@ def test_is_leaf_arithmetic_state(factory, expected, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_IS_LEAF_DTYPES), quick=[]
@@ -387,7 +509,7 @@ def test_is_leaf_arithmetic_state(factory, expected, dtype):
 def test_is_leaf_special_values(dtype, scenario):
     # No kernel reads these payloads; they show the reported state survives
     # unusual stored values.
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     before = _snapshot(inp)
 
     ref = torch.ops.aten.is_leaf(inp)
@@ -402,11 +524,15 @@ def test_is_leaf_special_values(dtype, scenario):
 @pytest.mark.is_leaf
 @pytest.mark.parametrize("dtype", tu.selected_cases(_ARITH_DTYPES, quick=[]))
 def test_is_leaf_backward(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex64:
+        pytest.skip(
+            "Kunlunxin lacks the complex64 sum required by this native backward loss"
+        )
     # is_leaf has no derivative of its own (its output is a Python bool). Its
     # backward contract is that the reported state marks the object autograd
     # accumulates into, so the loss is differentiated with respect to the
     # original leaf, never with respect to the tensor whose state is read.
-    inp = tu.make_input(dtype, _STATE_SHAPE, ["-1", "1"]).requires_grad_(True)
+    inp = _make_input(dtype, _STATE_SHAPE, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp.detach()).requires_grad_(True)
 
     ref_leaf = torch.ops.aten.is_leaf(inp)
