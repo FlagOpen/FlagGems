@@ -101,9 +101,68 @@ BACKWARD_DTYPES = [
 ]
 
 
+def _checked_cpu_input(tensor, dtype, shape):
+    assert tensor.device == torch.device("cpu")
+    assert tensor.dtype == dtype
+    assert tensor.shape == torch.Size(shape)
+    return tensor
+
+
+def _make_cpu_input(dtype, shape, value_range):
+    # These APIs are host-only: accelerator factory capabilities must not
+    # narrow the declared CPU dtype or prevent a native CPU case from running.
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if dtype == torch.bool:
+        result = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            # Older CPU stacks can encode FP8 but cannot fill FP8 directly.
+            fill_dtype = (
+                torch.float32
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else dtype
+            )
+            result = torch.full(shape, low, dtype=fill_dtype, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    return _checked_cpu_input(result, dtype, shape)
+
+
+def _make_cpu_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    result = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(
+        dtype
+    )
+    return _checked_cpu_input(result, dtype, (5,))
+
+
+def _assert_result_equal(result, reference):
+    # Check the host ABI before the shared CPU-reference comparator can move
+    # a wrongly placed candidate output back to CPU.
+    assert result.device == reference.device == torch.device("cpu")
+    tu.assert_result_equal(result, reference)
+
+
+def _assert_result_close(result, reference):
+    assert result.device == reference.device == torch.device("cpu")
+    tu.assert_result_close(result, reference)
+
+
 def _cpu_input(dtype, shape, value_range):
     """A native CPU operand: the kernel has no accelerator registration."""
-    return tu.make_input(dtype, shape, value_range).cpu()
+    return _make_cpu_input(dtype, shape, value_range).cpu()
 
 
 def _out_storage(layout):
@@ -111,7 +170,7 @@ def _out_storage(layout):
     size = _OUT_SIZE + 4 if layout == "offset" else _OUT_SIZE
     if layout == "strided":
         size = 2 * _OUT_SIZE
-    return torch.full((size,), _OUT_FILL, dtype=torch.float32)
+    return torch.full((size,), _OUT_FILL, dtype=torch.float32, device="cpu")
 
 
 def _out_view(layout, storage):
@@ -136,7 +195,7 @@ def test__test_optional_floatlist_identity(shape, value_range, dtype):
 
     # The identity form hands the operand tensor back unchanged.
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_floatlist
@@ -156,7 +215,7 @@ def test__test_optional_floatlist_identity_call_forms(shape, use_keyword):
         res_out = flag_gems._test_optional_floatlist(inp, None)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_floatlist
@@ -176,8 +235,9 @@ def test__test_optional_floatlist_addends(shape, value_range, addend_case):
 
     # The list form returns a fresh buffer and leaves the operand untouched.
     assert res_out is not inp
-    tu.assert_result_close(res_out, ref_out)
-    tu.assert_result_equal(inp, snapshot)
+    assert not torch._C._is_alias_of(res_out, inp)
+    _assert_result_close(res_out, ref_out)
+    _assert_result_equal(inp, snapshot)
 
 
 @pytest.mark.underscore_test_optional_floatlist
@@ -189,8 +249,8 @@ def test__test_optional_floatlist_elementwise_addends(addends):
     ref_out = torch.ops.aten._test_optional_floatlist(ref_inp, addends)
     res_out = flag_gems._test_optional_floatlist(inp, addends)
 
-    tu.assert_result_close(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_close(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     assert not torch._C._is_alias_of(res_out, inp)
 
 
@@ -219,9 +279,9 @@ def test__test_optional_floatlist_out_buffer(layout, with_addends):
     expected_view.copy_(ref_out)
 
     assert res_out is res_buffer
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(res_storage, ref_storage)
-    tu.assert_result_equal(res_storage, expected_storage)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_storage, ref_storage)
+    _assert_result_equal(res_storage, expected_storage)
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
@@ -235,8 +295,8 @@ def test__test_optional_floatlist_out_resize(with_addends):
     inp = _cpu_input(torch.float32, (_OUT_SIZE,), ("-1", "1"))
     ref_inp = tu.to_reference(inp)
     addends = [1.5, -0.5, 2.0, 0.0] if with_addends else None
-    ref_buffer = torch.empty(0, dtype=torch.float32)
-    res_buffer = torch.empty(0, dtype=torch.float32)
+    ref_buffer = torch.empty(0, dtype=torch.float32, device="cpu")
+    res_buffer = torch.empty(0, dtype=torch.float32, device="cpu")
 
     ref_out = torch.ops.aten._test_optional_floatlist.out(
         ref_inp, addends, out=ref_buffer
@@ -246,7 +306,7 @@ def test__test_optional_floatlist_out_resize(with_addends):
     assert res_out is res_buffer
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_floatlist
@@ -255,27 +315,27 @@ def test__test_optional_floatlist_special_values(dtype, scenario):
     # NaN / Inf / mixed payloads for every supported floating dtype, compared as
     # whole outputs; the shared helper widens FP8 only after the candidate ran
     # and keeps matching NaNs equal.
-    inp = tu.make_special_input(dtype, scenario).cpu()
+    inp = _make_cpu_special_input(dtype, scenario).cpu()
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_floatlist(ref_inp, None)
     res_out = flag_gems._test_optional_floatlist(inp, None)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_floatlist
 @pytest.mark.parametrize("scenario", [case[1] for case in ADDENDS_SPECIAL_CASES])
 def test__test_optional_floatlist_addends_special_values(scenario):
-    inp = tu.make_special_input(torch.float32, scenario).cpu()
+    inp = _make_cpu_special_input(torch.float32, scenario).cpu()
     ref_inp = tu.to_reference(inp)
     addends = [0.5] * inp.numel()
 
     ref_out = torch.ops.aten._test_optional_floatlist(ref_inp, addends)
     res_out = flag_gems._test_optional_floatlist(inp, addends)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_floatlist
@@ -283,13 +343,13 @@ def test__test_optional_floatlist_addends_special_values(scenario):
 def test_test_optional_floatlist_rejects_backward(dtype):
     # A non-leaf view reaches the operator's missing derivative; a leaf identity
     # would make autograd stop at the output and never exercise this contract.
-    base = tu.make_input(dtype, (16,), ["-1", "1"]).cpu().requires_grad_(True)
+    base = _make_cpu_input(dtype, (16,), ["-1", "1"]).cpu().requires_grad_(True)
     ref_base = tu.to_reference(base.detach()).requires_grad_(True)
     inp, ref_inp = base[::2], ref_base[::2]
-    upstream = tu.make_input(dtype, inp.shape, ["-1", "1"]).cpu()
+    upstream = _make_cpu_input(dtype, inp.shape, ["-1", "1"]).cpu()
     ref_out = torch.ops.aten._test_optional_floatlist(ref_inp, None)
     res_out = flag_gems._test_optional_floatlist(inp, None)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     with pytest.raises(
         RuntimeError,
         match="derivative for aten::_test_optional_floatlist is not implemented",
@@ -353,12 +413,12 @@ def test__test_optional_floatlist_out_rejects_buffer_dtype(with_addends):
         # The accumulator is float32, so a float16 buffer is rejected.
         values = _cpu_input(torch.float32, (3,), ("-1", "1"))
         addends = [0.0] * 3
-        buffer = torch.empty(3, dtype=torch.float16)
+        buffer = torch.empty(3, dtype=torch.float16, device="cpu")
     else:
         # The identity path requires the buffer dtype to match the operand.
         values = _cpu_input(torch.float16, (3,), ("-1", "1"))
         addends = None
-        buffer = torch.empty(3, dtype=torch.float32)
+        buffer = torch.empty(3, dtype=torch.float32, device="cpu")
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_floatlist(values, addends, out=buffer)
 
