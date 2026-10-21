@@ -642,7 +642,9 @@ def _launch_group(
         values = ptrs + [t.data_ptr() for t in dsts] + numels
     meta = _device_meta(values, device)
 
-    grid = (nt, triton.cdiv(max_numel, block))
+    # ``triton.cdiv`` is a decorated helper and costs ~0.9us at this size;
+    # plain ints give the same ceiling division.
+    grid = (nt, -(-max_numel // block))
     if is_complex:
         real_dtype = _COMPLEX_TO_REAL[in_dtype]
         acc = tl.float32 if real_dtype is not torch.float64 else tl.float64
@@ -2354,7 +2356,7 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
-    grid = (nt, triton.cdiv(max_numel, block))
+    grid = (nt, -(-max_numel // block))
     _launch_ternary_kernel(
         grid,
         nt,
