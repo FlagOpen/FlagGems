@@ -90,8 +90,10 @@ def _reduction_mid_block_size(mid_size):
     return min(triton.next_power_of_2(mid_size), _ASCEND_SUM_MAX_BLOCK_SIZE)
 
 
-def _reduction_grid_size(mid_size):
-    return min(mid_size, _ASCEND_MAX_CORE_DIM)
+def _reduction_grid_size(num_tiles):
+    # Bound the total launch size, including flattened multidimensional grids.
+    # Kernels traverse the remaining logical tiles with a grid-stride loop.
+    return min(num_tiles, _ASCEND_MAX_CORE_DIM)
 
 
 def sum(inp, *, dtype=None):
@@ -164,32 +166,30 @@ def sum_dim_kernel_non_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
-    pid_k = ext.program_id(1)
+    # Ascend flattens grid dimensions into coreDim. Flatten explicitly before
+    # capping the launch so even M * ceil(K / TILE_K) > 65535 stays valid.
+    num_k_tiles = tl.cdiv(K, TILE_K)
+    for pid in range(ext.program_id(0), M * num_k_tiles, ext.num_programs(0)):
+        pid_m = pid // num_k_tiles
+        pid_k = pid % num_k_tiles
+        k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
-    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)[:, None]
-        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
-        mask = (n_offsets < N) & (k_offsets < K)
-        input_ptrs = input_ptr + inp_offset
-        inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
-        out = tl.sum(inp, axis=0, keep_dims=True)
-        out_offset = pid_m * K + k_offsets
-        output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out, mask=k_offsets < K)
-    else:
-        sum = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
-
-        # specialization does not improve performance inn this example, as tested
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
-            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+        if ONE_TILE_PER_CTA:
+            n_offsets = tl.arange(0, TILE_N)[:, None]
+            inp_offset = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
-            sum += inp
-        out = tl.sum(sum, axis=0, keep_dims=True)
+            inp = tl.load(input_ptr + inp_offset, mask=mask, other=0).to(cdtype)
+            out = tl.sum(inp, axis=0, keep_dims=True)
+        else:
+            # Reset the accumulator for every logical output tile.
+            sum = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
+            for start_n in range(0, N, TILE_N):
+                n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+                inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+                mask = (n_offsets < N) & (k_offsets < K)
+                inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
+                sum += inp
+            out = tl.sum(sum, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
         tl.store(output_ptrs, out, mask=k_offsets < K)
@@ -213,34 +213,23 @@ def sum_dim_kernel_inner(
     else:
         cdtype = input_ptr.dtype.element_ty
 
-    pid_m = ext.program_id(0)
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        inp_offset = pid_m * N + n_offsets
-        input_ptrs = input_ptr + inp_offset
-        mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
-        out = tl.sum(inp, axis=0)
-        out_offset = pid_m
-        output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out)
-    else:
-        sum = tl.zeros(
-            [
-                TILE_N,
-            ],
-            dtype=cdtype,
-        )
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            inp_offsets = pid_m * N + n_offsets
+    for pid_m in range(ext.program_id(0), M, ext.num_programs(0)):
+        if ONE_TILE_PER_CTA:
+            n_offsets = tl.arange(0, TILE_N)
+            inp_offset = pid_m * N + n_offsets
             mask = n_offsets < N
-            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
-            sum += inp
-        out = tl.sum(sum, axis=0)
-        out_offset = pid_m
-        output_ptrs = output_ptr + out_offset
-        tl.store(output_ptrs, out)
+            inp = tl.load(input_ptr + inp_offset, mask=mask, other=0).to(cdtype)
+            out = tl.sum(inp, axis=0)
+        else:
+            sum = tl.zeros([TILE_N], dtype=cdtype)
+            for start_n in range(0, N, TILE_N):
+                n_offsets = start_n + tl.arange(0, TILE_N)
+                inp_offsets = pid_m * N + n_offsets
+                mask = n_offsets < N
+                inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0).to(cdtype)
+                sum += inp
+            out = tl.sum(sum, axis=0)
+        tl.store(output_ptr + pid_m, out)
 
 
 @libentry()
@@ -264,22 +253,19 @@ def sum_dim_kernel(
     else:
         cdtype = inp.dtype.element_ty
 
-    # Map the program id to the row of inp it should compute.
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+    for tile in range(ext.program_id(0), tl.cdiv(M, BLOCK_M), ext.num_programs(0)):
+        pid = tile * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        row_mask = pid < M
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask & col_mask
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
-        a = tl.load(inp + cols, mask, other=0).to(cdtype)
-        _sum += a
-    sum = tl.sum(_sum, axis=1)[:, None]
-    tl.store(out, sum, row_mask)
+            a = tl.load(inp + pid * N + cols, mask, other=0).to(cdtype)
+            _sum += a
+        sum = tl.sum(_sum, axis=1)[:, None]
+        tl.store(out + pid, sum, row_mask)
 
 
 def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
@@ -325,7 +311,9 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
 
         with torch_device_fn.device(inp.device):
             if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                grid = lambda meta: (
+                    _reduction_grid_size(M * triton.cdiv(K, meta["TILE_K"])),
+                )
                 sum_dim_kernel_non_inner[grid](
                     out,
                     inp,
@@ -334,7 +322,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
                     K,
                 )
             else:
-                grid = (M, 1, 1)
+                grid = (_reduction_grid_size(M),)
                 sum_dim_kernel_inner[grid](
                     out,
                     inp,
@@ -361,7 +349,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         else:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        grid = lambda meta: (_reduction_grid_size(triton.cdiv(M, meta["BLOCK_M"])),)
         with torch_device_fn.device(inp.device):
             sum_dim_kernel[grid](inp, out, M, N)
         if not keepdim and not _out_provided:
@@ -403,7 +391,10 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
                     index_to_remove = d % inp.ndim
                     out_shape.pop(index_to_remove)
         out = torch.empty(out_shape, dtype=dtype, device=inp.device)
-        zero_(out)
+        # Reducing an empty tensor can also produce an empty output. There is
+        # no data to initialize, and a zero-program launch is invalid on Ascend.
+        if out.numel() > 0:
+            zero_(out)
         return out
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype)
 
