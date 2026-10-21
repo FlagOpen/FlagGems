@@ -2302,8 +2302,19 @@ def _launch_scalar_group(
     max_numel = max(numels)
     if max_numel == 0:
         return
-    block = _pick_block(numels)
     nt = len(srcs)
+    # The same pair that keys the binary grid memo keys this one: both paths
+    # derive their block from ``_pick_block(numels)`` and their second
+    # dimension from a ceiling division of the same two numbers, so the entry
+    # is interchangeable.
+    cached_grid = _GRID_CACHE.get((nt, max_numel))
+    if cached_grid is None:
+        block = _pick_block(numels)
+        cached_grid = (block, (nt, -(-max_numel // block)))
+        if len(_GRID_CACHE) >= _GRID_CACHE_LIMIT:
+            _GRID_CACHE.pop(next(iter(_GRID_CACHE)))
+        _GRID_CACHE[(nt, max_numel)] = cached_grid
+    block, grid = cached_grid
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
     ptrs = [t.data_ptr() for t in srcs]
@@ -2333,9 +2344,6 @@ def _launch_scalar_group(
             device, non_blocking=True
         )
         scalar_value = 0.0
-    # ``triton.cdiv`` is a decorated helper and is far from free at this size;
-    # plain ints give the same ceiling division.
-    grid = (nt, -(-max_numel // block))
     kernel = (
         foreach_binary_scalar_kernel_p4
         if _pack_ok((in_dt, out_dt), max_numel, values)
