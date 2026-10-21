@@ -60,8 +60,6 @@ from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
 from ._foreach_math import (
-    _foreach_acos,
-    _foreach_acos_,
     _foreach_asin,
     _foreach_asin_,
     _foreach_lgamma,
@@ -83,6 +81,7 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -352,6 +351,10 @@ from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
+from .foreach_acos import _foreach_acos, _foreach_acos_  # noqa: F401
+from .foreach_div import _foreach_div__List, _foreach_div_List  # noqa: F401
+from .foreach_erf import _foreach_erf, _foreach_erf_  # noqa: F401
+from .foreach_log1p import _foreach_log1p, _foreach_log1p_  # noqa: F401
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -849,12 +852,18 @@ __all__ = [
     "_foreach_asin_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_div__List",
+    "_foreach_div_List",
+    "_foreach_erf",
+    "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lgamma",
     "_foreach_lgamma_",
+    "_foreach_log1p",
+    "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_mul__List",
@@ -864,6 +873,8 @@ __all__ = [
     "_foreach_pow_List",
     "_foreach_round",
     "_foreach_round_",
+    "_foreach_rsqrt",
+    "_foreach_rsqrt_",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign",
