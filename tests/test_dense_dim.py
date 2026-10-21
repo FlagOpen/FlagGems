@@ -20,6 +20,129 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
+def _batch_values(values, count):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and values.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        host = _copy_to(values, "cpu").expand(count, -1).contiguous()
+        return _copy_to(host, values.device)
+    return values.expand(count, -1).contiguous()
+
+
+def _to_reference(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and utils.TO_CPU
+        and inp.device.type != "cpu"
+        and inp.layout == torch.strided
+        and inp.dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and not inp.is_contiguous()
+    ):
+        return _copy_to(inp, "cpu")
+    return tu.to_reference(inp)
+
+
 # dense_dim counts the trailing dense dimensions of a sparse tensor,
 # or the full rank of a strided tensor.
 _DTYPES = (
@@ -100,7 +223,7 @@ def _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range, seed=0):
             for dim in sparse_shape
         ]
     )
-    values = tu.make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
+    values = _make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
     size = tuple(sparse_shape) + tuple(dense_shape)
     return torch.sparse_coo_tensor(indices, values, size, device=flag_gems.device)
 
@@ -115,13 +238,13 @@ def _make_csr(shape, nnz, dtype, value_range):
     counts[: nnz % rows] += 1
     crow_indices = torch.cat([torch.zeros(1, dtype=torch.long), counts.cumsum(0)])
     col_indices = torch.arange(nnz) - torch.repeat_interleave(crow_indices[:-1], counts)
-    values = tu.make_input(dtype, (nnz,), value_range)
+    values = _make_input(dtype, (nnz,), value_range)
     if len(shape) == 3:
         # Batched CSR: every batch stores the same nnz entries (shared
         # crow/col pattern), so the logical rank is 3 and dense_dim stays 0.
         crow_indices = crow_indices.expand(shape[0], -1).contiguous()
         col_indices = col_indices.expand(shape[0], -1).contiguous()
-        values = values.expand(shape[0], -1).contiguous()
+        values = _batch_values(values, shape[0])
     return torch.sparse_csr_tensor(
         crow_indices, col_indices, values, shape, device=flag_gems.device
     )
@@ -157,8 +280,8 @@ def _assert_result(res_out, ref_out):
 @pytest.mark.parametrize("shape", _DENSE_SHAPES)
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_dense_dim_dense(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, ["-1", "1"])
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -170,9 +293,9 @@ def test_dense_dim_dense(shape, dtype):
 @pytest.mark.parametrize("shape", [(0,), (0, 5), (2, 0, 3)])
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_dense_dim_empty_dense(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     assert inp.numel() == 0
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -197,8 +320,8 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_dense_dim_dense_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -209,10 +332,10 @@ def test_dense_dim_dense_value_ranges(shape, value_range, dtype):
 @pytest.mark.dense_dim
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_dense_dim_noncontiguous_dense(dtype):
-    base = tu.make_input(dtype, (4, 5, 6), ["-1", "1"])
+    base = _make_input(dtype, (4, 5, 6), ["-1", "1"])
     inp = base.transpose(0, 2)
     assert not inp.is_contiguous()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -226,7 +349,7 @@ def test_dense_dim_noncontiguous_dense(dtype):
 def test_dense_dim_sparse_coo(case, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -245,7 +368,7 @@ def test_dense_dim_sparse_coo(case, dtype):
 def test_dense_dim_sparse_coo_value_ranges(case, value_range, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -259,7 +382,7 @@ def test_dense_dim_sparse_coo_value_ranges(case, value_range, dtype):
 def test_dense_dim_sparse_csr(case, dtype):
     shape, nnz = case
     inp = _make_csr(shape, nnz, dtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -277,7 +400,7 @@ def test_dense_dim_sparse_csr(case, dtype):
 def test_dense_dim_sparse_csr_value_ranges(case, value_range, dtype):
     shape, nnz = case
     inp = _make_csr(shape, nnz, dtype, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -298,7 +421,7 @@ def test_dense_dim_empty_coo(dtype):
     inp = torch.sparse_coo_tensor(
         indices, values, sparse_shape + dense_shape, device=flag_gems.device
     )
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -311,7 +434,7 @@ def test_dense_dim_empty_coo(dtype):
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_dense_dim_empty_csr(shape, dtype):
     inp = _make_empty_csr(shape, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -324,12 +447,12 @@ def test_dense_dim_empty_csr(shape, dtype):
 def test_dense_dim_uncoalesced_coo(dtype):
     sparse_shape, dense_shape = (2, 2), (3,)
     indices = torch.tensor([[0, 0, 1, 1, 0], [0, 1, 0, 1, 0]], dtype=torch.long)
-    values = tu.make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
+    values = _make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
     inp = torch.sparse_coo_tensor(
         indices, values, sparse_shape + dense_shape, device=flag_gems.device
     )
     assert not inp.is_coalesced()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -342,8 +465,8 @@ def test_dense_dim_uncoalesced_coo(dtype):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
 )
 def test_dense_dim_nan_inf_dense(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).repeat(2)[:6].reshape(2, 3)
-    ref_inp = tu.to_reference(inp)
+    inp = _repeat(_make_special_input(dtype, scenario), 2)[:6].reshape(2, 3)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -356,10 +479,10 @@ def test_dense_dim_nan_inf_dense(dtype, scenario):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
 )
 def test_dense_dim_nan_inf_coo(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     indices = torch.tensor([[0, 1, 2, 3, 4, 5]], dtype=torch.long)
     inp = torch.sparse_coo_tensor(indices, values, (6,), device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
@@ -372,13 +495,13 @@ def test_dense_dim_nan_inf_coo(dtype, scenario):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
 )
 def test_dense_dim_nan_inf_csr(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     crow_indices = torch.tensor([0, 3, 4, 6], dtype=torch.long)
     col_indices = torch.tensor([0, 1, 2, 1, 0, 2], dtype=torch.long)
     inp = torch.sparse_csr_tensor(
         crow_indices, col_indices, values, (3, 4), device=flag_gems.device
     )
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten.dense_dim(ref_inp)
     res_out = flag_gems.dense_dim(inp)
