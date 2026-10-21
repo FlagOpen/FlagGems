@@ -1102,6 +1102,15 @@ def _launch_executor_kernel(
 # ---------------------------------------------------------------------------
 
 
+# Bound-method handles for the per-tensor walks.  ``[NUMEL(t) for t in xs]``
+# binds the method once instead of doing an attribute lookup on every tensor:
+# measured 7.8us -> 7.3us over 128 tensors, and the same 0.13us at length 1.
+# (``list(map(NUMEL, xs))`` is better still at 128 but costs 0.06us more at
+# length 1, and the length-1 rows are the ones with the least to spare.)
+_NUMEL = torch.Tensor.numel
+_DATA_PTR = torch.Tensor.data_ptr
+
+
 def _launch_group(
     srcs: List[torch.Tensor],
     dsts: List[torch.Tensor],
@@ -1110,7 +1119,7 @@ def _launch_group(
     device: Any,
     is_complex: bool,
 ) -> None:
-    numels = [t.numel() for t in srcs]
+    numels = [_NUMEL(t) for t in srcs]
     max_numel = max(numels)
     if max_numel == 0:
         return
@@ -1131,11 +1140,11 @@ def _launch_group(
     # calls).  Making it safe needs a CUDA event per call, and allocating plus
     # recording that event costs more than the pageable copy saves: end to end it
     # measured 93us per call against 46us for this version.
-    ptrs = [t.data_ptr() for t in srcs]
+    ptrs = [_DATA_PTR(t) for t in srcs]
     if dsts is srcs:
         values = ptrs + ptrs + numels
     else:
-        values = ptrs + [t.data_ptr() for t in dsts] + numels
+        values = ptrs + [_DATA_PTR(t) for t in dsts] + numels
     meta = _device_meta(values, device)
 
     # ``triton.cdiv`` is a decorated helper and costs ~0.9us at this size;
@@ -1283,7 +1292,16 @@ def foreach_unary(
             uniform = len(_GROUP_TENSORS([tensors], False)) == 1
         except Exception:
             uniform = False  # let the general loop below produce the error
-        if uniform and all(map(is_flat_addressable, tensors)):
+        # ``is_flat_addressable`` answers the common case on its first line but
+        # costs a Python call frame per tensor.  Asking that same first line in
+        # one C-level ``map`` measured 11.2us -> 6.5us over 128 tensors, and a
+        # False just falls through to the full predicate, so the boolean is
+        # unchanged.  ``_IS_CONTIGUOUS`` is the module-level unbound descriptor
+        # defined with the grouping helpers below.
+        if uniform and (
+            all(map(_IS_CONTIGUOUS, tensors))
+            or all(map(is_flat_addressable, tensors))
+        ):
             if inplace:
                 # Flat implies non-overlapping and dense, so the overlap probe
                 # cannot change the answer and no staging copy is needed.
