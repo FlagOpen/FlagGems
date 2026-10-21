@@ -26,13 +26,178 @@ from . import conftest as cfg
 from . import test_utils as tu
 
 
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_storage_view(inp):
+    # Copy physical bytes, retaining the original geometry before decoding.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    return torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+
+
+def _numeric_values(inp):
+    result = _cpu_storage_view(inp)
+    # Decode FP8 before resolving lazy bits: CPU FP8 arithmetic is limited.
+    if result.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
+def _to_reference(inp):
+    if not cfg.TO_CPU:
+        return tu.to_reference(inp)
+    result = _cpu_storage_view(inp)
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.requires_grad_(inp.requires_grad)
+
+
+def _assert_dense_equal(result, reference):
+    assert result.device == _expected_device()
+    assert reference.device == (torch.device("cpu") if cfg.TO_CPU else result.device)
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    torch.testing.assert_close(
+        _numeric_values(result),
+        _numeric_values(reference),
+        rtol=0,
+        atol=0,
+        equal_nan=True,
+    )
+
+
+def _snapshot(inp):
+    storage = inp.untyped_storage()
+    identity = (
+        storage._cdata,
+        storage.data_ptr(),
+        storage.nbytes(),
+        inp.device,
+        inp.dtype,
+        inp.shape,
+        inp.stride(),
+        inp.storage_offset(),
+        inp.is_neg(),
+        inp.is_conj(),
+        inp.requires_grad,
+    )
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(storage, 0, (storage.nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    return identity, raw
+
+
+def _unchanged(inp, before):
+    identity, raw = _snapshot(inp)
+    assert identity == before[0]
+    torch.testing.assert_close(raw, before[1], rtol=0, atol=0)
+
+
+def _reference(buffer, sizes, strides, offsets):
+    if flag_gems.vendor_name in ("hygon", "kunlunxin"):
+        total = sum(torch.Size(row).numel() for row in sizes.tolist())
+        if buffer.untyped_storage().nbytes() // buffer.element_size() != total:
+            pytest.skip(
+                "Native nested views require physical buffer size equal to summed component sizes"
+            )
+    return torch.ops.aten._nested_view_from_buffer(buffer, sizes, strides, offsets)
+
+
+def _candidate(buffer, sizes, strides, offsets):
+    if not isinstance(buffer, torch.Tensor) or buffer.is_nested:
+        return flag_gems._nested_view_from_buffer(buffer, sizes, strides, offsets)
+    inputs = [buffer] + [
+        x for x in (sizes, strides, offsets) if isinstance(x, torch.Tensor)
+    ]
+    snapshots = [_snapshot(x) for x in inputs]
+    try:
+        result = flag_gems._nested_view_from_buffer(buffer, sizes, strides, offsets)
+    finally:
+        for value, before in zip(inputs, snapshots):
+            _unchanged(value, before)
+    assert isinstance(result, torch.Tensor) and result.is_nested
+    assert result.layout == torch.strided and result.device == buffer.device
+    assert result.dtype == buffer.dtype and result.requires_grad == buffer.requires_grad
+    # Enforce zero-copy on each call, including zero-element components.
+    for component in result.unbind():
+        assert torch._C._is_alias_of(component, buffer)
+    return result
+
+
 def _metadata(sizes, strides, offsets):
     # The native path reads the metadata on the host, so these tensors stay on
     # CPU while the buffer follows flag_gems.device.
     return (
-        torch.tensor(sizes, dtype=torch.int64),
-        torch.tensor(strides, dtype=torch.int64),
-        torch.tensor(offsets, dtype=torch.int64),
+        torch.tensor(sizes, dtype=torch.int64, device="cpu"),
+        torch.tensor(strides, dtype=torch.int64, device="cpu"),
+        torch.tensor(offsets, dtype=torch.int64, device="cpu"),
     )
 
 
@@ -116,6 +281,14 @@ BACKWARD_DTYPES = (
 
 
 def _assert_components(res_out, ref_out, sizes, strides):
+    assert isinstance(res_out, torch.Tensor) and res_out.is_nested
+    assert isinstance(ref_out, torch.Tensor) and ref_out.is_nested
+    assert res_out.device == _expected_device()
+    assert ref_out.device == (torch.device("cpu") if cfg.TO_CPU else res_out.device)
+    assert (
+        res_out.dtype == ref_out.dtype
+        and res_out.layout == ref_out.layout == torch.strided
+    )
     # A legacy nested tensor rejects .shape/.size(), so the requested layout is
     # checked per component. Shape and stride come straight from the metadata;
     # storage_offset is compared against the native reference because the
@@ -129,7 +302,7 @@ def _assert_components(res_out, ref_out, sizes, strides):
         assert list(res_component.shape) == list(size)
         assert list(res_component.stride()) == list(stride)
         assert res_component.storage_offset() == ref_component.storage_offset()
-        tu.assert_result_equal(res_component, ref_component)
+        _assert_dense_equal(res_component, ref_component)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -150,16 +323,10 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_nested_view_from_buffer(shape, value_range, dtype):
     sizes, strides, offsets = _packed_metadata(shape)
-    buffer = tu.make_input(
-        dtype, (_buffer_length(sizes, strides, offsets),), value_range
-    )
+    buffer = _make_input(dtype, (_buffer_length(sizes, strides, offsets),), value_range)
 
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        tu.to_reference(buffer), *_metadata(sizes, strides, offsets)
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, *_metadata(sizes, strides, offsets)
-    )
+    ref_out = _reference(_to_reference(buffer), *_metadata(sizes, strides, offsets))
+    res_out = _candidate(buffer, *_metadata(sizes, strides, offsets))
 
     assert res_out.is_nested
     assert res_out.dtype == dtype
@@ -179,16 +346,12 @@ def test_nested_view_from_buffer_layout(layout):
     # dtype coverage lives in the grid test; these rows vary the metadata to
     # component-view mapping.
     _, sizes, strides, offsets = layout
-    buffer = tu.make_input(
+    buffer = _make_input(
         torch.float32, (_buffer_length(sizes, strides, offsets),), ["-1", "1"]
     )
 
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        tu.to_reference(buffer), *_metadata(sizes, strides, offsets)
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, *_metadata(sizes, strides, offsets)
-    )
+    ref_out = _reference(_to_reference(buffer), *_metadata(sizes, strides, offsets))
+    res_out = _candidate(buffer, *_metadata(sizes, strides, offsets))
 
     _assert_components(res_out, ref_out, sizes, strides)
 
@@ -198,16 +361,12 @@ def test_nested_view_from_buffer_buffer_view():
     # The metadata indexes the buffer's storage: a buffer view's own
     # storage_offset and stride do not shift the components (probed natively),
     # so the candidate must reproduce the reference components exactly.
-    big = tu.make_input(torch.float32, (16,), ["-1", "1"])
+    big = _make_input(torch.float32, (16,), ["-1", "1"])
     buffer = big[2:12:2]
     sizes, strides, offsets = [[2], [3]], [[1], [1]], [0, 2]
 
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        tu.to_reference(buffer), *_metadata(sizes, strides, offsets)
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, *_metadata(sizes, strides, offsets)
-    )
+    ref_out = _reference(_to_reference(buffer), *_metadata(sizes, strides, offsets))
+    res_out = _candidate(buffer, *_metadata(sizes, strides, offsets))
 
     assert (
         res_out.values().untyped_storage().data_ptr()
@@ -221,15 +380,11 @@ def test_nested_view_from_buffer_buffer_view():
 def test_nested_view_from_buffer_special_values(dtype, scenario):
     # Re-indexing storage must preserve NaN/Inf payloads bit for bit; the shared
     # generator owns the representable scenario set per dtype.
-    buffer = tu.make_special_input(dtype, scenario)
+    buffer = _make_special_input(dtype, scenario)
     sizes, strides, offsets = [[2], [3]], [[1], [1]], [0, 2]
 
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        tu.to_reference(buffer), *_metadata(sizes, strides, offsets)
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, *_metadata(sizes, strides, offsets)
-    )
+    ref_out = _reference(_to_reference(buffer), *_metadata(sizes, strides, offsets))
+    res_out = _candidate(buffer, *_metadata(sizes, strides, offsets))
 
     _assert_components(res_out, ref_out, sizes, strides)
 
@@ -240,35 +395,27 @@ def test_nested_view_from_buffer_backward(dtype):
     # Offsets [0, 4] tile the whole buffer: with gapped metadata the native
     # backward returns a gradient sized by the covered span, not by the buffer.
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
-    inp = tu.make_input(dtype, (8,), ["-1", "1"]).requires_grad_()
-    ref_input = tu.to_reference(inp)
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        ref_input, *_metadata(sizes, strides, offsets)
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        inp, *_metadata(sizes, strides, offsets)
-    )
-    upstream = [tu.make_input(dtype, (4,), ["-1", "1"]) for _ in sizes]
+    inp = _make_input(dtype, (8,), ["-1", "1"]).requires_grad_()
+    ref_input = _to_reference(inp)
+    ref_out = _reference(ref_input, *_metadata(sizes, strides, offsets))
+    res_out = _candidate(inp, *_metadata(sizes, strides, offsets))
+    upstream = [_make_input(dtype, (4,), ["-1", "1"]) for _ in sizes]
     ref_grad = torch.autograd.grad(
-        ref_out.unbind(), ref_input, [tu.to_reference(g) for g in upstream]
+        ref_out.unbind(), ref_input, [_to_reference(g) for g in upstream]
     )[0]
     res_grad = torch.autograd.grad(res_out.unbind(), inp, upstream)[0]
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_dense_equal(res_grad, ref_grad)
 
 
 @pytest.mark.underscore_nested_view_from_buffer
 def test_nested_view_from_buffer_aliases():
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
-    buffer = tu.make_input(torch.float32, (8,), ["-1", "1"])
+    buffer = _make_input(torch.float32, (8,), ["-1", "1"])
     ref_sizes, ref_strides, ref_offsets = _metadata(sizes, strides, offsets)
     res_sizes, res_strides, res_offsets = _metadata(sizes, strides, offsets)
 
-    ref_out = torch.ops.aten._nested_view_from_buffer(
-        tu.to_reference(buffer), ref_sizes, ref_strides, ref_offsets
-    )
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, res_sizes, res_strides, res_offsets
-    )
+    ref_out = _reference(_to_reference(buffer), ref_sizes, ref_strides, ref_offsets)
+    res_out = _candidate(buffer, res_sizes, res_strides, res_offsets)
 
     # Contiguous metadata is stored as passed in, not re-created: identity, not
     # just equal values, on both the native and the candidate path.
@@ -297,18 +444,24 @@ def test_nested_view_from_buffer_aliases():
 @pytest.mark.underscore_nested_view_from_buffer
 def test_nested_view_from_buffer_mutation():
     sizes, strides, offsets = [[4], [4]], [[1], [1]], [0, 4]
-    buffer = tu.make_input(torch.float32, (8,), ["-1", "1"])
-    untouched = buffer[:4].clone()
+    buffer = _make_input(torch.float32, (8,), ["-1", "1"])
+    untouched = _to_reference(buffer[:4])
 
-    res_out = flag_gems._nested_view_from_buffer(
-        buffer, *_metadata(sizes, strides, offsets)
-    )
+    res_out = _candidate(buffer, *_metadata(sizes, strides, offsets))
     res_out.unbind()[1].fill_(-3.5)
 
     # A component write lands in the shared buffer storage and leaves the rest
     # of the buffer alone.
-    tu.assert_result_equal(buffer[:4], untouched)
-    tu.assert_result_equal(buffer[4:], torch.full_like(buffer[4:], -3.5))
+    _assert_dense_equal(buffer[:4], untouched)
+    _assert_dense_equal(
+        buffer[4:],
+        torch.full(
+            (4,),
+            -3.5,
+            dtype=buffer.dtype,
+            device="cpu" if cfg.TO_CPU else buffer.device,
+        ),
+    )
 
 
 # (label, expected candidate exception, buffer kind, metadata dtype, component
@@ -402,7 +555,7 @@ def _invalid_inputs(row):
     def as_metadata(values):
         # The offsets_not_tensor row passes a non-tensor on purpose.
         if isinstance(values, (list, tuple)):
-            return torch.tensor(values, dtype=metadata_dtype)
+            return torch.tensor(values, dtype=metadata_dtype, device="cpu")
         return values
 
     return buffer, as_metadata(sizes), as_metadata(strides), as_metadata(offsets)
@@ -413,4 +566,4 @@ def _invalid_inputs(row):
 def test_nested_view_from_buffer_invalid_input(row):
     buffer, sizes, strides, offsets = _invalid_inputs(row)
     with pytest.raises(row[1]):
-        flag_gems._nested_view_from_buffer(buffer, sizes, strides, offsets)
+        _candidate(buffer, sizes, strides, offsets)
