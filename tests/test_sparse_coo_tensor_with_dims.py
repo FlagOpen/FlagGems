@@ -36,7 +36,9 @@ def _assert_empty_coo_close(res_out, ref_out):
     assert res_out._nnz() == ref_out._nnz() == 0
     assert res_out.is_coalesced() == ref_out.is_coalesced()
     res_dense = res_out.to_dense()
-    ref_dense = ref_out.to_dense().to(res_dense.device)
+    ref_dense = ref_out.to_dense()
+    if not utils.TO_CPU:
+        ref_dense = ref_dense.to(flag_gems.device)
     utils.gems_assert_close(res_dense, ref_dense, ref_out.dtype)
 
 

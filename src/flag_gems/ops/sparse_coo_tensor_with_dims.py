@@ -33,6 +33,8 @@ import logging
 
 import torch
 
+import flag_gems
+
 logger = logging.getLogger(__name__)
 
 # The metadata-level empty-COO constructor. ``sparse_coo_tensor`` is not usable
@@ -78,6 +80,10 @@ def sparse_coo_tensor_with_dims(
             + str(layout).replace("torch.", "")
         )
     requested = torch.get_default_dtype() if dtype is None else dtype
+    # Resolve an omitted device against the FlagGems target device rather than
+    # the process-wide default, which may not be the accelerated device.
+    if device is None:
+        device = flag_gems.device
     return _empty_coo(sparse_dim, dense_dim, size, requested, device, bool(pin_memory))
 
 
