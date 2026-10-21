@@ -52,6 +52,12 @@ _HOST_CORE_SHAPES = _NESTED_STRIDES_SHAPES
 
 def _input_contract(inp):
     assert isinstance(inp, torch.Tensor) and inp.is_nested
+    expected_device = torch.device(flag_gems.device)
+    if expected_device.index is None and expected_device.type != "cpu":
+        expected_device = torch.device(
+            expected_device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    assert inp.device == expected_device
     parts = list(inp.unbind())
     return {
         "args": [
