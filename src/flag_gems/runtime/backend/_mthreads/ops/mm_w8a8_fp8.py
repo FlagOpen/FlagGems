@@ -27,6 +27,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.triton_version_utils import HAS_TLE
 
 _HAS_WS = False
+_HAS_WS_SCHEDULER_CONTROL = False
 if HAS_TLE:
     import triton.experimental.tle.language as tle
 
@@ -34,6 +35,14 @@ if HAS_TLE:
     _HAS_WS = hasattr(tle, "pipe") and all(
         hasattr(tle.gpu, name)
         for name in ("alloc", "smem", "copy", "warp_specialize", "wgmma", "wgmma_wait")
+    )
+    _HAS_WS_SCHEDULER_CONTROL = (
+        getattr(
+            getattr(tle.gpu, "mthreads", None),
+            "MTHREADS_TLE_DISABLE_MAX_ILP_SCHEDULER_VERSION",
+            0,
+        )
+        >= 1
     )
 
 _CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
@@ -532,8 +541,7 @@ if _HAS_WS:
     _BASE_WS_JIT = ws_multi_kernel.fn.fn
 
     def _set_fragmented_blocks(args):
-        args["A"].block_shape = [args["BM"], args["BK"]]
-        args["B"].block_shape = [args["BN"], args["BK"]]
+        _set_blocks(args)
         args["Bsmall"].block_shape = [max(32, args["BN"] // 4), args["BK"]]
 
     def _prune_fragmented_configs(configs, named_args, **kwargs):
@@ -665,13 +673,18 @@ _WS_LAUNCH_CACHE = OrderedDict()
 
 def _launch_ws_tuned(kernel, grid, args):
     """Cache compiled launch metadata, while keeping tuning and tensor data live."""
+    a, b = args[0], args[1]
+    out, sa, sb, m, n, k = args[-6:]
+    options = {"enable_backend_opt": True}
+    if _HAS_WS_SCHEDULER_CONTROL and min(m, n) >= 3072 and k >= 2048:
+        # Wider tiles benefit from SQMMA scheduling without max-ILP expansion.
+        # Older wheels retain their supported compiler options unchanged.
+        options["disable_max_ilp_scheduler"] = True
     tuner = kernel.fn
     if getattr(tuner._run_mode, "value", "normal") != "normal":
         _WS_LAUNCH_CACHE.clear()
-        return kernel[grid](*args, enable_backend_opt=True)
+        return kernel[grid](*args, **options)
     kernel._apply_flagtune()
-    a, b = args[0], args[1]
-    out, sa, sb, m, n, k = args[-6:]
     # The caller validates aligned E4M3 descriptors, scalar FP32 scales and a
     # contiguous BF16 output. Only runtime layout and pointer specialization vary.
     key = (
@@ -680,6 +693,7 @@ def _launch_ws_tuned(kernel, grid, args):
         id(tuner.configs),
         tuner.configs_hash,
         tuner._benchmark_protocol,
+        tuple(options.items()),
         a.base.device,
         m,
         n,
@@ -692,7 +706,7 @@ def _launch_ws_tuned(kernel, grid, args):
     )
     cached = _WS_LAUNCH_CACHE.get(key)
     if cached is None:
-        compiled, meta = kernel[grid](*args, enable_backend_opt=True)
+        compiled, meta = kernel[grid](*args, **options)
         tail = tuple(
             meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
         )
