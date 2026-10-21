@@ -176,7 +176,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -406,6 +406,7 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]
