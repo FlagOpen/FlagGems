@@ -300,7 +300,7 @@ def _scaled_grouped_mm_kernel(
         tl.store(c_ptrs, value, (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size))
 
 
-def grouped_mm_w8a8(
+def _grouped_mm_quantized(
     self: torch.Tensor,
     mat2: torch.Tensor,
     scale_a: torch.Tensor,
@@ -310,6 +310,8 @@ def grouped_mm_w8a8(
     scale_result: Optional[torch.Tensor] = None,
     out_dtype: Optional[torch.dtype] = None,
     use_fast_accum: bool = False,
+    *,
+    out: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Grouped signed INT8 or E4M3 GEMM; offsets contain cumulative ends.
 
@@ -379,7 +381,8 @@ def grouped_mm_w8a8(
     mode = (0 if a_is_2d else 1) if a_is_2d != b_is_2d else (2 if a_is_2d else 3)
     if not groups and ((mode == 0 and M) or (mode == 1 and N)):
         raise ValueError("nonempty ragged extent requires at least one group")
-    out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
+    if out is None:
+        out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
         return out
 
@@ -461,3 +464,76 @@ def grouped_mm_w8a8(
             enable_fp_fusion=False,
         )
     return out
+
+
+@libentry()
+@triton.jit
+def _expert_offsets(Rows, Offsets, E: tl.constexpr, BLOCK: tl.constexpr):
+    experts = tl.arange(0, BLOCK)
+    counts = tl.load(Rows + experts, experts < E, other=0)
+    tl.store(Offsets + experts, tl.cumsum(counts, 0), experts < E)
+
+
+def grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows) -> None:
+    """Write unpadded grouped NT GEMM into caller-owned BF16 C.
+
+    A[M,K] and B[E,N,K] must have matching INT8 or E4M3 dtypes.
+    As[M,1] and Bs[E,N,1] are FP32. The INT32 m_indices[M] and
+    m_rows[E] describe contiguous rows in ascending expert order.
+    Counts must be nonnegative, sum to M and agree with m_indices;
+    these device-value preconditions belong to the caller, with no host sync.
+    Inputs are already quantized and grouped. No routing, activation or
+    top-k weighted reduction is performed. All tensors must be contiguous.
+    """
+    tensors = (A, As, B, Bs, C, m_indices, m_rows)
+    if not all(isinstance(t, torch.Tensor) for t in tensors):
+        raise TypeError("all grouped_mm_w8a8 arguments must be tensors")
+    if A.ndim != 2 or B.ndim != 3:
+        raise ValueError("A must be [M,K] and B must be [E,N,K]")
+    m, k = A.shape
+    e, n, weight_k = B.shape
+    if A.dtype not in (torch.int8, *_E4M3_DTYPES) or B.dtype != A.dtype:
+        raise TypeError("A and B must have matching INT8 or E4M3 dtypes")
+    if As.dtype != torch.float32 or Bs.dtype != torch.float32:
+        raise TypeError("As and Bs must be FP32")
+    if C.dtype != torch.bfloat16:
+        raise TypeError("C must be BF16")
+    if m_indices.dtype != torch.int32 or m_rows.dtype != torch.int32:
+        raise TypeError("m_indices and m_rows must be INT32")
+    if A.device.type != "cuda" or any(t.device != A.device for t in tensors):
+        raise ValueError("all tensors must be on the same MetaX device")
+    if not all(t.is_contiguous() for t in tensors):
+        raise ValueError("all tensors must be contiguous")
+    expected = ((m, 1), (e, n, 1), (m, n), (m,), (e,))
+    if weight_k != k or any(
+        tuple(t.shape) != shape
+        for t, shape in zip((As, Bs, C, m_indices, m_rows), expected)
+    ):
+        raise ValueError("incompatible scales, output or expert metadata shapes")
+    if A.dtype == torch.int8 and k > 131071:
+        raise ValueError("INT8 grouped GEMM requires K <= 131071")
+    if m and not e:
+        raise ValueError("nonempty input requires at least one expert")
+    c_start = C.data_ptr()
+    c_end = c_start + C.numel() * C.element_size()
+    for tensor in (A, As, B, Bs, m_indices, m_rows):
+        start = tensor.data_ptr()
+        end = start + tensor.numel() * tensor.element_size()
+        if c_start < end and start < c_end:
+            raise ValueError("C must not overlap an input")
+    if m == 0 or n == 0:
+        return
+    offsets = torch.empty((e,), dtype=torch.int32, device=A.device)
+    with torch_device_fn.device(A.device):
+        _expert_offsets[(1,)](
+            m_rows, offsets, e, triton.next_power_of_2(e), num_warps=4
+        )
+        _grouped_mm_quantized(
+            A,
+            B.transpose(-1, -2),
+            As[:, 0],
+            Bs[:, :, 0],
+            offs=offsets,
+            out_dtype=C.dtype,
+            out=C,
+        )

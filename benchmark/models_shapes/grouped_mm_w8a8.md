@@ -1,5 +1,14 @@
 # grouped_mm_w8a8 benchmark data
 
+Public nopad contract: `grouped_mm_w8a8(A, As, B, Bs, C, m_indices, m_rows)`
+writes C in place and returns None. Shapes are A[M,K], As[M,1], B[E,N,K],
+Bs[E,N,1], C[M,N], m_indices[M], m_rows[E]. Matching INT8 or E4M3
+inputs, FP32 scales, BF16 output and INT32 metadata are required. All tensors
+are contiguous; expert rows are packed in ascending order and counts sum to M.
+The caller supplies quantization and token grouping. Device-side prefix
+construction is included on every invocation. There is no public offsets-based
+overload; the previous API is replaced.
+
 `grouped_mm_w8a8.json` preserves the diagnostic dataset used on MetaX C550.
 It contains 122 captured `fused_moe` outer shapes, each mapped to gate/up and
 down GEMMs (244 cases per dtype). Both benchmark levels run the complete list.
@@ -16,21 +25,22 @@ and down share that count, not two independent model calls.
 
 The standard benchmark calls `flag_gems.grouped_mm_w8a8` directly and uses
 `mctlassEx.ContinuousGroupedGEMM.ContinuousGroupedGEMM` as the reference.
-Both receive identical operands/scales/partitions and return BF16. The baseline
-includes output allocation and tile-prefix construction on every call. INT8
+Both receive identical operands/scales/partitions and write a preallocated BF16 output. The baseline
+builds segment offsets and identity weight indices with a GPU adapter, selects
+the native block size, and constructs the tile prefix on every timed call. INT8
 uses the native metadata helper. FP8 uses a Torch GPU ceil-div/cumsum/cat prefix
 adapter because the native FP8 metadata helper failed sparse-routing validation;
 row/column scales are repeated over K/128 blocks inside the measured call.
 FP8 results therefore compare against **adapted mctlass**, not its unmodified
-metadata helper. Native block-size selection and input routing metadata are
-prepared outside timing. Missing mctlass bindings cause a skip, never a fallback
+metadata helper. Dynamic routing metadata is not cached or prepared outside
+timing. Missing mctlass bindings cause a skip, never a fallback
 reference implementation.
 
 From the repository root in the MetaX runtime environment:
 
 ```bash
 # Shared accuracy suite (no performance assertions).
-python -m pytest tests/test_scaled_grouped_mm.py -q --ref cpu
+python -m pytest tests/test_grouped_mm_w8a8.py -q --ref cpu
 
 # Tensor-free case manifest, including exact offsets and source counts.
 python -m pytest benchmark/test_grouped_mm_w8a8.py -q --level core \

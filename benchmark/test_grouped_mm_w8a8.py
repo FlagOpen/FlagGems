@@ -12,21 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Standard benchmark for MetaX grouped_mm_w8a8 against mctlass Torch bindings.
+"""Standard grouped_mm_w8a8 benchmark with explicit baseline provenance.
 
-The bundled export contains 122 real fused_moe outer shapes, expanded into 244
-GEMMs. Expert routing/offsets, operands and row/column scales are synthetic:
-these are diagnostic workloads, not native grouped-MM model traces. Both core
-and comprehensive cover the entire export. --shape_file accepts the same JSON
-schema. --list-cases records the source count, offsets and provenance without
-allocating device tensors; --case-id selects individual cases.
+The captured GLM-5.2 JSON contains 28 scenario/shape records with captured
+first-observation expert counts. It selects direct ContinuousGroupedGEMM INT8.
+The default legacy JSON contains synthetic partitions of real fused_moe outer
+shapes; it remains a diagnostic INT8/FP8 dataset, not a grouped-MM trace.
 
-Baseline includes output allocation, tile-prefix generation and FP8 scale
-replication on every call. FP8 uses the validated Torch tile-prefix adapter,
-not the native FP8 metadata helper (which failed sparse-routing validation).
-Native block selection and supplied routing metadata are prepared outside
-measurement. Timing, warmup, repetition and JSON output belong to base.Benchmark.
-Accuracy tests belong to tests/test_scaled_grouped_mm.py.
+Both routes receive A, As, B, Bs, preallocated BF16 C, m_indices and m_rows.
+The mctlass adapter builds segment offsets and identity weight indices on the
+GPU every invocation, selects the native block size, computes the native INT8
+tile prefix, and calls the unmodified ContinuousGroupedGEMM Torch interface.
+FP8 diagnostic cases retain their validated Torch tile-prefix adapter.
+No dynamic routing metadata is cached or copied to the CPU. Initial input/output
+allocation, JIT and object construction are outside event timing. The candidate's
+own expert-prefix construction is inside timing. Accuracy tests belong to
+tests/test_grouped_mm_w8a8.py. Historical reference=deep_gemm remains explicit.
 """
 
 import json
@@ -34,10 +35,22 @@ from pathlib import Path
 
 import pytest
 import torch
+import triton
+import triton.language as tl
 
 import flag_gems
 
 from . import base, consts
+
+
+@triton.jit
+def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constexpr):
+    # Only adapt metadata; all GEMM work remains in the native mctlass library.
+    groups = tl.arange(0, BLOCK)
+    counts = tl.load(Rows + groups, groups < G, other=0)
+    tl.store(Segments, 0)
+    tl.store(Segments + groups + 1, tl.cumsum(counts, 0), groups < G)
+    tl.store(Weights + groups, groups, groups < G)
 
 
 class GroupedMMW8A8Benchmark(base.Benchmark):
@@ -48,7 +61,17 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             path = Path(__file__).parent / "models_shapes" / "grouped_mm_w8a8.json"
         self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
-        self.shape_desc = "G, M, N, K; real MoE outer dimensions, synthetic routing"
+        self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
+        if self.use_deepgemm or self.dataset.get("input_dtype") == "int8":
+            requested = base.Config.user_desired_dtypes
+            if requested and requested != [torch.int8]:
+                raise ValueError("This captured export requires INT8 inputs")
+            self.to_bench_dtypes = [torch.int8]
+            self.torch_op = (
+                self.deepgemm_reference if self.use_deepgemm else self.mctlass_reference
+            )
+            self.gems_op = flag_gems.grouped_mm_w8a8
+        self.shape_desc = "G, M, N, K; " + self.dataset["classification"]
         for row in self.shapes:
             lengths = row["lengths"]
             ends, total = [], 0
@@ -89,8 +112,19 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
                     | {
                         "classification": self.dataset["classification"],
                         "source_sha256": self.dataset["source_sha256"],
-                        "scale_layout": "FP32 per-row A[M], per-column B[G,N]",
-                        "baseline": "mctlass Torch; FP8 uses Torch tile-prefix adapter",
+                        "scale_layout": ("FP32 As[M,1], Bs[G,N,1]"),
+                        "scenario": row.get("scenario"),
+                        "captured_tensor_metadata": row.get("tensor_metadata"),
+                        "routing_origin": self.dataset.get("routing_origin"),
+                        "baseline": (
+                            "MetaX DeepGEMM contiguous, backend=mctlassEx, full wrapper"
+                            if self.use_deepgemm
+                            else (
+                                "ContinuousGroupedGEMM Torch API; routing + "
+                                "block selection + tile prefix included; "
+                                "FP8 uses Torch tile-prefix adapter"
+                            )
+                        ),
                     },
                     builder_args=(row,),
                 ),
@@ -122,13 +156,22 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             sb = torch.tensor([2.0 ** (i % 3 - 1) for i in range(g * n)])
         a, b = a.cuda(), b.cuda()
         sa, sb = sa.float().cuda(), sb.float().reshape(g, n).cuda()
-        offsets = torch.tensor(row["offs"], dtype=torch.int32, device="cuda")
-        self.segments = torch.tensor(
-            [0] + row["offs"], dtype=torch.int32, device="cuda"
-        )
-        self.weights = torch.arange(g, dtype=torch.int32, device="cuda")
+        if self.use_deepgemm:
+            module = pytest.importorskip("deep_gemm")
+            self.deepgemm = module.m_grouped_gemm_int8_int8_bf16_nt_contiguous
+            lengths = torch.tensor(row["lengths"], dtype=torch.int32, device="cuda")
+            indices = torch.tensor(
+                [
+                    group
+                    for group, length in enumerate(row["lengths"])
+                    for _ in range(length)
+                ],
+                dtype=torch.int32,
+                device="cuda",
+            )
+            output = torch.empty((m, n), dtype=torch.bfloat16, device="cuda")
+            return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
         self.native_config = {"n_group": g}
-        native_sa, native_sb = sa, sb
         if dtype != torch.int8:
             self.native_config.update(
                 is_blockwise=True,
@@ -148,22 +191,22 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
                     device="cuda",
                 ),
             )
-            native_sa, native_sb = self._fp8_scales(sa, sb, k)
         native_module = pytest.importorskip("mctlassEx.ContinuousGroupedGEMM")
         self.native = native_module.ContinuousGroupedGEMM()
         scratch = torch.empty((m, n), dtype=torch.bfloat16, device="cuda")
-        self.block_m = self.native.get_blocksize_m(
-            a, b, scratch, native_sa, native_sb, **self.native_config
+        lengths = torch.tensor(row["lengths"], dtype=torch.int32, device="cuda")
+        indices = torch.repeat_interleave(
+            torch.arange(g, dtype=torch.int32, device="cuda"), lengths, output_size=m
         )
-        if not isinstance(self.block_m, int) or self.block_m <= 0:
-            raise RuntimeError(f"Invalid mctlass block size: {self.block_m}")
-        return (
-            a,
-            b.transpose(-1, -2),
-            sa,
-            sb,
-            {"offs": offsets, "out_dtype": torch.bfloat16},
+        return a, sa[:, None], b, sb[:, :, None], scratch, indices, lengths
+
+    def deepgemm_reference(self, a, sa, b, sb, output, indices, lengths):
+        # Preserve the installed public wrapper and explicitly select native INT8.
+        # This is a contiguous baseline, not the unavailable MetaX nopad API.
+        self.deepgemm(
+            (a, sa[:, 0]), (b, sb[:, :, 0]), output, indices, backend="mctlassEx"
         )
+        return output
 
     @staticmethod
     def _fp8_scales(sa, sb, k):
@@ -172,30 +215,37 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             sa, sb = sa.repeat(1, k // 128), sb.repeat(1, 1, k // 128)
         return sa, sb
 
-    def mctlass_reference(self, a, b, sa, sb, *, offs, out_dtype):
-        # All input tensors match the candidate; only the weight view differs.
+    def mctlass_reference(self, a, sa, b, sb, output, indices, lengths):
+        # Both routes receive identical NT operands and caller-owned BF16 output.
         m, k = a.shape
-        g, _, n = b.shape
-        b = b.transpose(-1, -2)
-        output = torch.empty((m, n), dtype=out_dtype, device=a.device)
+        g, n, _ = b.shape
+        sa, sb = sa[:, 0], sb[:, :, 0]
+        segments = torch.empty((g + 1,), dtype=torch.int32, device=a.device)
+        weights = torch.empty((g,), dtype=torch.int32, device=a.device)
+        _mctlass_routing[(1,)](
+            lengths, segments, weights, g, triton.next_power_of_2(g), num_warps=4
+        )
+        if a.dtype != torch.int8:
+            sa, sb = self._fp8_scales(sa, sb, k)
+            self.native_config["m_indices"] = indices
+        block_m = self.native.get_blocksize_m(
+            a, b, output, sa, sb, **self.native_config
+        )
+        if not isinstance(block_m, int) or block_m <= 0:
+            raise RuntimeError(f"Invalid mctlass block size: {block_m}")
         if a.dtype == torch.int8:
             tiles = torch.empty((g + 1,), dtype=torch.int32, device=a.device)
             self.native.compute_m_num_tiles_indptr(
-                a, b, output, self.segments, tiles, self.block_m, **self.native_config
+                a, b, output, segments, tiles, block_m, **self.native_config
             )
         else:
-            counts = torch.div(
-                self.segments[1:] - self.segments[:-1] + self.block_m - 1,
-                self.block_m,
-                rounding_mode="floor",
-            )
+            counts = torch.div(lengths + block_m - 1, block_m, rounding_mode="floor")
             tiles = torch.cat(
                 (
                     torch.zeros((1,), dtype=torch.int32, device=a.device),
                     torch.cumsum(counts, dim=0, dtype=torch.int32),
                 )
             )
-            sa, sb = self._fp8_scales(sa, sb, k)
         self.native(
             [m, n, k],
             a,
@@ -204,8 +254,8 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             sa,
             sb,
             None,
-            self.segments,
-            self.weights,
+            segments,
+            weights,
             tiles,
             **self.native_config,
         )
