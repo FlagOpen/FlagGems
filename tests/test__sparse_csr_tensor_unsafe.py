@@ -717,14 +717,17 @@ def test__sparse_csr_tensor_unsafe_requires_grad_input(dtype):
     values_shape = (2,)
     size = [2, 2]
     values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(t) for t in (compressed, plain, values)
+    )
     ref_out = torch.ops.aten._sparse_csr_tensor_unsafe(
-        compressed,
-        plain,
-        values,
+        ref_first,
+        ref_second,
+        ref_values,
         size,
         dtype=dtype,
         layout=torch.sparse_csr,
-        device=values.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_csr_tensor_unsafe(
         compressed,

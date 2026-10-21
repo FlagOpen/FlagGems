@@ -265,14 +265,17 @@ def test__sparse_csc_tensor_unsafe_unchecked_metadata(
     row = torch.tensor(row_spec, dtype=torch.int64, device=flag_gems.device)
     values = tu.make_input(torch.float32, values_shape, ["-1", "1"])
 
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(t) for t in (ccol, row, values)
+    )
     ref_out = torch.ops.aten._sparse_csc_tensor_unsafe(
-        tu.to_reference(ccol),
-        tu.to_reference(row),
-        tu.to_reference(values),
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=torch.float32,
         layout=torch.sparse_csc,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_csc_tensor_unsafe(
         ccol,
@@ -306,14 +309,17 @@ def test__sparse_csc_tensor_unsafe_aliases_component_storage():
     values = values_base[1:9:2]
     size = [6, 4]
 
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(t) for t in (ccol, row, values)
+    )
     ref_out = torch.ops.aten._sparse_csc_tensor_unsafe(
-        tu.to_reference(ccol),
-        tu.to_reference(row),
-        tu.to_reference(values),
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=torch.float32,
         layout=torch.sparse_csc,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_csc_tensor_unsafe(
         ccol,
@@ -412,14 +418,17 @@ def test__sparse_csc_tensor_unsafe_special_values(dtype, scenario):
     row = torch.tensor([0, 1, 0, 1, 2], dtype=torch.int64, device=flag_gems.device)
     size = [3, 2]
 
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(t) for t in (ccol, row, values)
+    )
     ref_out = torch.ops.aten._sparse_csc_tensor_unsafe(
-        tu.to_reference(ccol),
-        tu.to_reference(row),
-        tu.to_reference(values),
+        ref_first,
+        ref_second,
+        ref_values,
         list(size),
         dtype=dtype,
         layout=torch.sparse_csc,
-        device=flag_gems.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_csc_tensor_unsafe(
         ccol,
@@ -582,14 +591,17 @@ def test__sparse_csc_tensor_unsafe_requires_grad_input(dtype):
     values_shape = (2,)
     size = [2, 2]
     values = tu.make_input(dtype, values_shape, ["-1", "1"]).requires_grad_()
+    ref_first, ref_second, ref_values = (
+        tu.to_reference(t) for t in (compressed, plain, values)
+    )
     ref_out = torch.ops.aten._sparse_csc_tensor_unsafe(
-        compressed,
-        plain,
-        values,
+        ref_first,
+        ref_second,
+        ref_values,
         size,
         dtype=dtype,
         layout=torch.sparse_csc,
-        device=values.device,
+        device=ref_values.device,
     )
     res_out = flag_gems._sparse_csc_tensor_unsafe(
         compressed,
