@@ -36,6 +36,92 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
 _DTYPE_FLAGS = {
     torch.bfloat16: flag_gems.runtime.device.support_bf16,
     torch.float64: flag_gems.runtime.device.support_fp64,
@@ -79,19 +165,19 @@ _TARGET_INDICES = _device_indices()
 
 def _layout_input(layout, dtype):
     if layout == "transposed":
-        return tu.make_input(dtype, (4, 10), _MAIN_RANGE).t()
+        return _make_input(dtype, (4, 10), _MAIN_RANGE).t()
     if layout == "sliced":
-        return tu.make_input(dtype, (4, 10), _MAIN_RANGE)[1:3, ::3]
+        return _make_input(dtype, (4, 10), _MAIN_RANGE)[1:3, ::3]
     if layout == "expanded":
-        return tu.make_input(dtype, (1, 10), _MAIN_RANGE).expand(4, 10)
+        return _make_input(dtype, (1, 10), _MAIN_RANGE).expand(4, 10)
     if layout == "empty":
-        return tu.make_input(dtype, (0, 3), _MAIN_RANGE)
+        return _make_input(dtype, (0, 3), _MAIN_RANGE)
     if layout == "sparse":
         indices = torch.tensor([[0, 2, 1], [1, 1, 3]], device=flag_gems.device)
-        values = tu.make_input(dtype, (3,), _MAIN_RANGE)
+        values = _make_input(dtype, (3,), _MAIN_RANGE)
         return torch.sparse_coo_tensor(indices, values, (4, 4))
     if layout == "grad":
-        inp = tu.make_input(dtype, (4, 10), _MAIN_RANGE)
+        inp = _make_input(dtype, (4, 10), _MAIN_RANGE)
         return inp.requires_grad_(inp.dtype.is_floating_point or inp.dtype.is_complex)
     raise ValueError("unknown layout: %s" % layout)
 
@@ -108,7 +194,7 @@ def _assert_device_index(res_index, ref_index, inp):
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_get_device(shape, dtype):
-    inp = tu.make_input(dtype, shape, _MAIN_RANGE)
+    inp = _make_input(dtype, shape, _MAIN_RANGE)
 
     ref_index = torch.ops.aten.get_device(inp)
     res_index = flag_gems.get_device(inp)
@@ -133,7 +219,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_get_device_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
 
     ref_index = torch.ops.aten.get_device(inp)
     res_index = flag_gems.get_device(inp)
@@ -209,7 +295,7 @@ def test_get_device_placement_without_index(placement, dtype):
 def test_get_device_special_values(dtype, scenario):
     # Element data is never read, so NaN/Inf operands must be reported exactly
     # like finite ones (default mode; e4m3fn only represents NaN).
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
 
     ref_index = torch.ops.aten.get_device(inp)
     res_index = flag_gems.get_device(inp)
@@ -234,6 +320,6 @@ def test_get_device_rejects_missing_argument():
 
 @pytest.mark.get_device
 def test_get_device_rejects_extra_argument():
-    inp = tu.make_input(torch.float32, (2, 3), _MAIN_RANGE)
+    inp = _make_input(torch.float32, (2, 3), _MAIN_RANGE)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
         flag_gems.get_device(inp, inp)
