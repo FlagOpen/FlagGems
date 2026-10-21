@@ -207,6 +207,7 @@ def _observed(tensor):
         and tensor.device.type != "cpu"
         and tensor.is_neg()
     ):
+        assert tensor.device == _expected_device()
         # Device resolve_neg loses the sign; observe independent physical storage
         # on CPU, then retain the original observation device and dtype.
         return (
