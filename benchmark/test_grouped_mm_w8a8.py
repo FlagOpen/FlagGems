@@ -14,10 +14,12 @@
 
 """Standard grouped_mm_w8a8 benchmark with explicit baseline provenance.
 
-The captured GLM-5.2 JSON contains 28 scenario/shape records with captured
-first-observation expert counts. It selects direct ContinuousGroupedGEMM INT8.
-The default legacy JSON contains synthetic partitions of real fused_moe outer
-shapes; it remains a diagnostic INT8/FP8 dataset, not a grouped-MM trace.
+Datasets live outside the repository. Convert a captured operator directory with
+ tools/prepare_grouped_mm_w8a8_shapes.py --input-dir CAPTURE --output /tmp/gmm.json
+then pass --shape_file /tmp/gmm.json. The converter preserves per-scenario counts
+and captured first-observation expert partitions. INT8 uses the direct
+ContinuousGroupedGEMM baseline. Prepared external INT8/FP8 diagnostic JSON files
+are also accepted; their classification must identify synthetic routing.
 
 Both routes receive A, As, B, Bs, preallocated BF16 C, m_indices and m_rows.
 The mctlass adapter builds segment offsets and identity weight indices on the
@@ -58,7 +60,12 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         path = Path(shape_file_path or base.Config.shape_file)
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
-            path = Path(__file__).parent / "models_shapes" / "grouped_mm_w8a8.json"
+            pytest.skip(
+                "External grouped_mm_w8a8 dataset required: run "
+                "tools/prepare_grouped_mm_w8a8_shapes.py --input-dir CAPTURE "
+                "--output /tmp/grouped_mm_w8a8.json, then pass --shape_file "
+                "/tmp/grouped_mm_w8a8.json"
+            )
         self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
         self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
@@ -112,6 +119,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
                     | {
                         "classification": self.dataset["classification"],
                         "source_sha256": self.dataset["source_sha256"],
+                        "source_files_sha256": self.dataset.get("source_files_sha256"),
                         "scale_layout": ("FP32 As[M,1], Bs[G,N,1]"),
                         "scenario": row.get("scenario"),
                         "captured_tensor_metadata": row.get("tensor_metadata"),
