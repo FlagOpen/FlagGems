@@ -50,11 +50,11 @@ the final sparse-tensor construction / ``out`` write-through.
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["_sparse_mask_projection"]
 
@@ -172,9 +172,7 @@ def _project_kernel(
     for t0 in range(0, T, BLOCK_T):
         offs_t = t0 + tl.arange(0, BLOCK_T)
         m2 = mr[:, None] & (offs_t < T)[None, :]
-        v = tl.load(
-            val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0
-        )
+        v = tl.load(val_ptr + rows[:, None] * v_row + offs_t[None, :], mask=m2, other=0)
         hit = (c > 0)[:, None]
         if ACC:
             res = tl.where(hit, v * c.to(v.dtype)[:, None], tl.zeros_like(v))
