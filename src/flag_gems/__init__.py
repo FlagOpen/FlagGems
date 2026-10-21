@@ -800,6 +800,7 @@ _FULL_CONFIG = (
     ("cat.out", cat_out),
     ("cauchy", cauchy),
     ("cauchy_", cauchy_),
+    ("ccol_indices", ccol_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "ccol_indices_copy",
         ccol_indices_copy,
@@ -1420,7 +1421,9 @@ _FULL_CONFIG = (
     ("msort", msort),
     ("msort.out", msort_out),
     ("mT", mT),
+    ("mul.Scalar", mul),
     ("mul.Tensor", mul),
+    ("mul_.Scalar", mul_),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
     ("multi_margin_loss.out", multi_margin_loss_out),
@@ -1759,6 +1762,12 @@ _FULL_CONFIG = (
     ("softshrink_backward", softshrink_backward),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    (
+        "sparse_dim",
+        sparse_dim,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",
@@ -1975,6 +1984,7 @@ _FULL_CONFIG = (
     ("uniform_", uniform_),
     ("unique_consecutive", unique_consecutive),
     ("unique_dim", unique_dim),
+    ("unique_dim_consecutive", unique_dim_consecutive),
     ("unsafe_chunk", unsafe_chunk),
     ("unsafe_split_with_sizes", unsafe_split_with_sizes),
     ("unsqueeze", unsqueeze),
