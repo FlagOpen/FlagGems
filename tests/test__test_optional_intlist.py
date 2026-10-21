@@ -212,8 +212,15 @@ def test_test_optional_intlist_identity(shape, value_range, dtype):
     # The identity form never writes to its operand, and the returned alias is
     # writable: the write lands in the operand.
     _assert_result_equal(values, before)
-    res_out.fill_(0)
-    _assert_result_equal(values, torch.zeros_like(values))
+    if values.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        # CPU FP8 fill is unavailable on older Torch. Zero the same writable
+        # alias through its bytes; encode the expected zero payload on CPU.
+        res_out.view(torch.uint8).zero_()
+        expected_zeros = torch.zeros_like(values, dtype=torch.float32).to(values.dtype)
+    else:
+        res_out.fill_(0)
+        expected_zeros = torch.zeros_like(values)
+    _assert_result_equal(values, expected_zeros)
 
 
 @pytest.mark.underscore_test_optional_intlist
