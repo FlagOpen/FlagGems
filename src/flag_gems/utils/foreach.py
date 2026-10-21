@@ -100,6 +100,20 @@ def int_to_float(dtype: torch.dtype) -> torch.dtype:
 
 def check_tensor_list(tensors: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     """Reproduce ATen's ``Tensor[]`` preconditions, including messages."""
+    # Fast path for the form the dispatcher and every benchmark call use: a
+    # plain list of plain tensors, checked with one class-identity pass instead
+    # of an ``isinstance`` call per element.  Two lists of sixteen measured
+    # 0.58us here against 1.34us for the ``isinstance`` loop.  Anything that is
+    # not exactly a ``torch.Tensor`` (a subclass such as ``Parameter``, or a
+    # non-tensor) falls through to the general path, which raises the exact
+    # ATen error for each rejected shape.
+    if type(tensors) is list and tensors:
+        tensor_type = torch.Tensor
+        for t in tensors:
+            if t.__class__ is not tensor_type:
+                break
+        else:
+            return list(tensors)
     if not isinstance(tensors, (list, tuple)):
         raise TypeError("argument 'self' must be tuple of Tensors")
     if len(tensors) == 0:
@@ -197,9 +211,30 @@ _PACK_DTYPES = frozenset((torch.float16, torch.bfloat16))
 # next to the access pattern it enables.
 _PACK_MIN_ELEMS = 1 << 20
 
+# The binary path measured the crossover directly instead of inheriting the
+# constant above.  With a sixteen-tensor list the packed kernel is 0.9us faster
+# at 256^2 (2^16 elements per tensor) and 2.8us faster at 512^2, and it is
+# never slower down to 2^10, where both kernels are launch-bound and the
+# difference is noise.
+#
+# That holds for an in-place group, and only for an in-place group.  The
+# out-of-place wrapper allocates sixteen destinations per call, which makes the
+# call host-bound (58us of host submission against a 24us kernel), so a faster
+# kernel cannot show there while the guard below can: accepting a group pays
+# the ``reduce`` over the metadata values, ~1.6us at this list size, and the
+# measured effect was +2.4 to +3.3us on every out-of-place row at 256^2 and
+# 512^2 while the identical kernel launch into a fixed destination was 2.9us
+# faster.  An in-place call has no allocation, is GPU-bound (31us of host
+# against a 16us kernel at 512^2), and hides the guard -- which is why the
+# threshold below is raised for it alone.
+_PACK_MIN_ELEMS_BINARY_INPLACE = 1 << 16
+
 
 def _pack_ok(
-    dtypes: Sequence[torch.dtype], max_numel: int, values: Sequence[int]
+    dtypes: Sequence[torch.dtype],
+    max_numel: int,
+    values: Sequence[int],
+    min_elems: int = _PACK_MIN_ELEMS,
 ) -> bool:
     """Whether the four-wide packed kernel can serve this group.
 
@@ -210,7 +245,7 @@ def _pack_ok(
     values that are built for the transfer anyway: any value with a low bit set
     rules the packed path out.
     """
-    if max_numel < _PACK_MIN_ELEMS:
+    if max_numel < min_elems:
         return False
     for dt in dtypes:
         if dt not in _PACK_DTYPES:
@@ -1592,11 +1627,16 @@ def _common_scalar(vals: Sequence[Any]) -> Optional[Any]:
                 return None
         return first
     # Outside the zeros the value itself carries the sign, so the explicit
-    # sign-bit test is only needed for ±0.0.
-    for v in vals:
-        if float(v) != first:
-            return None
-    return first
+    # sign-bit test is only needed for ±0.0.  ``count`` is the same equality
+    # scan driven from C: it measured 0.06us against 0.49us for the Python loop
+    # over the sixteen entries of a ``.ScalarList`` call.
+    count = getattr(vals, "count", None)
+    if count is None:  # pragma: no cover - every call site passes a list
+        for v in vals:
+            if float(v) != first:
+                return None
+        return first
+    return first if count(first) == len(vals) else None
 
 
 def _meta_from_values(values: List[int], device: Any) -> torch.Tensor:
@@ -1650,6 +1690,14 @@ def _meta_from_values(values: List[int], device: Any) -> torch.Tensor:
 _META_CACHE: Dict[Tuple[Any, int, Tuple[int, ...]], torch.Tensor] = {}
 _META_CACHE_LIMIT = 32
 
+# Last-hit shortcut in front of the memo above.  Building the key (``tuple``
+# over the 4*16 entries plus its hash) measured 1.07us, while the same
+# comparison against a retained copy of the previous value list is a single
+# C-level list compare at 0.09us -- a steady-state call re-launches with the
+# same addresses, because the caching allocator hands back the blocks the
+# previous call released.  [values, stream, device, buffer]
+_LAST_META: List[Any] = [None, None, None, None]
+
 
 def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     """A read-only int64 device tensor holding ``values`` (memoised).
@@ -1664,15 +1712,21 @@ def _device_meta(values: List[int], device: Any) -> torch.Tensor:
     if index is None:
         index = torch.cuda.current_device()
     stream = _triton_driver.active.get_current_stream(index)
+    last = _LAST_META
+    if last[1] is stream and last[2] == device and last[0] == values:
+        return last[3]
     key = (device, stream, tuple(values))
     cached = _META_CACHE.get(key)
-    if cached is not None:
-        return cached
-    out = _meta_from_values(values, device)
-    if len(_META_CACHE) >= _META_CACHE_LIMIT:
-        _META_CACHE.pop(next(iter(_META_CACHE)))
-    _META_CACHE[key] = out
-    return out
+    if cached is None:
+        cached = _meta_from_values(values, device)
+        if len(_META_CACHE) >= _META_CACHE_LIMIT:
+            _META_CACHE.pop(next(iter(_META_CACHE)))
+        _META_CACHE[key] = cached
+    last[0] = list(values)
+    last[1] = stream
+    last[2] = device
+    last[3] = cached
+    return cached
 
 
 def _resolve_scalars(
@@ -1775,15 +1829,22 @@ def _binary_homogeneous(
     need_promotion = out_dtypes is None
     b0 = other[0]
     dt_b = b0.dtype
-    # Uniform in device *and* dtype is the hot case.  One grouping call answers
-    # it for both lists, and a single group also means ``dt_a is dt_b``: the
-    # promotion is then the identity, so the rank class of an operand cannot
-    # change the result dtype and the per-tensor ``dim()`` check is skipped too.
+    # Uniform in device *and* dtype is the hot case.  Two generator passes
+    # answer it for both lists: with every tensor of ``self`` carrying
+    # ``dt_a``, every tensor of ``other`` carrying ``dt_b`` and ``dt_b is
+    # dt_a``, all 32 share one dtype, so the promotion is the identity and the
+    # rank class of an operand cannot change the result dtype -- the per-tensor
+    # ``dim()`` check below is then skipped too.  The two passes measured 0.34us
+    # against 2.7us for ATen's grouping primitive over the same lists (its C++
+    # loop still pays for building the group keys), and ``dim()`` is a Python
+    # call that would triple that again.
     # ``scalar_operand`` lists are one repeated single-element tensor, whose
     # dtype may legitimately differ from ``self``'s, so they keep the walk.
     uniform = False
-    if not scalar_operand and _GROUP_TENSORS is not None:
-        uniform = len(_GROUP_TENSORS([self, other], False)) == 1
+    if not scalar_operand and dt_b is dt_a:
+        uniform = all(
+            t.dtype is dt_a and t.device == dev for t in self
+        ) and all(t.dtype is dt_a and t.device == dev for t in other)
     if not uniform:
         zero_dim = a0.dim() == 0
         for t in self:
@@ -1856,9 +1917,12 @@ def _binary_homogeneous(
         dsts = srcs_a
     else:
         # The one-argument form skips the keyword dispatch the explicit dtype
-        # form pays on every one of the sixteen allocations.
+        # form pays on every one of the sixteen allocations, and ``map`` keeps
+        # the per-tensor call inside the C loop: a list comprehension pays the
+        # ``torch.empty_like`` lookup and call setup sixteen times, which
+        # measured 2-3us more per call (256^2-1024^2, all three dtypes).
         if out_dtype is dt_a:
-            results = [torch.empty_like(t) for t in srcs_a]
+            results = list(map(torch.empty_like, srcs_a))
         else:
             results = [torch.empty_like(t, dtype=out_dtype) for t in srcs_a]
         dsts = results
@@ -2135,7 +2199,17 @@ def _launch_binary_group(
     alpha: float = 1,
     b_scalar: bool = False,
 ) -> None:
-    numels = [t.numel() for t in a_list]
+    # One loop over ``a_list`` reads both numbers the launch needs.  Three
+    # list comprehensions over the same sixteen tensors measured 3.7us; the
+    # loop with two bound ``append`` methods measured 2.7us, and ``max`` over
+    # the finished list is a C-level reduction.
+    ptrs_a = []
+    numels = []
+    add_ptr = ptrs_a.append
+    add_numel = numels.append
+    for t in a_list:
+        add_ptr(t.data_ptr())
+        add_numel(t.numel())
     max_numel = max(numels)
     if max_numel == 0:
         return
@@ -2152,19 +2226,24 @@ def _launch_binary_group(
     # as ``_launch_group``.  An in-place call writes back into its inputs, so
     # the destination run repeats the pointer run already read above instead of
     # reading it a second time.
-    ptrs_a = [t.data_ptr() for t in a_list]
     # The broadcast operand is one repeated single-element tensor, and the
     # kernel only ever dereferences its first entry, so its run is one read.
     ptrs_b = [b_list[0].data_ptr()] * nt if b_scalar else [t.data_ptr() for t in b_list]
+    inplace = d_list is a_list
     values = (
         ptrs_a + ptrs_b + ptrs_a + numels
-        if d_list is a_list
+        if inplace
         else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
     )
     meta = _device_meta(values, device)
     kernel = (
         foreach_binary_kernel_p4
-        if _pack_ok((a_dt, b_dt, d_list[0].dtype), max_numel, values)
+        if _pack_ok(
+            (a_dt, b_dt, d_list[0].dtype),
+            max_numel,
+            values,
+            _PACK_MIN_ELEMS_BINARY_INPLACE if inplace else _PACK_MIN_ELEMS,
+        )
         else foreach_binary_kernel
     )
     _launch_binary_kernel(
@@ -2267,8 +2346,11 @@ def _binary_scalar_homogeneous(
         results = list(self)
         dsts = srcs
     else:
+        # See ``_binary_homogeneous``: ``map`` keeps the sixteen allocations
+        # inside the C loop instead of paying the lookup and call setup sixteen
+        # times.
         if out_dtype is dt:
-            results = [torch.empty_like(t) for t in srcs]
+            results = list(map(torch.empty_like, srcs))
         else:
             results = [torch.empty_like(t, dtype=out_dtype) for t in srcs]
         dsts = results
@@ -2506,8 +2588,19 @@ def _launch_scalar_group(
     max_numel = max(numels)
     if max_numel == 0:
         return
-    block = _pick_block(numels)
     nt = len(srcs)
+    # The same pair that keys the binary grid memo keys this one: both paths
+    # derive their block from ``_pick_block(numels)`` and their second
+    # dimension from a ceiling division of the same two numbers, so the entry
+    # is interchangeable.
+    cached_grid = _GRID_CACHE.get((nt, max_numel))
+    if cached_grid is None:
+        block = _pick_block(numels)
+        cached_grid = (block, (nt, -(-max_numel // block)))
+        if len(_GRID_CACHE) >= _GRID_CACHE_LIMIT:
+            _GRID_CACHE.pop(next(iter(_GRID_CACHE)))
+        _GRID_CACHE[(nt, max_numel)] = cached_grid
+    block, grid = cached_grid
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
     ptrs = [t.data_ptr() for t in srcs]
@@ -2537,9 +2630,6 @@ def _launch_scalar_group(
             device, non_blocking=True
         )
         scalar_value = 0.0
-    # ``triton.cdiv`` is a decorated helper and is far from free at this size;
-    # plain ints give the same ceiling division.
-    grid = (nt, -(-max_numel // block))
     kernel = (
         foreach_binary_scalar_kernel_p4
         if _pack_ok((in_dt, out_dt), max_numel, values)
