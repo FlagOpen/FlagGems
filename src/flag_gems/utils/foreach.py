@@ -745,6 +745,41 @@ def foreach_binary_scalar_kernel_p4(
 
 
 @triton.jit
+def _ternary_narrow_body(
+    meta_ptr,
+    scalar_ptr,
+    scalar_value: tl.float64,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    S_DT: tl.constexpr,
+    SCALAR_BY_VALUE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """The element-indexed body: one operand element per lane."""
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * BLOCK
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
+    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(A_DT))
+    c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(A_DT))
+    out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(OUT_DT))
+    n_elements = tl.load(meta_ptr + 4 * NT + t)
+    if SCALAR_BY_VALUE:
+        s = scalar_value.to(S_DT)
+    else:
+        s = tl.load(scalar_ptr + t)
+
+    idx = offset + tl.arange(0, BLOCK)
+    mask = idx < n_elements
+    a = tl.load(a_ptr + idx, mask=mask, other=0).to(OUT_DT)
+    b = tl.load(b_ptr + idx, mask=mask, other=0).to(OUT_DT)
+    c = tl.load(c_ptr + idx, mask=mask, other=0).to(OUT_DT)
+    tl.store(out_ptr + idx, fn(a, b, c, s.to(OUT_DT)).to(OUT_DT), mask=mask)
+
+
+@triton.jit
 def foreach_ternary_kernel(
     meta_ptr,
     scalar_ptr,
@@ -775,26 +810,73 @@ def foreach_ternary_kernel(
     tensor shares travels as an ordinary kernel argument instead of a device
     buffer.  ``scalar_value`` is declared ``float64`` so nothing is lost on the
     way in; the cast to ``S_DT`` reproduces the buffer's rounding exactly.
+
+    A pointer read out of ``meta_ptr`` carries no alignment information, so
+    Triton cannot widen the access and the element-indexed body issues one
+    ``ld.global.b16`` per element.  ``foreach_ternary_kernel_p4`` already reads
+    four 16-bit elements per lane through an ``int64`` pointer, but the caller
+    only selects it from ``_PACK_MIN_ELEMS`` upward, so every 512^2 16-bit
+    group took the narrow path; that group is where the acceptance median
+    lives.  Rather than raise the shared threshold, the kernel checks the two
+    conditions the packed access needs -- all four pointers 8 byte aligned and
+    the count a multiple of four -- on metadata values it has already loaded,
+    and inlines the packed body when they hold.  Unaligned views and ragged
+    counts keep the element-indexed body, so nothing here depends on the
+    caller.
     """
     t = tl.program_id(0)
-    offset = tl.program_id(1) * BLOCK
-
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(A_DT))
-    c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(A_DT))
-    out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(OUT_DT))
+    a_raw = tl.load(meta_ptr + t)
+    b_raw = tl.load(meta_ptr + NT + t)
+    c_raw = tl.load(meta_ptr + 2 * NT + t)
+    out_raw = tl.load(meta_ptr + 3 * NT + t)
     n_elements = tl.load(meta_ptr + 4 * NT + t)
-    if SCALAR_BY_VALUE:
-        s = scalar_value.to(S_DT)
-    else:
-        s = tl.load(scalar_ptr + t)
 
-    idx = offset + tl.arange(0, BLOCK)
-    mask = idx < n_elements
-    a = tl.load(a_ptr + idx, mask=mask, other=0).to(OUT_DT)
-    b = tl.load(b_ptr + idx, mask=mask, other=0).to(OUT_DT)
-    c = tl.load(c_ptr + idx, mask=mask, other=0).to(OUT_DT)
-    tl.store(out_ptr + idx, fn(a, b, c, s.to(OUT_DT)).to(OUT_DT), mask=mask)
+    # The packed body splits each loaded word into 16-bit halves, which is only
+    # well defined when both the operands and the result are 16 bits wide; for
+    # anything else this folds to the narrow body at compile time.
+    IS16: tl.constexpr = (A_DT.primitive_bitwidth == 16) & (
+        OUT_DT.primitive_bitwidth == 16
+    )
+    if IS16:
+        if (((a_raw | b_raw | c_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
+            foreach_ternary_kernel_p4(
+                meta_ptr,
+                scalar_ptr,
+                scalar_value,
+                fn,
+                NT,
+                A_DT,
+                OUT_DT,
+                S_DT,
+                SCALAR_BY_VALUE,
+                BLOCK,
+            )
+        else:
+            _ternary_narrow_body(
+                meta_ptr,
+                scalar_ptr,
+                scalar_value,
+                fn,
+                NT,
+                A_DT,
+                OUT_DT,
+                S_DT,
+                SCALAR_BY_VALUE,
+                BLOCK,
+            )
+    else:
+        _ternary_narrow_body(
+            meta_ptr,
+            scalar_ptr,
+            scalar_value,
+            fn,
+            NT,
+            A_DT,
+            OUT_DT,
+            S_DT,
+            SCALAR_BY_VALUE,
+            BLOCK,
+        )
 
 
 @triton.jit
