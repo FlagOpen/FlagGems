@@ -59,7 +59,11 @@ def _assert_result_equal(result, reference):
         torch.device("cpu") if utils.TO_CPU else expected_device
     )
     if flag_gems.vendor_name == "kunlunxin" and (
-        result.is_complex() or result.is_neg() or result.is_conj()
+        result.is_complex()
+        or result.is_neg()
+        or result.is_conj()
+        or reference.is_neg()
+        or reference.is_conj()
     ):
         result, reference = _cpu_values(result), _cpu_values(reference)
     elif flag_gems.vendor_name == "ascend" and result.is_complex():
