@@ -20,19 +20,106 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-def _assert_result_equal(result, reference):
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
-        # Observe complex values on CPU; keep the original tensor contract checked.
-        device = torch.device(flag_gems.device)
-        if device.index is None:
-            device = torch.device(device.type, torch.npu.current_device())
-        assert result.device == device
-        assert result.dtype == reference.dtype
-        assert result.layout == reference.layout
-        assert result.shape == reference.shape
-        result, reference = result.cpu(), reference.cpu()
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _numeric_values(inp):
+    # Copy bytes before decoding: device FP8 casts and complex comparison may
+    # be unavailable. Rebuild the logical view and its lazy flags on CPU.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    # Decode before resolving lazy negative bits; CPU FP8 neg is unavailable.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if result.dtype == torch.complex32:
+        result = result.to(torch.complex64)
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _comparison_values(result, reference, *, required_device):
+    # Check the original ABI before observing values on CPU. Layout and alias
+    # assertions at each call site still inspect the original device tensors.
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or result.dtype == torch.complex32
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        # Kunlunxin typed transfer/comparison loses the lazy negative flag.
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    return result, reference
+
+
+def _assert_result_equal(result, reference, *, required_device):
+    result, reference = _comparison_values(
+        result, reference, required_device=required_device
+    )
     tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
 
 
 # aten::mT swaps the last two dimensions of a matrix or batch of matrices and
@@ -81,7 +168,7 @@ def _apply_layout(base, layout, expand_shape=None):
 
 
 def _layout_pair(storage_shape, layout, dtype, expand_shape=None):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     ref_base = tu.to_reference(base.detach())
     inp = _apply_layout(base, layout, expand_shape)
     ref_inp = _apply_layout(ref_base, layout, expand_shape)
@@ -119,13 +206,14 @@ _DTYPE_RANGE_CASES = [
     ],
 )
 def test_mT(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -147,13 +235,14 @@ _MT_SIZE_ROWS = [
 @pytest.mark.mT
 @pytest.mark.parametrize("shape", _MT_SIZE_ROWS)
 def test_mT_with_size(shape):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -179,9 +268,10 @@ def test_mT_strided_input(storage_shape, layout, expand_shape, dtype):
     )
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -189,14 +279,15 @@ def test_mT_strided_input(storage_shape, layout, expand_shape, dtype):
 @pytest.mark.parametrize("shape", [(4, 6), (2, 3, 8)])
 def test_mT_conjugate_bit(shape):
     # A lazy-conjugate input keeps its conj bit through the transpose view.
-    base = tu.make_input(torch.complex64, shape, ["-1", "1"])
+    base = _make_input(torch.complex64, shape, ["-1", "1"])
     inp = base.conj()
     ref_inp = tu.to_reference(base).conj()
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out.is_conj()
     _assert_view(res_out, ref_out, inp, ref_inp)
 
@@ -217,14 +308,15 @@ def test_mT_view_writes_through(shape, layout):
     inp, ref_inp, base, ref_base = _layout_pair(shape, layout, torch.float32)
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
     res_out.fill_(3.0)
     ref_out.fill_(3.0)
-    _assert_result_equal(base, ref_base)
+    _assert_result_equal(base, ref_base, required_device=required_device)
 
 
 _MT_BACKWARD_DTYPES = tu.selected_cases(
@@ -252,22 +344,23 @@ _MT_BACKWARD_DTYPES = tu.selected_cases(
 def test_mT_backward(shape, dtype):
     # The operator is reached through the original leaf, so the gradient is the
     # transposed upstream layout and is compared exactly.
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp.detach()).requires_grad_(True)
     out_shape = shape[:-2] + (shape[-1], shape[-2])
-    upstream = tu.make_input(dtype, out_shape, ["-1", "1"])
+    upstream = _make_input(dtype, out_shape, ["-1", "1"])
     ref_upstream = tu.to_reference(upstream.detach())
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
-    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 MT_SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_MT_DTYPES), quick=[])
@@ -291,13 +384,14 @@ MT_SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_MT_DTYPES), quick=[
 )
 def test_mT_special_values(dtype, scenario):
     # mT only moves metadata, so NaN / Inf payloads must survive untouched.
-    inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
+    inp = _make_special_input(dtype, scenario).reshape(1, -1)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -318,20 +412,21 @@ def test_mT_special_values(dtype, scenario):
 )
 def test_mT_0d_identity(dtype):
     # 0-D is a deprecated identity: the input object itself is returned.
-    inp = tu.make_input(dtype, (), ["-1", "1"])
+    inp = _make_input(dtype, (), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.mT(inp)
 
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out is inp
 
 
 @pytest.mark.mT
 @pytest.mark.parametrize("shape", [(5,), (256,), (0,)])
 def test_mT_1d_rejected(shape):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
 
     with pytest.raises(RuntimeError):
         flag_gems.mT(inp)
