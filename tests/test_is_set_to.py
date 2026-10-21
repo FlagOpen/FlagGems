@@ -248,6 +248,7 @@ def _layout_facts(tensor):
     """Allocation metadata of one operand: identity and geometry, not contents."""
     return (
         tensor.data_ptr(),
+        tensor.untyped_storage()._cdata,
         tensor.storage_offset(),
         tuple(tensor.size()),
         tuple(tensor.stride()),
