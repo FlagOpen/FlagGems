@@ -21,6 +21,98 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _numeric_values(inp):
+    # Copy bytes before decoding: device FP8 casts and complex comparison may
+    # be unavailable. Rebuild the logical view and its lazy flags on CPU.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    # Decode before resolving lazy negative bits; CPU FP8 neg is unavailable.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device):
+    # Check the original ABI before observing values on CPU. Layout and alias
+    # assertions at each call site still inspect the original device tensors.
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        # Kunlunxin typed transfer/comparison loses the lazy negative flag.
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
+    tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
+
+
 # The four aten::split overloads share the single public candidate name:
 #   split.Tensor(t, SymInt split_size, int dim=0)   -> flag_gems.split(t, size, dim)
 #   split.sizes(t, SymInt[] sizes, int dim=0)       -> flag_gems.split(t, [..], dim)
@@ -76,13 +168,13 @@ def _part_shapes(shape, dim, chunk):
     return [shape[:dim] + (count,) + shape[dim + 1 :] for count in counts]
 
 
-def _assert_parts_equal(res_parts, ref_parts, inp):
+def _assert_parts_equal(res_parts, ref_parts, inp, *, required_device):
     assert isinstance(res_parts, (list, tuple)), type(res_parts)
     assert len(res_parts) == len(ref_parts)
     storage_base = inp.untyped_storage().data_ptr()
     element_size = inp.element_size()
     for res_part, ref_part in zip(res_parts, ref_parts):
-        tu.assert_result_equal(res_part, ref_part)
+        _assert_result_equal(res_part, ref_part, required_device=required_device)
         assert res_part.stride() == ref_part.stride()
         assert res_part.storage_offset() == ref_part.storage_offset()
         assert res_part._is_view() == ref_part._is_view()
@@ -273,66 +365,71 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", _SPLIT_SHAPES)
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_split_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
     chunk = _chunk(shape[0])
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, 0)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, 0)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,sizes", SIZES_CASES)
 @pytest.mark.parametrize("dtype", _SIZES_DTYPES)
 def test_split_sizes_form(shape, dim, sizes, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_parts = torch.ops.aten.split.sizes(ref_inp, sizes, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, sizes, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim", DIM_CASES)
 @pytest.mark.parametrize("dtype", _DIM_DTYPES)
 def test_split_dim(shape, dim, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     chunk = _chunk(shape[dim])
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,chunk", CHUNK_CASES)
 def test_split_chunk_boundaries(shape, dim, chunk):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,split_arg", DEFAULT_DIM_CASES)
 @pytest.mark.parametrize("dtype", _DEFAULT_DIM_DTYPES)
 def test_split_default_dim(shape, split_arg, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_parts = torch.ops.aten.split(ref_inp, split_arg)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, split_arg)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 def _apply_layout(base, layout, expand_shape=None):
@@ -353,56 +450,66 @@ def _apply_layout(base, layout, expand_shape=None):
 @pytest.mark.parametrize("storage_shape,layout,expand_shape", LAYOUT_CASES)
 @pytest.mark.parametrize("dtype", _LAYOUT_DTYPES)
 def test_split_strided_input(storage_shape, layout, expand_shape, dtype):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     ref_base = tu.to_reference(base.detach())
     inp = _apply_layout(base, layout, expand_shape)
     ref_inp = _apply_layout(ref_base, layout, expand_shape)
     chunk = _chunk(inp.shape[0])
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, 0)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, 0)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,chunk", VIEW_CASES)
 @pytest.mark.parametrize("dtype", _VIEW_DTYPES)
 def test_split_view_writes_through(shape, dim, chunk, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
     inp_before = tu.to_reference(inp.detach())
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
     # Reading the parts must not modify the input ...
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before, required_device=required_device)
 
     # ... while writing through a part must reach the shared storage: that
     # write-through is what distinguishes a view from a copy.
     res_parts[0].fill_(3.0)
     ref_parts[0].fill_(3.0)
-    tu.assert_result_equal(res_parts[0], ref_parts[0])
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_parts[0], ref_parts[0], required_device=required_device)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,chunk,dtype", BACKWARD_CASES)
 def test_split_backward(shape, dim, chunk, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
+    if (
+        flag_gems.vendor_name in ("ascend", "hygon", "kunlunxin")
+        and dtype in _FP8_DTYPES
+    ):
+        pytest.skip(
+            "Native split backward requires cat, unavailable for FP8 on this backend"
+        )
+    inp = _make_input(dtype, shape, ["-1", "1"]).requires_grad_(True)
     ref_inp = tu.to_reference(inp)
     upstream = [
-        tu.make_input(dtype, part_shape, ["-1", "1"])
+        _make_input(dtype, part_shape, ["-1", "1"])
         for part_shape in _part_shapes(shape, dim, chunk)
     ]
     ref_upstream = [tu.to_reference(grad.detach()) for grad in upstream]
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, chunk, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, chunk, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
     # The gradients flow through the original leaf, not through an output tensor
     # differentiated against itself.
@@ -411,31 +518,33 @@ def test_split_backward(shape, dim, chunk, dtype):
         0
     ]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_split_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
     ref_parts = torch.ops.aten.split.Tensor(ref_inp, 2, 0)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, 2, 0)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
 @pytest.mark.parametrize("shape,dim,split_arg", ZERO_CASES)
 def test_split_zero_size_parts(shape, dim, split_arg):
-    inp = tu.make_input(torch.float32, shape, ["-1", "1"])
+    inp = _make_input(torch.float32, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_parts = torch.ops.aten.split(ref_inp, split_arg, dim)
+    required_device = inp.device
     res_parts = flag_gems.split(inp, split_arg, dim)
 
-    _assert_parts_equal(res_parts, ref_parts, inp)
+    _assert_parts_equal(res_parts, ref_parts, inp, required_device=required_device)
 
 
 @pytest.mark.split
@@ -460,7 +569,7 @@ def test_split_str_default_arguments(self_value):
 @pytest.mark.parametrize("split_size", [0, -1])
 def test_split_rejects_invalid_split_size(split_size):
     # 0 is only legal when the split dimension itself is empty.
-    inp = tu.make_input(torch.float32, (6, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (6, 4), ["-1", "1"])
 
     with pytest.raises((RuntimeError, IndexError, ValueError)):
         flag_gems.split(inp, split_size, 0)
@@ -471,7 +580,7 @@ def test_split_rejects_invalid_split_size(split_size):
 def test_split_rejects_invalid_sizes(sizes):
     # The sizes form has to sum exactly to the split dimension extent and every
     # entry has to be non-negative.
-    inp = tu.make_input(torch.float32, (6, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (6, 4), ["-1", "1"])
 
     with pytest.raises((RuntimeError, IndexError, ValueError)):
         flag_gems.split(inp, sizes, 0)
@@ -480,7 +589,7 @@ def test_split_rejects_invalid_sizes(sizes):
 @pytest.mark.split
 @pytest.mark.parametrize("dim", [5, -3])
 def test_split_rejects_dim_out_of_range(dim):
-    inp = tu.make_input(torch.float32, (6, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (6, 4), ["-1", "1"])
 
     with pytest.raises((IndexError, RuntimeError, ValueError)):
         flag_gems.split(inp, 2, dim)
@@ -488,7 +597,7 @@ def test_split_rejects_dim_out_of_range(dim):
 
 @pytest.mark.split
 def test_split_rejects_0d_input():
-    inp = tu.make_input(torch.float32, (), ["-1", "1"])
+    inp = _make_input(torch.float32, (), ["-1", "1"])
 
     with pytest.raises((RuntimeError, IndexError, ValueError)):
         flag_gems.split(inp, 1, 0)
