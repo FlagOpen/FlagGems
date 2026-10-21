@@ -8557,7 +8557,11 @@ ops:
 
     '
   for:
-  - vllm.v1.attention.ops.deepseek_v4_ops.fused_inv_rope_fp8_quant
+  - fused_inv_rope_fp8_quant
+  name:
+  - fused_inv_rope_fp8_quant
+  source:
+  - vllm
   labels:
   - fused
   - Attention
