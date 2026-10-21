@@ -11281,7 +11281,7 @@ ops:
 
     '
   for:
-  - linalg.det
+  - linalg_det
   labels:
   - aten
   kind:
@@ -11294,7 +11294,7 @@ ops:
 
     '
   for:
-  - linalg.det.out
+  - linalg_det.out
   labels:
   - aten
   kind:
@@ -11430,7 +11430,7 @@ ops:
 
     '
   for:
-  - linalg.ldl_factor_ex
+  - linalg_ldl_factor_ex
   labels:
   - aten
   - KernelGen
@@ -11471,7 +11471,7 @@ ops:
 
     '
   for:
-  - linalg.lu
+  - linalg_lu
   labels:
   - aten
   kind:
@@ -11484,7 +11484,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor
+  - linalg_lu_factor
   labels:
   - aten
   kind:
@@ -11504,7 +11504,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor_ex
+  - linalg_lu_factor_ex
   labels:
   - aten
   kind:
@@ -11522,7 +11522,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor_ex.out
+  - linalg_lu_factor_ex.out
   labels:
   - aten
   kind:
@@ -11536,7 +11536,7 @@ ops:
 
     '
   for:
-  - linalg.lu_factor.out
+  - linalg_lu_factor.out
   labels:
   - aten
   kind:
@@ -11552,7 +11552,7 @@ ops:
 
     '
   for:
-  - linalg.lu.out
+  - linalg_lu.out
   labels:
   - aten
   kind:
@@ -11581,7 +11581,7 @@ ops:
 - id: linalg_matmul
   description: Triton kernel implementation for linalg_matmul.
   for:
-  - linalg.matmul
+  - linalg_matmul
   labels:
   - aten
   - KernelGen
@@ -11593,7 +11593,7 @@ ops:
   description: Computes the matrix exponential of a square matrix via scaling-and-squaring
     with an optimized Taylor polynomial approximation of degree 18.
   for:
-  - linalg.matrix_exp
+  - linalg_matrix_exp
   labels:
   - aten
   kind:
@@ -11604,7 +11604,7 @@ ops:
   description: A variant of linalg_matrix_exp that writes the matrix exponential to
     the provided out tensor.
   for:
-  - linalg.matrix_exp.out
+  - linalg_matrix_exp.out
   labels:
   - aten
   kind:
@@ -11904,7 +11904,7 @@ ops:
 
     '
   for:
-  - linalg.slogdet
+  - linalg_slogdet
   labels:
   - aten
   - KernelGen
@@ -12043,7 +12043,7 @@ ops:
 - id: linalg_vecdot
   description: Computes the dot product of two vectors along a specified dimension.
   for:
-  - linalg.vecdot
+  - linalg_vecdot
   labels:
   - aten
   kind:
@@ -12053,13 +12053,26 @@ ops:
 - id: linalg_vecdot_out
   description: Computes the dot product of two vectors along a specified dimension.
   for:
-  - linalg.vecdot.out
+  - linalg_vecdot.out
   labels:
   - aten
   kind:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_vector_norm
+  description: Alias entry named after the aten symbol `linalg_vector_norm`; computes
+    a vector norm (same semantics as the `vector_norm` entry).
+  for:
+  - linalg_vector_norm
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - LinearAlg
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: linear
   description: 'Applies a linear transformation to the incoming data: y = x @ W^T
     + b.
@@ -14077,6 +14090,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_batch_norm_backward
+  description: Alias entry named after the aten symbol `native_batch_norm_backward`;
+    the backward version of `batch_norm()` (same semantics as the `batch_norm_backward`
+    entry).
+  for:
+  - native_batch_norm_backward
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: native_batch_norm_legit
   description: 'Batch normalization with in-place running statistics updates, returning
     the normalized output along with the saved mean and inverse standard deviation.
@@ -14164,6 +14189,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: native_dropout
+  description: Alias entry named after the aten symbol `native_dropout`; an internal
+    IR for implementing `torch.nn.functional.dropout` (same semantics as the `dropout`
+    entry).
+  for:
+  - native_dropout
+  labels:
+  - aten
+  - nn.functional
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: native_dropout_backward
   description: The backward case of `dropout()`.
   for:
@@ -14186,6 +14224,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_group_norm_backward
+  description: Alias entry named after the aten symbol `native_group_norm_backward`;
+    the backward case for `group_norm()` (same semantics as the `group_norm_backward`
+    entry).
+  for:
+  - native_group_norm_backward
+  labels:
+  - aten
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: native_layer_norm
   description: Apply native layer normalization using the existing implementation.
   for:
@@ -18246,6 +18297,19 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: sobol_engine_draw
+  description: Alias entry named after the aten symbol `_sobol_engine_draw`; generates
+    quasi-random Sobol sequence points (same semantics as the `underscore_sobol_engine_draw`
+    entry).
+  for:
+  - _sobol_engine_draw
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5'
 - id: sobol_engine_ff_
   description: Fast-forward Sobol quasi-random number generator state by n steps using
     Gray code.
@@ -18322,6 +18386,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: softmax_backward_data
+  description: Alias entry named after the aten symbol `_softmax_backward_data`; the
+    backward version of `softmax()` (same semantics as the `softmax_backward` entry).
+  for:
+  - _softmax_backward_data
+  labels:
+  - aten
+  - nn.functional
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: softmax_backward_out
   description: A variant of `softmax_backward()`.
   for:
@@ -21936,7 +22012,7 @@ ops:
 - id: vector_norm
   description: Computes a vector norm.
   for:
-  - linalg.vector_norm
+  - linalg_vector_norm
   labels:
   - aten
   - Reduction
