@@ -129,7 +129,7 @@ def _build_inputs_fn(plan, dtype, device):
         torch.float8_e5m2,
     ):
         # Preserve the original zero payload; only its encoding moves to CPU.
-        host = torch.zeros(nnz, dtype=torch.float32).to(dtype)
+        host = torch.zeros(nnz, dtype=torch.float32, device="cpu").to(dtype)
         raw = host.view(torch.uint8).to(device)
         values = raw.view(dtype)
     else:
