@@ -406,6 +406,114 @@ def foreach_unary_c2c_kernel(
 
 
 @triton.jit
+def _binary_unpack4(v, DT: tl.constexpr):
+    """Split one ``int64`` word into four bit-identical ``DT`` values.
+
+    Private to the binary executor even though :func:`_unpack4` has the same
+    body: the split order is part of the packed-access contract, and a private
+    definition keeps this lane from having to edit a helper the unary and
+    ternary executors also use.
+    """
+    return (
+        (v & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 16) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 32) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+        ((v >> 48) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
+    )
+
+
+@triton.jit
+def _binary_pack4(a, b, c, d):
+    """Inverse of :func:`_binary_unpack4`; the four values are 16 bits wide."""
+    return (
+        a.to(tl.uint16, bitcast=True).to(tl.int64)
+        | (b.to(tl.uint16, bitcast=True).to(tl.int64) << 16)
+        | (c.to(tl.uint16, bitcast=True).to(tl.int64) << 32)
+        | (d.to(tl.uint16, bitcast=True).to(tl.int64) << 48)
+    )
+
+
+@triton.jit
+def _binary_wide_body(
+    meta_ptr,
+    t,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    B_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    ALPHA: tl.constexpr,
+    B_SCALAR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Four 16-bit elements per lane; same semantics as the narrow body."""
+    offset = tl.program_id(1) * (BLOCK // 4)
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
+    b_raw = tl.load(meta_ptr + NT + t)
+    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(tl.int64))
+    n_elements = tl.load(meta_ptr + 3 * NT + t)
+
+    idx = offset + tl.arange(0, BLOCK // 4)
+    mask = idx < n_elements // 4
+    a0, a1, a2, a3 = _binary_unpack4(
+        tl.load(a_ptr + idx, mask=mask, other=0), A_DT
+    )
+    if B_SCALAR:
+        b = _alpha_scale(tl.load(b_raw.to(tl.pointer_type(B_DT))), ALPHA, OUT_DT)
+        r0 = fn(a0.to(OUT_DT), b).to(OUT_DT)
+        r1 = fn(a1.to(OUT_DT), b).to(OUT_DT)
+        r2 = fn(a2.to(OUT_DT), b).to(OUT_DT)
+        r3 = fn(a3.to(OUT_DT), b).to(OUT_DT)
+    else:
+        b_ptr = b_raw.to(tl.pointer_type(tl.int64))
+        b0, b1, b2, b3 = _binary_unpack4(
+            tl.load(b_ptr + idx, mask=mask, other=0), B_DT
+        )
+        b0 = _alpha_scale(b0, ALPHA, OUT_DT)
+        b1 = _alpha_scale(b1, ALPHA, OUT_DT)
+        b2 = _alpha_scale(b2, ALPHA, OUT_DT)
+        b3 = _alpha_scale(b3, ALPHA, OUT_DT)
+        r0 = fn(a0.to(OUT_DT), b0).to(OUT_DT)
+        r1 = fn(a1.to(OUT_DT), b1).to(OUT_DT)
+        r2 = fn(a2.to(OUT_DT), b2).to(OUT_DT)
+        r3 = fn(a3.to(OUT_DT), b3).to(OUT_DT)
+    tl.store(out_ptr + idx, _binary_pack4(r0, r1, r2, r3), mask=mask)
+
+
+@triton.jit
+def _binary_narrow_body(
+    meta_ptr,
+    t,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    B_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    ALPHA: tl.constexpr,
+    B_SCALAR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """The element-indexed body: one operand element per lane."""
+    offset = tl.program_id(1) * BLOCK
+
+    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
+    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(B_DT))
+    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(OUT_DT))
+    n_elements = tl.load(meta_ptr + 3 * NT + t)
+
+    idx = offset + tl.arange(0, BLOCK)
+    mask = idx < n_elements
+    a = tl.load(a_ptr + idx, mask=mask, other=0)
+    if B_SCALAR:
+        b = tl.load(b_ptr)
+    else:
+        b = tl.load(b_ptr + idx, mask=mask, other=0)
+    b = (b * ALPHA).to(OUT_DT) if ALPHA != 1 else b.to(OUT_DT)
+    tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT), mask=mask)
+
+
+@triton.jit
 def foreach_binary_kernel(
     meta_ptr,
     fn: tl.constexpr,
@@ -443,24 +551,46 @@ def foreach_binary_kernel(
 
     ``ALPHA`` scales the second operand before the element-wise function runs;
     it is a ``constexpr`` so the multiply compiles away for the default value.
+
+    The narrow body issues one ``ld.global.b16`` per element because a pointer
+    read out of the metadata buffer carries no alignment information, so Triton
+    cannot widen the access.  That costs 3.1us on the 16 tensor, 512^2 fp16
+    group -- the exact cell the acceptance median is taken from -- whereas the
+    same group through an ``int64`` pointer measures 12.5us against 15.6us.  The
+    packed kernel already does this from ``_PACK_MIN_ELEMS`` upward, but below
+    that count only this kernel is selected.  Rather than raise the shared
+    threshold, the kernel checks the two conditions the packed access actually
+    needs -- every pointer 8 byte aligned and every count a multiple of four --
+    on the metadata values it has already loaded, and takes the four-wide body
+    when they hold.  Views with an odd element offset and lists with a short
+    tail keep the element-indexed body, so nothing here depends on the caller.
     """
     t = tl.program_id(0)
-    offset = tl.program_id(1) * BLOCK
-
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(B_DT))
-    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(OUT_DT))
+    a_raw = tl.load(meta_ptr + t)
+    b_raw = tl.load(meta_ptr + NT + t)
+    out_raw = tl.load(meta_ptr + 2 * NT + t)
     n_elements = tl.load(meta_ptr + 3 * NT + t)
 
-    idx = offset + tl.arange(0, BLOCK)
-    mask = idx < n_elements
-    a = tl.load(a_ptr + idx, mask=mask, other=0)
-    if B_SCALAR:
-        b = tl.load(b_ptr)
+    # Bit-splitting a word is only well defined when all three dtypes are 16
+    # bits wide; for anything else this folds to the narrow body at compile time.
+    IS16: tl.constexpr = (
+        (A_DT.primitive_bitwidth == 16)
+        & (B_DT.primitive_bitwidth == 16)
+        & (OUT_DT.primitive_bitwidth == 16)
+    )
+    if IS16:
+        if (((a_raw | b_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
+            _binary_wide_body(
+                meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+            )
+        else:
+            _binary_narrow_body(
+                meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+            )
     else:
-        b = tl.load(b_ptr + idx, mask=mask, other=0)
-    b = (b * ALPHA).to(OUT_DT) if ALPHA != 1 else b.to(OUT_DT)
-    tl.store(out_ptr + idx, fn(a.to(OUT_DT), b).to(OUT_DT), mask=mask)
+        _binary_narrow_body(
+            meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+        )
 
 
 @triton.jit
