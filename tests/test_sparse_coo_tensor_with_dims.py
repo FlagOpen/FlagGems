@@ -35,7 +35,9 @@ def _assert_empty_coo_close(res_out, ref_out):
     assert res_out.dtype == ref_out.dtype
     assert res_out._nnz() == ref_out._nnz() == 0
     assert res_out.is_coalesced() == ref_out.is_coalesced()
-    utils.gems_assert_close(res_out.to_dense(), ref_out.to_dense(), ref_out.dtype)
+    res_dense = res_out.to_dense()
+    ref_dense = ref_out.to_dense().to(res_dense.device)
+    utils.gems_assert_close(res_dense, ref_dense, ref_out.dtype)
 
 
 @pytest.mark.sparse_coo_tensor_with_dims
