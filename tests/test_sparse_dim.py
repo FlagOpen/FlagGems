@@ -20,6 +20,106 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _repeat(inp, *sizes):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and inp.dtype
+        in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        and inp.device.type != "cpu"
+    ):
+        return _copy_to(_copy_to(inp, "cpu").repeat(*sizes), inp.device)
+    return inp.repeat(*sizes)
+
+
 # sparse_dim counts sparse dimensions: zero for strided tensors, the
 # leading sparse rank for COO, and two for the CSR layouts below.
 _DTYPES = (
@@ -93,7 +193,7 @@ def _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range, seed=0):
             for dim in sparse_shape
         ]
     )
-    values = tu.make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
+    values = _make_input(dtype, (nnz,) + tuple(dense_shape), value_range)
     size = tuple(sparse_shape) + tuple(dense_shape)
     return torch.sparse_coo_tensor(indices, values, size, device=flag_gems.device)
 
@@ -113,9 +213,9 @@ def _make_csr(shape, nnz, dtype, value_range):
         # crow/col pattern), so the layout stays 2-D sparse for every batch.
         crow_indices = crow_indices.expand(shape[0], -1).contiguous()
         col_indices = col_indices.expand(shape[0], -1).contiguous()
-        values = tu.make_input(dtype, (shape[0], nnz), value_range)
+        values = _make_input(dtype, (shape[0], nnz), value_range)
     else:
-        values = tu.make_input(dtype, (nnz,), value_range)
+        values = _make_input(dtype, (nnz,), value_range)
     return torch.sparse_csr_tensor(
         crow_indices, col_indices, values, shape, device=flag_gems.device
     )
@@ -127,7 +227,7 @@ def _make_csr_with_dense_dims(dtype, value_range):
     # crow segments: row0 -> 1, row1 -> 1, row2 -> 2, row3 -> 1 stored block.
     crow = torch.tensor([0, 1, 2, 4, 5], dtype=torch.long, device=flag_gems.device)
     col = torch.tensor([0, 1, 0, 1, 2], dtype=torch.long, device=flag_gems.device)
-    values = tu.make_input(dtype, (nnz, dense), value_range)
+    values = _make_input(dtype, (nnz, dense), value_range)
     return torch.sparse_csr_tensor(
         crow, col, values, (rows, cols, dense), device=flag_gems.device
     )
@@ -162,11 +262,6 @@ def _assert_result(res_out, ref_out):
 _INPUT_DTYPE_CASES = [
     pytest.param(
         dtype,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
     )
     for dtype in _DTYPES
 ]
@@ -176,7 +271,7 @@ _INPUT_DTYPE_CASES = [
 @pytest.mark.parametrize("shape", _DENSE_SHAPES)
 @pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_dense_layouts(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.sparse_dim(ref_inp)
@@ -189,7 +284,7 @@ def test_sparse_dim_dense_layouts(shape, dtype):
 @pytest.mark.parametrize("shape", [(0,), (0, 5), (2, 0, 3)])
 @pytest.mark.parametrize("dtype", _DTYPES)
 def test_sparse_dim_empty_dense(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     assert inp.numel() == 0
     ref_inp = tu.to_reference(inp)
 
@@ -205,11 +300,6 @@ _DTYPE_RANGE_CASES = [
     pytest.param(
         dtype,
         value_range,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
     )
     for dtype in _DTYPES
     for value_range in tu.selected_ranges()[:1]
@@ -238,18 +328,13 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
         pytest.param(
             shape,
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for shape, dtype in _SHAPE_DTYPE_CASES
     ],
 )
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_sparse_dim_dense_spec_shapes_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.sparse_dim(ref_inp)
@@ -297,11 +382,6 @@ _COO_SPEC_DTYPE_CASES = tu.selected_cases(
         pytest.param(
             shape,
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for shape, dtype in _COO_SPEC_DTYPE_CASES
     ],
@@ -335,11 +415,6 @@ _COO_DTYPE_CASES = tu.selected_cases(
         pytest.param(
             case,
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for case, dtype in _COO_DTYPE_CASES
     ],
@@ -382,7 +457,7 @@ def test_sparse_dim_empty_coo(dtype):
 def test_sparse_dim_uncoalesced_coo(dtype):
     sparse_shape, dense_shape = (2, 2), (3,)
     indices = torch.tensor([[0, 0, 1, 1, 0], [0, 1, 0, 1, 0]], dtype=torch.long)
-    values = tu.make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
+    values = _make_input(dtype, (5,) + tuple(dense_shape), ["-1", "1"])
     inp = torch.sparse_coo_tensor(
         indices, values, sparse_shape + dense_shape, device=flag_gems.device
     )
@@ -481,17 +556,12 @@ def test_sparse_dim_csr_spec_shapes(shape, dtype):
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
     ],
 )
 def test_sparse_dim_nan_inf_dense(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario).repeat(2)[:6].reshape(2, 3)
+    inp = _repeat(_make_special_input(dtype, scenario), 2)[:6].reshape(2, 3)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.sparse_dim(ref_inp)
@@ -507,17 +577,12 @@ def test_sparse_dim_nan_inf_dense(dtype, scenario):
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
     ],
 )
 def test_sparse_dim_nan_inf_coo(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     indices = torch.tensor([[0, 1, 2, 3, 4, 5]], dtype=torch.long)
     inp = torch.sparse_coo_tensor(indices, values, (6,), device=flag_gems.device)
     ref_inp = tu.to_reference(inp)
@@ -535,17 +600,12 @@ def test_sparse_dim_nan_inf_coo(dtype, scenario):
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
     ],
 )
 def test_sparse_dim_nan_inf_csr(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _repeat(_make_special_input(dtype, scenario), 2)[:6]
     crow_indices = torch.tensor([0, 3, 4, 6], dtype=torch.long)
     col_indices = torch.tensor([0, 1, 2, 1, 0, 2], dtype=torch.long)
     inp = torch.sparse_csr_tensor(

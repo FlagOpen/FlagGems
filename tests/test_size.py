@@ -19,6 +19,99 @@ import flag_gems
 
 from . import test_utils as tu
 
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _check_input(inp, dtype, shape):
+    assert inp.dtype == dtype and inp.shape == torch.Size(shape)
+    assert inp.device == _device(flag_gems.device)
+    return inp
+
+
+def _cpu_input(dtype, shape, value_range):
+    # The original factory recipe, with the same bounds and degenerate fills.
+    low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+    if not dtype.is_floating_point:
+        low, high = int(low), int(high)
+        dtype_min, dtype_max = tu.dtype_bounds(dtype)
+        low = max(low, int(dtype_min))
+        high = min(high, int(dtype_max))
+        low = min(low, high)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        inp = _copy_to(_cpu_input(dtype, shape, value_range), flag_gems.device)
+    else:
+        inp = tu.make_input(dtype, shape, value_range)
+    return _check_input(inp, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        inp = _copy_to(value.to(dtype), flag_gems.device)
+    else:
+        inp = tu.make_special_input(dtype, scenario)
+    return _check_input(inp, dtype, (5,))
+
+
+def _dtype_marks(dtype):
+    return pytest.mark.skipif(
+        flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64,
+        reason="Kunlunxin float64 allocation and transfer narrow to float32",
+    )
+
+
 # aten::size reports the operand's shape as int[] (default call) or int (dim
 # call) and reads no element, so its result is dtype- and payload-independent.
 # One tensor operand leaves nothing to broadcast and a Python int has no
@@ -61,9 +154,15 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.size
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(dtype, value_range, marks=_dtype_marks(dtype))
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_size_default(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.size(ref_inp)
@@ -117,7 +216,7 @@ _DIM_DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape,dim", SIZE_DIM_ROWS)
 @pytest.mark.parametrize("dtype,value_range", _DIM_DTYPE_RANGE_CASES)
 def test_size_int_dim(shape, dim, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.size.int(ref_inp, dim)
@@ -129,7 +228,7 @@ def test_size_int_dim(shape, dim, value_range, dtype):
 @pytest.mark.size
 def test_size_int_dim_keyword():
     # The same entry point accepts the dim argument by keyword.
-    inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.size(ref_inp, dim=1)
@@ -178,9 +277,11 @@ SIZE_VIEW_DIMS = [
 
 @pytest.mark.size
 @pytest.mark.parametrize("storage_shape,layout", SIZE_VIEW_ROWS)
-@pytest.mark.parametrize("dtype", SIZE_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", [pytest.param(dtype, marks=_dtype_marks(dtype)) for dtype in SIZE_DTYPES]
+)
 def test_size_view(storage_shape, layout, dtype):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _view(base, layout)
     ref_inp = _view(ref_base, layout)
@@ -195,7 +296,7 @@ def test_size_view(storage_shape, layout, dtype):
 @pytest.mark.parametrize("storage_shape,layout,dim", SIZE_VIEW_DIMS)
 @pytest.mark.parametrize("dtype", SIZE_DIM_DTYPES)
 def test_size_view_dim(storage_shape, layout, dim, dtype):
-    base = tu.make_input(dtype, storage_shape, ["-1", "1"])
+    base = _make_input(dtype, storage_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _view(base, layout)
     ref_inp = _view(ref_base, layout)
@@ -271,9 +372,15 @@ SIZE_SPECIAL_CASES = tu.selected_cases(
 
 
 @pytest.mark.size
-@pytest.mark.parametrize("dtype,scenario", SIZE_SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(dtype, scenario, marks=_dtype_marks(dtype))
+        for dtype, scenario in SIZE_SPECIAL_CASES
+    ],
+)
 def test_size_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.size(ref_inp)
