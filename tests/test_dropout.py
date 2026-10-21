@@ -31,6 +31,7 @@ device = flag_gems.device
 
 
 @pytest.mark.dropout
+@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3] if cfg.QUICK_MODE else [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -61,10 +62,12 @@ def test_dropout(shape, p, dtype):
         one_minus_p = np.float32(1.0) - p
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
-    # GEMS dropout follows native_dropout semantics and returns (out, mask).
-    # The kernel wrapper does not accept NumPy scalars, which the dispatcher
-    # would have boxed into a tensor.
-    res_out, _ = flag_gems.dropout(res_inp, float(p), True)
+    # flag_gems.dropout follows the aten native_dropout contract and returns
+    # (out, mask); dropout is probabilistic, so validate statistically. The
+    # kernel requires a plain python float, so pass the original p.
+    res_out, res_mask = flag_gems.dropout(res_inp, float(p), True)
+
+    assert res_mask.shape == res_inp.shape and res_mask.dtype == torch.bool
 
     res_out = utils.to_reference(res_out)
     exp_equal = (p * p + one_minus_p * one_minus_p) * res_inp.numel()

@@ -316,6 +316,9 @@ from flag_gems.ops._nested_tensor_softmax_with_shape import (
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from flag_gems.ops._new_zeros_with_same_feature_meta import (
+    _new_zeros_with_same_feature_meta,
+)
 from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
@@ -562,6 +565,7 @@ from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
+from flag_gems.ops.ccol_indices import ccol_indices
 from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
@@ -597,6 +601,7 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_depthwise3d import conv_depthwise3d
 from flag_gems.ops.conv_tbc import conv_tbc, conv_tbc_out
 from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
@@ -612,6 +617,7 @@ from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable_out,
 )
 from flag_gems.ops.copy import copy, copy_
+from flag_gems.ops.copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from flag_gems.ops.copysign import copysign, copysign_out
 from flag_gems.ops.copysign_ import copysign_
 from flag_gems.ops.corrcoef import corrcoef
@@ -866,6 +872,8 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.indices import indices
+from flag_gems.ops.indices_copy import indices_copy, indices_copy_out
 from flag_gems.ops.infinitely_differentiable_gelu_backward import (
     infinitely_differentiable_gelu_backward,
 )
@@ -1238,6 +1246,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resize_as import resize_as, resize_as_
+from flag_gems.ops.resize_as_sparse_ import resize_as_sparse_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -1327,6 +1336,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
+from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -1504,6 +1514,7 @@ from flag_gems.ops.uniform import uniform, uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
@@ -1849,6 +1860,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
+    "_new_zeros_with_same_feature_meta",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -2086,6 +2098,7 @@ __all__ = [
     "cat_out",
     "cauchy",
     "cauchy_",
+    "ccol_indices",
     "ccol_indices_copy",
     "ccol_indices_copy_out",
     "cdist",
@@ -2128,6 +2141,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_depthwise3d",
     "conv_tbc",
     "conv_tbc_backward",
     "conv_tbc_out",
@@ -2141,6 +2155,7 @@ __all__ = [
     "convolution_overrideable_out",
     "copy",
     "copy_",
+    "copy_sparse_to_sparse_",
     "copysign",
     "copysign_",
     "copysign_out",
@@ -2421,6 +2436,9 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "index_select_backward",
+    "indices",
+    "indices_copy",
+    "indices_copy_out",
     "infinitely_differentiable_gelu_backward",
     "inner",
     "int_mm",
@@ -2822,6 +2840,7 @@ __all__ = [
     "resize_",
     "resize_as",
     "resize_as_",
+    "resize_as_sparse_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
@@ -2936,6 +2955,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "sparse_broadcast_to",
+    "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
@@ -3117,6 +3137,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unique_dim_consecutive",
     "unsafe_chunk",
     "unsafe_index",
     "unsafe_index_put",
