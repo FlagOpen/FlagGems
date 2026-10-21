@@ -208,6 +208,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: _linalg_eigvals
+  description: Computes the eigenvalues of a square matrix; the private primitive
+    backing torch.linalg.eigvals.
+  for:
+  - _linalg_eigvals
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: _linalg_slogdet
   description: 'Computes the sign and natural logarithm of the absolute value of the
 
@@ -300,6 +312,20 @@ ops:
   - Distribution
   stages:
   - alpha: '5.5.0'
+- id: _pin_memory
+  description: 'Pins a strided CPU tensor into page-locked host memory (the internal
+    aten entry dispatched on the CPU key).
+
+    '
+  for:
+  - _pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -2879,6 +2905,19 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices
+  description: Returns the compressed column pointer array of a sparse CSC tensor
+    as a zero-copy alias of the internal ccol storage, shaped `batch_dims + (ncols
+    + 1)`.
+  for:
+  - ccol_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: ccol_indices_copy
   description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
     array as an int64 tensor shaped batch dims plus `ncols + 1`.
@@ -3271,18 +3310,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: clone
-  description: Pure layout/memory operation (clone).
-  for:
-  - clone
-  labels:
-  - KernelGen
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
     by their linear index, sorts unique coordinates ascending and sums duplicated
@@ -3690,6 +3717,18 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
+- id: conv_depthwise3d
+  description: Applies a 3D depthwise convolution over an input signal composed of
+    several input planes.
+  for:
+  - conv_depthwise3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: conv_tbc
   description: Applies a 1D convolution over an input with time-batch-channel (T,
     B, C) layout.
@@ -8579,18 +8618,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
-- id: fused_moe
-  description: The generic interface for fused MoE.
-  for:
-  - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
@@ -11270,7 +11297,6 @@ ops:
   description: Computes the eigenvalues of a square matrix.
   for:
   - linalg_eigvals
-  - _linalg_eigvals
   labels:
   - aten
   - KernelGen
@@ -15881,16 +15907,6 @@ ops:
   - Distribution
   stages:
   - stable: '2.1'
-- id: random_
-  description: Random sampling operator (random_).
-  for:
-  - random_
-  labels:
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.1'
 - id: randperm
   description: Returns a random permutation of integers from `0` to `n - 1`.
   for:
@@ -18413,6 +18429,20 @@ ops:
     '
   for:
   - _sparse_broadcast_to
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_dim
+  description: 'Returns the number of sparse dimensions of a tensor: 0 for strided
+    tensors, the index count for sparse COO, 2 for compressed layouts.
+
+    '
+  for:
+  - sparse_dim
   labels:
   - aten
   - KernelGen
@@ -21133,6 +21163,18 @@ ops:
   - Tensor
   stages:
   - beta: '5.4'
+- id: unique_dim_consecutive
+  description: Removes all but the first slice from every consecutive group of equivalent
+    slices along a dimension.
+  for:
+  - unique_dim_consecutive
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: unpack_seq_triton
   description: Unpack a packed sequence tensor back to its original variable-length
     form.

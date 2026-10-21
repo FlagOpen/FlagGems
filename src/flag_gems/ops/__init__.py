@@ -565,6 +565,7 @@ from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
+from flag_gems.ops.ccol_indices import ccol_indices
 from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
@@ -600,6 +601,7 @@ from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
 from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
+from flag_gems.ops.conv_depthwise3d import conv_depthwise3d
 from flag_gems.ops.conv_tbc import conv_tbc, conv_tbc_out
 from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
@@ -1332,6 +1334,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
+from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -1509,6 +1512,7 @@ from flag_gems.ops.uniform import uniform, uniform_
 from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
+from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
 from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
@@ -2092,6 +2096,7 @@ __all__ = [
     "cat_out",
     "cauchy",
     "cauchy_",
+    "ccol_indices",
     "ccol_indices_copy",
     "ccol_indices_copy_out",
     "cdist",
@@ -2134,6 +2139,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_depthwise3d",
     "conv_tbc",
     "conv_tbc_backward",
     "conv_tbc_out",
@@ -2944,6 +2950,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "sparse_broadcast_to",
+    "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
@@ -3125,6 +3132,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "unique_dim_consecutive",
     "unsafe_chunk",
     "unsafe_index",
     "unsafe_index_put",
