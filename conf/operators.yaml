@@ -285,21 +285,6 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
-- id: _nested_compute_contiguous_strides_offsets
-  description: 'Computes the contiguous strides and storage offsets of a nested tensor
-    from its per-component sizes, mirroring
-    `aten::_nested_compute_contiguous_strides_offsets`.
-
-    '
-  for:
-  - _nested_compute_contiguous_strides_offsets
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: _philox_uniform_
   description: |
     Fills the tensor in place with samples from a uniform distribution over
@@ -14296,6 +14281,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_compute_contiguous_strides_offsets
+  description: 'Computes the contiguous strides and storage offsets of a nested tensor
+    from its per-component sizes, mirroring
+    `aten::_nested_compute_contiguous_strides_offsets`.
+
+    '
+  for:
+  - _nested_compute_contiguous_strides_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 

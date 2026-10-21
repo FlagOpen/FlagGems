@@ -435,7 +435,7 @@ _FULL_CONFIG = (
     ("_neg_view_copy.out", _neg_view_copy_out),
     (
         "_nested_compute_contiguous_strides_offsets",
-        _nested_compute_contiguous_strides_offsets,
+        nested_compute_contiguous_strides_offsets,
     ),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),

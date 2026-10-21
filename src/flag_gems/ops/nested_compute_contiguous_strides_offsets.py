@@ -113,7 +113,7 @@ _ATEN_TYPE_NAMES = {
 }
 
 
-def _nested_compute_contiguous_strides_offsets(
+def nested_compute_contiguous_strides_offsets(
     nested_size: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute contiguous strides and storage offsets from nested sizes.

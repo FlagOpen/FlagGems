@@ -18,24 +18,10 @@ from typing import Generator
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
-from . import base, consts
-
-# ``_nested_compute_contiguous_strides_offsets`` starts with an underscore and
-# ``pytest.mark`` refuses attribute access for such names; register the marker
-# explicitly so the file collects under ``-m`` filters like every other
-# benchmark.
-setattr(
-    pytest.mark,
-    "_nested_compute_contiguous_strides_offsets",
-    MarkDecorator(
-        Mark("_nested_compute_contiguous_strides_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
+from . import base
 
 # The input is an int64 (ntensors, dim) sizes matrix; the op is O(ntensors *
 # dim) host arithmetic, so the sweep varies the component count and the rank
@@ -43,11 +29,10 @@ setattr(
 # row products never leave int64 and the int32 offsets truncation is not
 # triggered (values are irrelevant to the timed host path).
 #
-# The dtype sweep keeps the repository default FLOAT + INT + BOOL even though
-# the operator itself only accepts int64 sizes (native raises RuntimeError for
-# any other dtype): the input tensor only feeds the host read, so the same
-# int64 sizes matrix is timed for every dtype class and the reference/impl
-# sides always do identical work.
+# The operator only accepts int64 sizes (native raises RuntimeError for any
+# other dtype), so the benchmark sweeps a single dtype: a FLOAT + INT + BOOL
+# sweep would repeat the identical sizes matrix under different labels and
+# inflate the report with duplicate measurements.
 SIZES_SHAPES = [(2, 2), (4, 3), (16, 4), (64, 3), (256, 3), (1024, 3)]
 
 
@@ -67,12 +52,15 @@ class NestedComputeContiguousStridesOffsetsBenchmark(base.Benchmark):
             yield (sizes,)
 
 
-@pytest.mark._nested_compute_contiguous_strides_offsets
-def test__nested_compute_contiguous_strides_offsets():
+@pytest.mark.nested_compute_contiguous_strides_offsets
+def test_nested_compute_contiguous_strides_offsets():
     bench = NestedComputeContiguousStridesOffsetsBenchmark(
-        op_name="_nested_compute_contiguous_strides_offsets",
+        op_name="nested_compute_contiguous_strides_offsets",
         torch_op=torch.ops.aten._nested_compute_contiguous_strides_offsets,
-        gems_op=flag_gems._nested_compute_contiguous_strides_offsets,
-        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
+        gems_op=flag_gems.nested_compute_contiguous_strides_offsets,
+        # ``get_input_iter`` always builds the int64 sizes matrix that
+        # aten::_nested_compute_contiguous_strides_offsets requires, so a
+        # multi-dtype sweep would only relabel identical measurements.
+        dtypes=[torch.int64],
     )
     bench.run()
