@@ -728,7 +728,9 @@ def _zero_list(tensors: List[torch.Tensor]) -> None:
             continue
         # Two dimensions cost nothing for a small list and keep the program
         # count bounded when one tensor is much larger than its neighbours.
-        block = _pick_block(numels)
+        # Two-byte dtypes double the block so that each program still stores
+        # 4 KiB, which measured ~1.9us faster at 1024^2; see _pick_block.
+        block = _pick_block(numels, start=2048 if dtype.itemsize <= 2 else 1024)
         meta = _device_meta([w.data_ptr() for w in work] + numels, device)
         in_dt = tl_dtype(dtype)
         grid = (len(work), triton.cdiv(max_numel, block))

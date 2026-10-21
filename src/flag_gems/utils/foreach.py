@@ -221,7 +221,9 @@ def group_by_device_dtype(
     return groups
 
 
-def _pick_block(numels: Sequence[int], max_programs: int = 1 << 18) -> int:
+def _pick_block(
+    numels: Sequence[int], max_programs: int = 1 << 18, start: int = 1024
+) -> int:
     """Block size balancing per-program work against the 2D grid size.
 
     The grid is ``(len(numels), cdiv(max numel, block))``, so tensors smaller
@@ -229,16 +231,24 @@ def _pick_block(numels: Sequence[int], max_programs: int = 1 << 18) -> int:
     almost nothing individually, but a very skewed list still needs a larger
     block to keep the total program count in check.
 
-    The search starts at 1024 rather than at the smallest workable value.  Each
-    program pays three scalar ``int64`` metadata loads before it touches any
-    data, so a small block amortises that fixed cost over too little work: on
-    128 x 1M fp32 a sweep measured 339us at ``BLOCK=1024`` against 434us at 256,
-    and the ordering held across every shape tried.  1024 elements is also one
-    element per lane at ``num_warps=4``, which is why larger blocks stop helping.
+    The search starts at ``start`` rather than at the smallest workable value.
+    Each program pays three scalar ``int64`` metadata loads before it touches
+    any data, so a small block amortises that fixed cost over too little work:
+    on 128 x 1M fp32 a sweep measured 339us at ``BLOCK=1024`` against 434us at
+    256, and the ordering held across every shape tried.
+
+    1024 is the right floor for four-byte data, where it is 4 KiB per program.
+    Callers whose payload is two bytes pass ``start=2048`` to get the same 4 KiB
+    of stores per program: the packed zero kernel measured 15.06us at
+    ``BLOCK=1024`` against 13.15us at 2048 on 16 x 1M fp16 (full call, median of
+    three alternating runs), and 15.10 against 13.22 on bf16, while fp32 was
+    unchanged by the larger block.
     """
     nt = len(numels)
     max_numel = max(numels)
     for block in (1024, 2048, 4096, 8192, 16384):
+        if block < start:
+            continue
         if nt * ((max_numel + block - 1) // block) <= max_programs:
             return block
     return 16384
