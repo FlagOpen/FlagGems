@@ -817,7 +817,6 @@ def test_view_as_special_values(dtype, scenario):
 @pytest.mark.parametrize("shape,target", _NUMEL_MISMATCH_ROWS)
 def test_view_as_numel_mismatch(shape, target):
 
-    required_device = _expected_device()
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
     other = torch.zeros(target, dtype=torch.float32, device=flag_gems.device)
 
@@ -836,7 +835,6 @@ def test_view_as_non_viewable_target(storage, layout, expand, target):
     # stride-expressible, so a view cannot exist and the operator has to raise
     # instead of silently materializing a copy.
 
-    required_device = _expected_device()
     inp = _apply_layout(
         tu.make_input(torch.float32, storage, ["-1", "1"]), layout, expand
     )
@@ -850,7 +848,6 @@ def test_view_as_non_viewable_target(storage, layout, expand, target):
 @pytest.mark.parametrize("bad_operand", ["self", "other"])
 def test_view_as_non_tensor_operand(bad_operand):
 
-    required_device = _expected_device()
     inp = tu.make_input(torch.float32, (4, 6), ["-1", "1"])
     other = torch.zeros((2, 12), dtype=torch.float32, device=flag_gems.device)
 

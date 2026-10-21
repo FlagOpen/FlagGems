@@ -731,7 +731,6 @@ def test_view_special_values(dtype, scenario):
 @pytest.mark.parametrize("shape,target", _NUMEL_MISMATCH_ROWS)
 def test_view_size_numel_mismatch(shape, target):
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -741,7 +740,6 @@ def test_view_size_numel_mismatch(shape, target):
 @pytest.mark.view
 def test_view_size_two_inferred_dims():
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -759,7 +757,6 @@ def test_view_size_rejects_bare_negative_extent():
     # view(x, 0) as a byte view, view(x, 100) aborts the library). Only a
     # negative bare int is rejected, and that is the workload asserted here.
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -769,7 +766,6 @@ def test_view_size_rejects_bare_negative_extent():
 @pytest.mark.view
 def test_view_rejects_non_tensor_self():
 
-    required_device = _expected_device()
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.view([[0.0] * 6] * 4, (4, 6))
 
@@ -777,7 +773,6 @@ def test_view_rejects_non_tensor_self():
 @pytest.mark.view
 def test_view_rejects_non_tensor_size():
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, (4, 6), ["-1", "1"])
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -796,7 +791,6 @@ def test_view_size_rejects_unviewable_layout(
     storage_shape, layout, expand_shape, target
 ):
 
-    required_device = _expected_device()
     inp = _apply_layout(
         _make_input(torch.float32, storage_shape, ["-1", "1"]), layout, expand_shape
     )
@@ -809,7 +803,6 @@ def test_view_size_rejects_unviewable_layout(
 @pytest.mark.parametrize("storage_shape,layout,expand_shape,dst", _DTYPE_INVALID_ROWS)
 def test_view_dtype_rejects_invalid(storage_shape, layout, expand_shape, dst):
 
-    required_device = _expected_device()
     inp = _apply_layout(
         _make_input(torch.float32, storage_shape, ["-1", "1"]), layout, expand_shape
     )
@@ -824,7 +817,6 @@ def test_view_dtype_rejects_conjugate_input(dtype):
     # Converting to a different dtype is the case the lazy conjugate bit blocks:
     # the trailing size is divisible, so only the flag can raise here.
 
-    required_device = _expected_device()
     inp = _make_input(dtype, (2, 3), ["-1", "1"]).conj()
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
@@ -836,7 +828,6 @@ def test_view_dtype_rejects_negative_bit_input():
     # Same rule for the lazy negative bit: torch._neg_view keeps the storage
     # untouched and only flips the flag, which the dtype conversion rejects.
 
-    required_device = _expected_device()
     inp = torch._neg_view(_make_input(torch.float32, (2, 3), ["-1", "1"]))
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):

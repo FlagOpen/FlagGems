@@ -425,7 +425,6 @@ def test_squeeze_special_values(dtype, scenario):
 @pytest.mark.parametrize("shape,dim", _NEGATIVE_DIM_CASES)
 def test_squeeze_out_of_range_dim_raises(shape, dim):
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
@@ -436,7 +435,6 @@ def test_squeeze_out_of_range_dim_raises(shape, dim):
 @pytest.mark.parametrize("shape,dims", _NEGATIVE_DIMS_CASES)
 def test_squeeze_out_of_range_dims_raises(shape, dims):
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, shape, _RANGE)
 
     with pytest.raises(IndexError):
@@ -447,7 +445,6 @@ def test_squeeze_out_of_range_dims_raises(shape, dims):
 @pytest.mark.parametrize("dims", [[1, 1], [1, -2], [0, 0, 1]])
 def test_squeeze_duplicate_dims_raises(dims):
 
-    required_device = _expected_device()
     inp = _make_input(torch.float32, (6, 1, 8), _RANGE)
 
     with pytest.raises(RuntimeError):
@@ -457,6 +454,5 @@ def test_squeeze_duplicate_dims_raises(dims):
 @pytest.mark.squeeze
 def test_squeeze_rejects_non_tensor():
 
-    required_device = _expected_device()
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.squeeze([1, 2, 3])
