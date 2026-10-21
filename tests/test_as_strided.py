@@ -85,6 +85,7 @@ def _assert_result_equal(result, reference, *, required_device):
     if (
         result.dtype in _FP8_DTYPES
         or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
         or (
             flag_gems.vendor_name == "kunlunxin"
             and (result.is_neg() or reference.is_neg())
@@ -138,7 +139,9 @@ def _assert_result_close(result, reference, *, required_device):
     )
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape and result.layout == reference.layout
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex():
+    if (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex()) or (
+        flag_gems.vendor_name == "kunlunxin" and (result.is_neg() or reference.is_neg())
+    ):
         result, reference = _numeric_values(result), _numeric_values(reference)
     else:
         result = utils.to_cpu(result, reference)
