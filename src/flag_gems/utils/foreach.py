@@ -2356,9 +2356,16 @@ def _launch_binary_kernel(
         and not runtime.launch_enter_hook.calls
         and not runtime.launch_exit_hook.calls
     ):
-        last[11]()
-        _BINARY_LAUNCH_STATS["replay"] += 1
-        return
+        try:
+            last[11]()
+        except Exception:
+            # A memoised launcher can go stale if Triton invalidates the
+            # compiled entry it captured.  Forget it and take the same path a
+            # first call takes rather than raising out of the op.
+            _LAST_BINARY_REPLAY[0] = None
+        else:
+            _BINARY_LAUNCH_STATS["replay"] += 1
+            return
     key = (
         kernel,
         meta.device,
