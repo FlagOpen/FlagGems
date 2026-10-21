@@ -1913,22 +1913,26 @@ def _binary_homogeneous(
     need_promotion = out_dtypes is None
     b0 = other[0]
     dt_b = b0.dtype
-    # Uniform in device *and* dtype is the hot case.  Two generator passes
-    # answer it for both lists: with every tensor of ``self`` carrying
-    # ``dt_a``, every tensor of ``other`` carrying ``dt_b`` and ``dt_b is
-    # dt_a``, all 32 share one dtype, so the promotion is the identity and the
-    # rank class of an operand cannot change the result dtype -- the per-tensor
-    # ``dim()`` check below is then skipped too.  The two passes measured 0.34us
-    # against 2.7us for ATen's grouping primitive over the same lists (its C++
-    # loop still pays for building the group keys), and ``dim()`` is a Python
-    # call that would triple that again.
+    # Uniform in device *and* dtype is the hot case.  One C++ grouping pass
+    # answers it for both lists at once, and the alternative -- walking both
+    # lists in Python -- was the single largest host cost left here.  The
+    # comment used to argue the two generator passes won on the strength of a
+    # standalone timing of the idiom in isolation; measured in situ inside the
+    # scored benchmark (source-exact substitution, 16 tensors), the grouping
+    # pass is 1.0-1.7us cheaper on ``_foreach_add.List``.  When both lists are
+    # uniform the promotion is the identity and the rank class of an operand
+    # cannot change the result dtype, so the per-tensor ``dim()`` check below
+    # is skipped too.
     # ``scalar_operand`` lists are one repeated single-element tensor, whose
     # dtype may legitimately differ from ``self``'s, so they keep the walk.
     uniform = False
     if not scalar_operand and dt_b is dt_a:
-        uniform = all(
-            t.dtype is dt_a and t.device == dev for t in self
-        ) and all(t.dtype is dt_a and t.device == dev for t in other)
+        if _GROUP_TENSORS is not None:
+            uniform = len(_GROUP_TENSORS([self + other], False)) == 1
+        else:
+            uniform = all(
+                t.dtype is dt_a and t.device == dev for t in self
+            ) and all(t.dtype is dt_a and t.device == dev for t in other)
     if not uniform:
         zero_dim = a0.dim() == 0
         for t in self:
@@ -1962,7 +1966,7 @@ def _binary_homogeneous(
     if out_dtype_fn is not None:
         out_dtype = out_dtype_fn(out_dtype)
 
-    conts = [t.is_contiguous() for t in self]
+    conts = list(map(_IS_CONTIGUOUS, self))
     if all(conts):
         srcs_a = self
     else:
@@ -1970,7 +1974,7 @@ def _binary_homogeneous(
     if scalar_operand:
         srcs_b = other
     else:
-        bconts = [t.is_contiguous() for t in other]
+        bconts = list(map(_IS_CONTIGUOUS, other))
         srcs_b = (
             other
             if all(bconts)
@@ -2312,12 +2316,16 @@ def _launch_binary_group(
     # reading it a second time.
     # The broadcast operand is one repeated single-element tensor, and the
     # kernel only ever dereferences its first entry, so its run is one read.
-    ptrs_b = [b_list[0].data_ptr()] * nt if b_scalar else [t.data_ptr() for t in b_list]
+    ptrs_b = (
+        [b_list[0].data_ptr()] * nt
+        if b_scalar
+        else list(map(_DATA_PTR, b_list))
+    )
     inplace = d_list is a_list
     values = (
         ptrs_a + ptrs_b + ptrs_a + numels
         if inplace
-        else ptrs_a + ptrs_b + [t.data_ptr() for t in d_list] + numels
+        else ptrs_a + ptrs_b + list(map(_DATA_PTR, d_list)) + numels
     )
     meta = _device_meta(values, device)
     kernel = (
@@ -2373,12 +2381,23 @@ def _binary_scalar_homogeneous(
     # Uniformity and contiguity are the same walk over the list, so they share
     # one pass: ``is_contiguous`` has no side effect, and the partial answer is
     # simply dropped when the early exit is taken.
+    # ``t.device`` builds a device object per tensor just to compare it; the
+    # integer index is the same test and skips the construction.  It is only
+    # available once the device has an index, which on a CUDA-only build it
+    # always has, so the device-object comparison stays as the fallback.
+    didx = dev.index
     conts = []
     append = conts.append
-    for t in self:
-        if t.dtype is not dt or t.device != dev:
-            return None
-        append(t.is_contiguous())
+    if didx is not None:
+        for t in self:
+            if t.dtype is not dt or t.get_device() != didx:
+                return None
+            append(t.is_contiguous())
+    else:
+        for t in self:
+            if t.dtype is not dt or t.device != dev:
+                return None
+            append(t.is_contiguous())
     # ``_promote_with_scalar`` memoises on ``(dtype, type(value), zero-dim)``,
     # so with one dtype the whole list promotes alike as soon as every entry
     # has the same class.  The broadcast forms already repeat one object, so
@@ -2668,7 +2687,7 @@ def _launch_scalar_group(
     alpha: float = 1,
     common: Optional[float] = None,
 ) -> None:
-    numels = [t.numel() for t in srcs]
+    numels = list(map(_NUMEL, srcs))
     max_numel = max(numels)
     if max_numel == 0:
         return
@@ -2687,8 +2706,12 @@ def _launch_scalar_group(
     block, grid = cached_grid
     # An in-place call writes back into its inputs, so the destination run
     # repeats the pointer run already read above instead of reading it again.
-    ptrs = [t.data_ptr() for t in srcs]
-    values = ptrs + (ptrs if dsts is srcs else [t.data_ptr() for t in dsts]) + numels
+    ptrs = list(map(_DATA_PTR, srcs))
+    values = (
+        ptrs
+        + (ptrs if dsts is srcs else list(map(_DATA_PTR, dsts)))
+        + numels
+    )
     meta = _device_meta(values, device)
     # The scalars ride in a device array of the *output* dtype, so integer
     # operators keep integer semantics instead of going through a float.
@@ -2928,6 +2951,10 @@ except AttributeError:  # pragma: no cover - very old builds
 # answer, so it stays a ``map`` over the unbound descriptor (2.8us over 48
 # tensors; the bound-method lookup per tensor is what that avoids).
 _IS_CONTIGUOUS = torch.Tensor.is_contiguous
+# Same reasoning for the two scalar accessors the launch plans read per tensor:
+# the unbound descriptor saves a bound-method lookup on every element.
+_NUMEL = torch.Tensor.numel
+_DATA_PTR = torch.Tensor.data_ptr
 
 
 def _ternary_homogeneous(
