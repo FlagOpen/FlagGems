@@ -219,6 +219,7 @@ def _candidate(inp, *, out=None):
     if not isinstance(inp, torch.Tensor):
         return flag_gems._neg_view_copy(inp)
     storage = inp.untyped_storage()
+    storage_identity = (storage._cdata, storage.data_ptr(), storage.nbytes())
     before = _cpu_storage_view(inp)
     geometry = (
         inp.device,
@@ -230,7 +231,15 @@ def _candidate(inp, *, out=None):
         inp.is_conj(),
         inp.requires_grad,
     )
-    out_storage = out.untyped_storage() if out is not None else None
+    out_storage = (
+        (
+            out.untyped_storage()._cdata,
+            out.untyped_storage().data_ptr(),
+            out.untyped_storage().nbytes(),
+        )
+        if out is not None
+        else None
+    )
     out_geometry = (
         (
             out.device,
@@ -249,7 +258,11 @@ def _candidate(inp, *, out=None):
         if out is None
         else flag_gems._neg_view_copy(inp, out=out)
     )
-    assert inp.untyped_storage()._cdata == storage._cdata
+    assert (
+        inp.untyped_storage()._cdata,
+        inp.untyped_storage().data_ptr(),
+        inp.untyped_storage().nbytes(),
+    ) == storage_identity
     assert (
         inp.device,
         inp.dtype,
@@ -270,8 +283,11 @@ def _candidate(inp, *, out=None):
     torch.testing.assert_close(bytes_of(after), bytes_of(before), rtol=0, atol=0)
     if out is not None:
         assert result is out
-        assert out.untyped_storage()._cdata == out_storage._cdata
-        assert out.untyped_storage().data_ptr() == out_storage.data_ptr()
+        assert (
+            out.untyped_storage()._cdata,
+            out.untyped_storage().data_ptr(),
+            out.untyped_storage().nbytes(),
+        ) == out_storage
         assert (
             out.device,
             out.dtype,

@@ -66,6 +66,15 @@ def _h800_records():
 class _H800ReferenceLatency:
     baseline_variant = None
 
+    def _candidate_call(self):
+        op, dispatch, overridden = super()._candidate_call()
+        if flag_gems.vendor_name == "kunlunxin" and op is self.torch_op:
+            raise RuntimeError(
+                "Kunlunxin negative-copy benchmark requires an explicit candidate; "
+                "the unusable native reference cannot be timed as the candidate"
+            )
+        return op, dispatch, overridden
+
     def get_latency(self, op, *args, **kwargs):
         if flag_gems.vendor_name != "kunlunxin" or op is not self.torch_op:
             return super().get_latency(op, *args, **kwargs)

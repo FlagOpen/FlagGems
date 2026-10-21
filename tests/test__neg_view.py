@@ -152,6 +152,7 @@ def _candidate(inp):
     # Capture the caller's storage before invocation, including unused view holes.
     before = _cpu_storage_view(inp)
     storage = inp.untyped_storage()
+    storage_identity = (storage._cdata, storage.data_ptr(), storage.nbytes())
     raw_before = (
         torch.empty(0, dtype=torch.uint8, device="cpu")
         .set_(before.untyped_storage(), 0, (before.untyped_storage().nbytes(),), (1,))
@@ -168,7 +169,11 @@ def _candidate(inp):
         inp.requires_grad,
     )
     result = flag_gems._neg_view(inp)
-    assert inp.untyped_storage()._cdata == storage._cdata
+    assert (
+        inp.untyped_storage()._cdata,
+        inp.untyped_storage().data_ptr(),
+        inp.untyped_storage().nbytes(),
+    ) == storage_identity
     assert (
         inp.device,
         inp.dtype,
