@@ -9362,6 +9362,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: hadamard_transform_mn
+  description: Applies a fused Hadamard transform for dimensions decomposed as M times
+    a power of two.
+  for:
+  - hadamard_transform_mn
+  labels:
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: hamming_window
   description: Computes the Hamming window function.
   for:
