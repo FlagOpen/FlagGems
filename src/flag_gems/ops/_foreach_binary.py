@@ -106,21 +106,76 @@ def _pow_fn(a, b):
     # promoted.
     af = a.to(tl.float32)
     bf = b.to(tl.float32)
-    # ``powf`` dominates the kernel time and is itself ``exp2(y * log2 x)``
-    # plus the fixups a negative base needs.  On a block of normal, positive
-    # bases those fixups are dead code, so evaluate the cheap form instead.
-    # The guard is a block-wide ``tl.min`` (one reduction per program); a
-    # per-element ``tl.where`` executes both branches and measured 35-60%
-    # slower than the plain power.  The bound is the smallest normal fp32:
-    # a subnormal base stays > 0 but ``log2`` flushes it to zero, and
-    # ``pow(2**-149, -0.5)`` came back as ``2.7e22`` instead of ``1.3e19``
-    # (rel 2.0e3) when the fast path was allowed to see it.
-    # ``a == 1`` is pinned to 1 because ``exp2(log2(1) * inf)`` is NaN while
-    # ``pow(1, inf)`` is 1; ``b == 0`` is pinned for the same reason on an
-    # infinite base (``exp2(inf * 0)`` is NaN, ``pow(inf, 0)`` is 1).
-    # Integral results skip the fast path: the last-bit difference changes
-    # the value once truncated to an integer.
-    if a.dtype.is_floating():
+    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+        # 16-bit output: ``powf`` is about half the kernel time, and the
+        # fixups a negative base needs are exactly what a *block-wide* guard
+        # would avoid -- but on data with mixed signs that guard never fires
+        # (one negative base rejects the whole block), so the full ``powf``
+        # runs on every element.  Pay for the closed form per element
+        # instead, cheap enough that the guard is not worth keeping:
+        #
+        #   |a| ** b = exp2(fast_log2f(|a|) * b)
+        #
+        # and supply the sign separately: a negative base is ``(-1)**b`` for
+        # an integral ``b`` and NaN otherwise.  The 16-bit output tolerance
+        # (fp16 rtol 1e-3, bf16 0.016) absorbs the ~2**-22 relative error of
+        # ``lg2.approx``; fp32/fp64 keep the exact path below bit for bit, so
+        # their ltol 1.3e-6 result is unchanged.
+        s = tl.abs(af)
+        if a.dtype == tl.bfloat16:
+            # A bf16 subnormal *is* an fp32 subnormal, and ``lg2.approx``
+            # flushes those to zero (``pow(2**-133, -0.5)`` would come back
+            # inf).  Scale them into the normal range first; the scale is a
+            # power of two, so the multiply is exact and the logarithm only
+            # shifts by a constant.  fp16 subnormals are normal in fp32 and
+            # skip this.
+            sub = s < 1.1754943508222875e-38
+            l = tl_extra_shim.fast_log2f(
+                tl.where(sub, s * 16777216.0, s)
+            ) - tl.where(sub, 24.0, 0.0)
+        else:
+            l = tl_extra_shim.fast_log2f(s)
+        # ``|a| == 1`` is pinned to 1: the magnitude is 1 for every exponent,
+        # while ``exp2(0 * inf)`` is NaN and ``pow(±1, ±inf)`` is 1.
+        r = tl.where(s == 1.0, 1.0, tl.exp2(l * bf))
+        # Negative base: ``(-1)**b`` when ``b`` is integral, NaN otherwise.
+        # Parity is tested through ``b/2`` because ``bi % 2`` is exact only for
+        # ``|b| < 2**24``; ``b == 2**24`` is even and ``2**24 - 1`` is odd, and
+        # ``floor`` keeps both halves of the test on representable values.
+        bi = tl.floor(bf)
+        odd = (bi * 0.5) != tl.floor(bi * 0.5)
+        # ``signbit`` rather than ``af < 0`` so that ``-0.0`` counts as
+        # negative: ``pow(-0.0, -1)`` is ``-inf``, not ``+inf``.
+        neg = tl_extra_shim.signbit(af) != 0
+        r = tl.where(
+            neg,
+            tl.where(
+                bf == bi,
+                tl.where(odd, -r, r),
+                # A zero or infinite magnitude is never NaN however fractional
+                # ``b`` is: ATen gives ``pow(-0.0, 0.5) == -0.0`` and
+                # ``pow(-inf, 0.5) == inf``, and ``exp2`` of ``-inf * b`` /
+                # ``inf * b`` already produces the right 0 or inf.
+                tl.where((s == 0.0) | (s == float("inf")), r, float("nan")),
+            ),
+            r,
+        )
+        # ``b == 0`` is pinned to 1 because ``exp2(-inf * 0)`` is NaN while
+        # ``pow(0, 0)`` and ``pow(nan, 0)`` are 1.
+        r = tl.where(bf == 0.0, 1.0, r)
+    elif a.dtype.is_floating():
+        # ``powf`` dominates the kernel time and is itself ``exp2(y * log2 x)``
+        # plus the fixups a negative base needs.  On a block of normal, positive
+        # bases those fixups are dead code, so evaluate the cheap form instead.
+        # The guard is a block-wide ``tl.min`` (one reduction per program); a
+        # per-element ``tl.where`` executes both branches and measured 35-60%
+        # slower than the plain power.  The bound is the smallest normal fp32:
+        # a subnormal base stays > 0 but ``log2`` flushes it to zero, and
+        # ``pow(2**-149, -0.5)`` came back as ``2.7e22`` instead of ``1.3e19``
+        # (rel 2.0e3) when the fast path was allowed to see it.
+        # ``a == 1`` is pinned to 1 because ``exp2(log2(1) * inf)`` is NaN while
+        # ``pow(1, inf)`` is 1; ``b == 0`` is pinned for the same reason on an
+        # infinite base (``exp2(inf * 0)`` is NaN, ``pow(inf, 0)`` is 1).
         if tl.min(af) >= 1.1754943508222875e-38:
             r = tl.where(
                 (af == 1.0) | (bf == 0.0), 1.0, tl.exp2(tl.log2(af) * bf)
@@ -128,6 +183,8 @@ def _pow_fn(a, b):
         else:
             r = _pow(af, bf)
     else:
+        # Integral results use ``powf`` unchanged: the last-bit difference
+        # changes the value once truncated to an integer.
         r = _pow(af, bf)
     return r
 
