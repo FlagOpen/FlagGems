@@ -29,8 +29,10 @@ from . import base
 # carries the target it was checked against, so listing stays tensor-free and a
 # replay by --case-id rebuilds exactly the plans of a normal run.
 #
-# 'other' is shape-only: no element of it is ever read, so it is allocated with
-# torch.empty, which keeps a requested shape real without paying fixture cost.
+# 'other' is shape-only: no element or stride of it is read. Give it independent
+# one-element storage and expand to the requested shape, recording this layout
+# explicitly in the case. Dense self storage and its layouts are unchanged.
+# This also avoids retaining two dense operand pairs between adjacent cases.
 
 # Dtype coverage. view_as is dtype-agnostic (only the shape of 'other' is read),
 # so the list holds the required integer and FP8 types plus the useful float,
@@ -76,7 +78,7 @@ def _make_plan(operand_shape, storage, layout, expand_shape):
     target = _target_for(operand_shape, layout)
     return base.BenchmarkCasePlan(
         shape={"input": list(operand_shape), "target": list(target)},
-        params={"layout": layout},
+        params={"layout": layout, "other_layout": "expanded_shape_only"},
         builder_args=(storage, layout, expand_shape, target),
     )
 
@@ -102,7 +104,7 @@ def _build_inputs_fn(plan, dtype, device):
         inp = torch.empty(storage, dtype=dtype, device=device)
         if layout == "transposed":
             inp = inp.transpose(-1, -2)
-    other = torch.empty(target, dtype=dtype, device=device)
+    other = torch.empty((1,) * len(target), dtype=dtype, device=device).expand(target)
     return inp, other, {}
 
 
