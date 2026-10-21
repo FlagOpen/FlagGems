@@ -642,7 +642,7 @@ def test_sparse_log_softmax_dispatch():
     res_out = flag_gems._sparse_log_softmax_out(inp, 1, False, out=o)
     ref = torch.ops.aten._sparse_log_softmax(utils.to_reference(inp), 1)
     assert res.shape == ref.shape
-    assert torch.equal(res._indices(), ref._indices())
-    assert torch.equal(res_int._indices(), ref._indices())
+    assert torch.equal(res._indices().cpu(), ref._indices().cpu())
+    assert torch.equal(res_int._indices().cpu(), ref._indices().cpu())
     assert res_out is o
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.equal(res_out._values().cpu(), ref._values().cpu())

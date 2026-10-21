@@ -60,4 +60,4 @@ def test_sparse_semi_structured_apply_dispatch():
     tm = torch.randint(0, 256, (4, 8, 8), dtype=torch.uint8, device=flag_gems.device)
     res0, res1 = flag_gems._sparse_semi_structured_apply(x, tm)
     ref0, ref1 = torch.ops.aten._sparse_semi_structured_apply(x, tm)
-    assert torch.equal(res0, ref0) and torch.equal(res1, ref1)
+    assert torch.equal(res0.cpu(), ref0.cpu()) and torch.equal(res1.cpu(), ref1.cpu())

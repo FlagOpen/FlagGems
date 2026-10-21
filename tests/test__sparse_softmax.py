@@ -619,8 +619,8 @@ def test_sparse_softmax_dispatch():
     res_int = flag_gems._sparse_softmax_int(inp, 1, torch.float32)
     res_out = flag_gems._sparse_softmax_out(inp, 1, False, out=o)
     assert res.shape == ref.shape
-    assert torch.equal(res._indices(), ref._indices())
-    assert torch.allclose(res._values(), ref._values(), atol=1e-6)
-    assert torch.equal(res_int._indices(), ref._indices())
+    assert torch.equal(res._indices().cpu(), ref._indices().cpu())
+    assert torch.allclose(res._values().cpu(), ref._values().cpu(), atol=1e-6)
+    assert torch.equal(res_int._indices().cpu(), ref._indices().cpu())
     assert res_out is o
-    assert torch.allclose(res_out._values(), ref._values(), atol=1e-6)
+    assert torch.allclose(res_out._values().cpu(), ref._values().cpu(), atol=1e-6)

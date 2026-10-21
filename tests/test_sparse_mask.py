@@ -243,6 +243,6 @@ def test_sparse_mask_dispatch():
     res = flag_gems.sparse_mask(inp, mask)
     res_out = flag_gems.sparse_mask_out(inp, mask, out=o)
     assert res.shape == ref.shape
-    assert torch.equal(res._indices(), ref._indices())
+    assert torch.equal(res._indices().cpu(), ref._indices().cpu())
     assert res_out is o
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.equal(res_out._values().cpu(), ref._values().cpu())

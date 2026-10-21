@@ -927,5 +927,5 @@ def test_sparse_sum_backward_dispatch():
     res_out = flag_gems._sparse_sum_backward_out(grad, inp, dims, out=o)
     assert res.shape == ref.shape
     assert res_out is o
-    assert torch.equal(res._indices(), ref._indices())
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.equal(res._indices().cpu(), ref._indices().cpu())
+    assert torch.equal(res_out._values().cpu(), ref._values().cpu())

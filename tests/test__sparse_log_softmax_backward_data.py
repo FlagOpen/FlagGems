@@ -496,5 +496,5 @@ def test_sparse_log_softmax_backward_data_dispatch():
     res_out = flag_gems._sparse_log_softmax_backward_data_out(grad, out, 1, inp, out=o)
     assert res.shape == ref.shape and res.is_coalesced() == ref.is_coalesced()
     assert res_out is o
-    assert torch.equal(res._indices(), ref._indices())
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.equal(res._indices().cpu(), ref._indices().cpu())
+    assert torch.equal(res_out._values().cpu(), ref._values().cpu())

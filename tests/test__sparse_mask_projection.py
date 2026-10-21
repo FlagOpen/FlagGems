@@ -746,6 +746,6 @@ def test_sparse_mask_projection_dispatch():
     res_out = flag_gems._sparse_mask_projection_out(inp, inp, out=o)
     ref = torch.ops.aten._sparse_mask_projection(inp, inp)
     assert res.shape == ref.shape
-    assert torch.equal(res._values(), ref._values())
+    assert torch.equal(res._values().cpu(), ref._values().cpu())
     assert res_out is o
-    assert torch.equal(res_out._values(), ref._values())
+    assert torch.equal(res_out._values().cpu(), ref._values().cpu())
