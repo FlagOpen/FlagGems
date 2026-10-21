@@ -2235,6 +2235,16 @@ def _ternary_homogeneous(
 
 _TERNARY_LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
 
+# ``_pick_block`` searches five block sizes and re-takes the max of the numel
+# list the caller already has, yet its answer and the grid it implies depend
+# only on the length of the list and its largest element, and both repeat from
+# call to call on a fixed workload.  The cache holds the pair; a hit is one
+# dict lookup.  The bound exists because a workload whose shapes keep moving
+# would otherwise accumulate one entry per shape; insertion order is the
+# eviction order, as in the binary executor's grid memo.
+_TERNARY_GRID_CACHE: Dict[Tuple[int, int], Tuple[int, Tuple[int, int]]] = {}
+_TERNARY_GRID_CACHE_LIMIT = 64
+
 
 def _launch_ternary_kernel(
     grid: Tuple[int, int],
@@ -2328,8 +2338,18 @@ def _launch_ternary_group(
     max_numel = max(numels)
     if max_numel == 0:
         return
-    block = _pick_block(numels)
     nt = len(a_l)
+    grid_key = (nt, max_numel)
+    cached_grid = _TERNARY_GRID_CACHE.get(grid_key)
+    if cached_grid is None:
+        block = _pick_block(numels)
+        # ``triton.cdiv`` is a decorated helper and is far from free at this
+        # size; plain ints give the same ceiling division.
+        cached_grid = (block, (nt, -(-max_numel // block)))
+        if len(_TERNARY_GRID_CACHE) >= _TERNARY_GRID_CACHE_LIMIT:
+            _TERNARY_GRID_CACHE.pop(next(iter(_TERNARY_GRID_CACHE)))
+        _TERNARY_GRID_CACHE[grid_key] = cached_grid
+    block, grid = cached_grid
     meta = _device_meta(
         list(map(torch.Tensor.data_ptr, a_l))
         + list(map(torch.Tensor.data_ptr, b_l))
@@ -2351,9 +2371,6 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
-    # ``triton.cdiv`` is a decorated helper and is far from free at this size;
-    # plain ints give the same ceiling division.
-    grid = (nt, -(-max_numel // block))
     _launch_ternary_kernel(
         grid,
         nt,
