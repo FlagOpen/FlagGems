@@ -2351,7 +2351,9 @@ def _launch_ternary_group(
     else:
         scalar_buf = _ternary_upload(v_l, s_dtype, device)
         scalar_value = 0.0
-    grid = (nt, triton.cdiv(max_numel, block))
+    # ``triton.cdiv`` is a decorated helper and is far from free at this size;
+    # plain ints give the same ceiling division.
+    grid = (nt, -(-max_numel // block))
     _launch_ternary_kernel(
         grid,
         nt,
