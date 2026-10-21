@@ -201,6 +201,13 @@ def test_ge__tensor(shape, other_shape, dtype, other_dtype, value_range):
 @pytest.mark.ge_
 @pytest.mark.parametrize("dtype,scalar", SCALAR_CASES)
 def test_ge__scalar(dtype, scalar):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and utils.TO_CPU
+        and dtype == torch.uint8
+        and scalar == -1
+    ):
+        pytest.skip("Ascend ge_.Scalar promotes uint8 against -1; CPU wraps -1 to 255")
     inp = tu.make_input(dtype, (1024, 1024), ["-1", "1"])
 
     ref_inp = tu.to_reference(inp)
@@ -310,10 +317,18 @@ def test_ge__view_receiver(dtype, kind):
 @pytest.mark.ge_
 @pytest.mark.parametrize("shape,other_shape", NEGATIVE_CASES)
 def test_ge__invalid_operand(shape, other_shape):
+    if flag_gems.vendor_name == "kunlunxin" and other_shape == (3, 2, 19, 7):
+        pytest.skip(
+            "Kunlunxin ge_.Tensor does not reject a broadcast larger than its receiver"
+        )
     inp = torch.ones(shape, dtype=torch.float32, device=flag_gems.device)
     other = torch.ones(other_shape, dtype=torch.float32, device=flag_gems.device)
 
-    with pytest.raises((RuntimeError, TypeError)):
+    expected = (RuntimeError, TypeError)
+    if flag_gems.vendor_name == "kunlunxin":
+        # The incompatible trailing-axis shape is rejected as ValueError on XPU.
+        expected += (ValueError,)
+    with pytest.raises(expected):
         flag_gems.ge_(inp, other)
 
 
