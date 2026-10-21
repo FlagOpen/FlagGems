@@ -872,6 +872,7 @@ from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
 from flag_gems.ops.index_reduce import index_reduce, index_reduce_, index_reduce_out
 from flag_gems.ops.index_select import index_select
 from flag_gems.ops.index_select_backward import index_select_backward
+from flag_gems.ops.indices import indices
 from flag_gems.ops.indices_copy import indices_copy, indices_copy_out
 from flag_gems.ops.infinitely_differentiable_gelu_backward import (
     infinitely_differentiable_gelu_backward,
@@ -2435,6 +2436,7 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "index_select_backward",
+    "indices",
     "indices_copy",
     "indices_copy_out",
     "infinitely_differentiable_gelu_backward",
