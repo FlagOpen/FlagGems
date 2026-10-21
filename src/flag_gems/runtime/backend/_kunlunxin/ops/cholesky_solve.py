@@ -204,12 +204,9 @@ def _cholesky_solve_serial_kernel(
 ):
     """Fully serial Cholesky solve for one batch and one RHS tile.
 
-    One program owns one (batch, RHS-tile) pair and walks the rows in
-    order, keeping each partial row vector in registers; prior rows are
-    re-loaded from global memory. There is no tl.dot (a dot drags the whole
-    kernel into the SDNN pipeline and fails to lower here) and no tl.gather
-    (tt.gather is explicitly illegal on this backend), so every construct is
-    scalar/vector load-store arithmetic the TritonXPU backend can lower.
+    One program owns one (batch, RHS-tile) pair and walks the rows in order,
+    keeping each partial row vector in registers; prior rows are re-loaded from
+    global memory. Every construct is scalar/vector load-store arithmetic.
     """
     batch_pid = tl.program_id(0)
     rhs_pid = tl.program_id(1)
@@ -863,9 +860,7 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
             if X.shape == B.shape and X.dtype == B.dtype and X.device == B.device:
                 return _cholesky_solve_complex_rows(B, L, upper, X)
             return _generic.cholesky_solve(B, L, upper=upper, _out=_out)
-        # No register-gather kernel is available for large complex systems on
-        # this backend (tt.gather is illegal); use the serial row kernels for
-        # any complex64 size so the op stays functional.
+        # Use the serial row kernels for any complex64 size.
         if X.shape == B.shape and X.dtype == B.dtype and X.device == B.device:
             return _cholesky_solve_complex_rows(B, L, upper, X)
         return _generic.cholesky_solve(B, L, upper=upper, _out=_out)
@@ -897,9 +892,8 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     X_kernel = X.reshape(-1, n, nrhs)
     batch_size = B_kernel.shape[0]
 
-    # Peer-derived Triton-only FP32 solver. Preserve the local wrapper and
-    # all unsupported/complex paths. The two-block scratch is not batch-indexed,
-    # so only unbatched N=256 is eligible; other sizes retain the local path.
+    # FP32 Triton solver. The two-block scratch is not batch-indexed, so only
+    # unbatched N=256 is eligible; other sizes use the local path.
     if B.dtype == torch.float32 and X.is_contiguous():
         if n <= _SINGLE_BLOCK_MAX_N:
             _solve_single_block(

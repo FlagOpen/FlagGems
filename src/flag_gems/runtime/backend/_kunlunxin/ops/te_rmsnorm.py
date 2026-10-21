@@ -26,14 +26,18 @@ def _te_rmsnorm_bwd_dx_1d_kernel(
         cols = off + tl.arange(0, C)
         if NEED_TAIL:
             cmask = cols < N
-        x = tl.load(x_ptr + row + cols).to(tl.float32)
-        dz = tl.load(dz_ptr + row + cols).to(tl.float32)
-        gamma = tl.load(gamma_ptr + cols).to(tl.float32)
-        if zero_centered_gamma:
-            gamma = gamma + 1.0
-        if NEED_TAIL:
-            acc += tl.where(cmask, x * rsigma * dz * gamma, 0.0)
+            x = tl.load(x_ptr + row + cols, mask=cmask, other=0.0).to(tl.float32)
+            dz = tl.load(dz_ptr + row + cols, mask=cmask, other=0.0).to(tl.float32)
+            gamma = tl.load(gamma_ptr + cols, mask=cmask, other=0.0).to(tl.float32)
+            if zero_centered_gamma:
+                gamma = gamma + 1.0
+            acc += x * rsigma * dz * gamma
         else:
+            x = tl.load(x_ptr + row + cols).to(tl.float32)
+            dz = tl.load(dz_ptr + row + cols).to(tl.float32)
+            gamma = tl.load(gamma_ptr + cols).to(tl.float32)
+            if zero_centered_gamma:
+                gamma = gamma + 1.0
             acc += x * rsigma * dz * gamma
 
     c1 = tl.sum(acc) / N
@@ -42,17 +46,22 @@ def _te_rmsnorm_bwd_dx_1d_kernel(
         cols = off + tl.arange(0, C)
         if NEED_TAIL:
             cmask = cols < N
-        x = tl.load(x_ptr + row + cols).to(tl.float32)
-        dz = tl.load(dz_ptr + row + cols).to(tl.float32)
-        gamma = tl.load(gamma_ptr + cols).to(tl.float32)
-        if zero_centered_gamma:
-            gamma = gamma + 1.0
-        x_hat = x * rsigma
-        dx = rsigma * (dz * gamma - x_hat * c1)
-        if NEED_TAIL:
-            dx = tl.where(cmask, dx, 0.0)
+            x = tl.load(x_ptr + row + cols, mask=cmask, other=0.0).to(tl.float32)
+            dz = tl.load(dz_ptr + row + cols, mask=cmask, other=0.0).to(tl.float32)
+            gamma = tl.load(gamma_ptr + cols, mask=cmask, other=0.0).to(tl.float32)
+            if zero_centered_gamma:
+                gamma = gamma + 1.0
+            x_hat = x * rsigma
+            dx = rsigma * (dz * gamma - x_hat * c1)
             tl.store(dx_ptr + row + cols, dx, mask=cmask)
         else:
+            x = tl.load(x_ptr + row + cols).to(tl.float32)
+            dz = tl.load(dz_ptr + row + cols).to(tl.float32)
+            gamma = tl.load(gamma_ptr + cols).to(tl.float32)
+            if zero_centered_gamma:
+                gamma = gamma + 1.0
+            x_hat = x * rsigma
+            dx = rsigma * (dz * gamma - x_hat * c1)
             tl.store(dx_ptr + row + cols, dx)
 
 
@@ -158,6 +167,12 @@ _DGM_BM_MAX = 128
 def _ln_bwd_col_size(N):
     cap = min(N, 8192)
     return 1 << (cap.bit_length() - 1)
+
+
+def _dx_col_size(N):
+    if N <= 16:
+        return 16
+    return min(max(1 << (N - 1).bit_length(), 1024), 8192)
 
 
 _FWD_TILE_N_MAX = 4096
@@ -357,6 +372,7 @@ def te_rmsnorm_bwd(
     dgamma = torch.empty_like(gamma)
 
     bc = _ln_bwd_col_size(N)
+    # cdx = _dx_col_size(N)
 
     with torch_device_fn.device(x.device):
         if N == 1:

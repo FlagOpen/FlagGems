@@ -282,7 +282,7 @@ def addmm_kernel(
 
 
 def _addmm_contiguous_2d(x):
-    """Materialize a rank-2 logical view without native contiguous/copy ops."""
+    """Return a contiguous copy of a rank-2 tensor."""
     rows, cols = x.shape
     out = torch.empty((rows, cols), dtype=x.dtype, device=x.device)
     if rows and cols:
@@ -302,13 +302,12 @@ def _addmm_contiguous_2d(x):
 
 
 def _bias_with_unit_inner_stride(bias, shape, beta):
-    """Broadcast ``bias`` while avoiding native materialization operations."""
+    """Broadcast ``bias`` to ``shape`` with a unit inner stride."""
     b = bias.broadcast_to(shape)
     if beta == 0:
         return b
     if b.stride(1) != 1 and b.shape[1] > 1:
-        # The kernel's 2-D load requires a unit inner stride.  Gather one
-        # logical row when M broadcasts, then retain stride-zero broadcasting.
+        # Gather one row when M broadcasts; keep stride-zero broadcasting.
         if b.stride(0) == 0:
             row = _addmm_contiguous_2d(b[:1])
             b = row.broadcast_to(shape)

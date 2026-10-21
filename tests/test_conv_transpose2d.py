@@ -21,8 +21,8 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 _skip_if_no_fp64 = pytest.mark.skipif(
-    not flag_gems.runtime.device.support_fp64,
-    reason="backend does not support fp64; unsupported-dtype guard is unconstructible",
+    flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
+    reason="unsupported-dtype guard is unconstructible without fp64",
 )
 
 
