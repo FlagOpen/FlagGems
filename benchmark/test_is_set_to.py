@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import platform
+import time
+from dataclasses import asdict, dataclass
+
 import pytest
 import torch
+from torch.utils.benchmark import Timer
 
 import flag_gems
 
-from . import base
+from . import base, consts
 
 # aten::is_set_to(Tensor self, Tensor tensor) -> bool inspects allocation
 # metadata only, so its cost follows the operand rank and the storage-view
@@ -152,9 +157,58 @@ def _build_inputs_fn(plan, dtype, device):
     return (*_build_pair(relation, inp), {})
 
 
+@dataclass
+class _HostMetrics(base.BenchmarkMetrics):
+    measurement_source: dict | None = None
+
+
+class IsSetToBenchmark(base.GenericBenchmark):
+    def get_latency(self, op, *args, **kwargs):
+        if self.is_backward or (
+            not base.Config.reference_only
+            and base.Config.mode != consts.BenchMode.OPERATOR
+        ):
+            raise ValueError("is_set_to metadata timing requires forward operator mode")
+        if flag_gems.vendor_name == "kunlunxin" and op is self.torch_op:
+            raise ValueError(
+                "Kunlunxin has no usable native is_set_to Bool result; use the "
+                "ops-baseline pytest_host_baseline plugin with an H800 host artifact"
+            )
+        self._host_source = {
+            "kind": "host_wall_time",
+            "architecture": platform.machine(),
+            "torch": str(torch.__version__),
+            "threads": 1,
+            "timer": "torch.utils.benchmark.Timer(perf_counter)",
+            "target_vendor": flag_gems.vendor_name,
+            "target_device": str(flag_gems.device),
+        }
+        return (
+            Timer(
+                stmt="op(*args, **kwargs)",
+                globals={"op": op, "args": args, "kwargs": kwargs},
+                num_threads=1,
+                timer=time.perf_counter,
+            )
+            .blocked_autorange(min_run_time=0.05)
+            .median
+            * 1000
+        )
+
+    def _measure_input(self, input, case_id=None):
+        if any(m.startswith(("tflops", "gbps")) for m in self.to_bench_metrics):
+            raise ValueError("is_set_to host metadata supports latency metrics only")
+        metric = super()._measure_input(input, case_id)
+        if metric.speedup is not None:
+            metric.speedup = metric.latency_base / metric.latency
+        return _HostMetrics(
+            **asdict(metric), measurement_source=getattr(self, "_host_source", None)
+        )
+
+
 @pytest.mark.is_set_to
 def test_is_set_to():
-    bench = base.GenericBenchmark(
+    bench = IsSetToBenchmark(
         op_name="is_set_to",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
