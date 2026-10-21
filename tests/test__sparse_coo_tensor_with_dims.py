@@ -52,6 +52,17 @@ GRID_DTYPES = [
 ]
 
 
+def _require_target_dtype(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and torch.device(flag_gems.device).type != "cpu"
+        and dtype == torch.float64
+    ):
+        # Allocation and out-buffer factories both narrow the requested width;
+        # the out overload itself simply inherits its buffer's actual dtype.
+        pytest.skip("Kunlunxin cannot build true float64 target COO tensors")
+
+
 def _expected_device(device=None):
     device = torch.device(flag_gems.device if device is None else device)
     if device.type not in ("cpu", "meta") and device.index is None:
@@ -220,6 +231,7 @@ def _assert_empty_coo(
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_sparse_coo_tensor_with_dims(shape, dtype):
+    _require_target_dtype(dtype)
     required_device = _expected_device()
     # dense_dim = 0 is one valid split per spec rank; the dense-tail and
     # dense-only splits live in test_sparse_coo_tensor_with_dims_dim_split.
@@ -271,6 +283,7 @@ SPLIT_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape,split", SPLIT_CASES)
 def test_sparse_coo_tensor_with_dims_dim_split(shape, split, dtype):
+    _require_target_dtype(dtype)
     required_device = _expected_device()
     sparse_dim, dense_dim = split
     size = list(shape)
@@ -307,6 +320,7 @@ SMALL_CASES = [
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("sparse_dim,dense_dim,size", SMALL_CASES)
 def test_sparse_coo_tensor_with_dims_small_sizes(sparse_dim, dense_dim, size, dtype):
+    _require_target_dtype(dtype)
     required_device = _expected_device()
     ref_out = _call_native(sparse_dim, dense_dim, size, dtype)
     res_out = _call_candidate(
@@ -335,6 +349,7 @@ DENSE_SHAPES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("shape", DENSE_SHAPES)
 def test_sparse_coo_tensor_with_dims_dense_observation(shape, dtype):
+    _require_target_dtype(dtype)
     required_device = _expected_device()
     sparse_dim, dense_dim = len(shape), 0
     size = list(shape)
@@ -399,6 +414,7 @@ OUT_STATES = ["empty", "filled"]
 @pytest.mark.parametrize("dtype", GRID_DTYPES)
 @pytest.mark.parametrize("state", OUT_STATES)
 def test_sparse_coo_tensor_with_dims_out(state, dtype):
+    _require_target_dtype(dtype)
     required_device = _expected_device()
     sparse_dim, dense_dim, size = 2, 0, [3, 4]
     ref_buf = _out_buffer(state, dtype, _reference_device(), sparse_dim, size)

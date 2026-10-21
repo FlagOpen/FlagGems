@@ -128,6 +128,15 @@ def _encoded_to_device(tensor, device):
     return result
 
 
+def _require_target_dtype(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and torch.device(flag_gems.device).type != "cpu"
+        and dtype in (torch.float64, torch.complex128)
+    ):
+        pytest.skip("Kunlunxin narrows float64/complex128 target payloads")
+
+
 def _check_fixture(tensor, dtype):
     assert tensor.dtype == dtype
     assert tensor.device == _expected_device()
@@ -135,6 +144,7 @@ def _check_fixture(tensor, dtype):
 
 
 def _make_input(dtype, shape, value_range):
+    _require_target_dtype(dtype)
     if not _cpu_fp8(dtype):
         result = tu.make_input(dtype, shape, value_range)
     else:
@@ -151,6 +161,7 @@ def _make_input(dtype, shape, value_range):
 
 
 def _make_special_input(dtype, scenario):
+    _require_target_dtype(dtype)
     if _cpu_fp8(dtype) or (
         flag_gems.vendor_name == "ascend" and dtype == torch.float64
     ):
@@ -199,6 +210,18 @@ def _candidate(*args, **kwargs):
     except Exception as error:
         raise AssertionError("candidate returned an invalid COO result") from error
     return result
+
+
+def _member_abi(tensor):
+    return (
+        tensor.device,
+        tensor.dtype,
+        tensor.shape,
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.data_ptr(),
+        tensor.untyped_storage()._cdata,
+    )
 
 
 def _make_inputs(size, sparse_dim, nnz, dtype, value_range):
@@ -355,6 +378,10 @@ def test__sparse_coo_tensor_with_dims_and_tensors_keeps_input_storage(dtype):
         torch.arange(6, dtype=torch.int64, device=flag_gems.device).reshape(3, 2).t()
     )
     values = _make_input(dtype, (3, 8), ["-1", "1"])[:, :1].squeeze(1)
+    # Capture the caller's original storage and geometry, before either call.
+    # Comparing only post-call input metadata would accept input.data rewrites.
+    original_indices, original_values = indices.detach(), values.detach()
+    expected_indices, expected_values = _member_abi(indices), _member_abi(values)
     ref_indices = _to_reference(indices)
     ref_values = _to_reference(values)
 
@@ -379,6 +406,12 @@ def test__sparse_coo_tensor_with_dims_and_tensors_keeps_input_storage(dtype):
         dtype=dtype,
     )
 
+    assert _member_abi(indices) == expected_indices
+    assert _member_abi(values) == expected_values
+    assert _member_abi(res_out._indices()) == expected_indices
+    assert _member_abi(res_out._values()) == expected_values
+    assert _member_abi(original_indices) == expected_indices
+    assert _member_abi(original_values) == expected_values
     assert res_out._indices().data_ptr() == indices.data_ptr()
     assert res_out._values().data_ptr() == values.data_ptr()
     assert res_out._indices().stride() == indices.stride()
@@ -389,6 +422,7 @@ def test__sparse_coo_tensor_with_dims_and_tensors_keeps_input_storage(dtype):
 
     res_out._values().fill_(0)
     assert bool((values == 0).all())
+    assert bool((original_values == 0).all())
 
 
 @pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
@@ -569,6 +603,11 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_non_sparse_layout(layo
 
 @pytest.mark.underscore_sparse_coo_tensor_with_dims_and_tensors
 def test__sparse_coo_tensor_with_dims_and_tensors_rejects_pin_memory():
+    if (
+        flag_gems.vendor_name == "hygon"
+        and torch.device(flag_gems.device).type != "cpu"
+    ):
+        pytest.skip("Hygon accepts accelerator pin_memory=True without pinning")
     # CUDA members cannot be pinned, so pin_memory=True is invalid here.
     indices, values = _coo_members()
     with pytest.raises(RuntimeError):
@@ -603,6 +642,14 @@ def test__sparse_coo_tensor_with_dims_and_tensors_rejects_dense_out():
 def test_sparse_coo_tensor_with_dims_and_tensors_backward(
     dtype, dense_shape, duplicate
 ):
+    _require_target_dtype(dtype)
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and torch.device(flag_gems.device).type != "cpu"
+    ):
+        pytest.skip(
+            "Native sparse COO grad_outputs backward is unavailable on this backend"
+        )
     size = (3, 4) + dense_shape
     indices = torch.tensor(
         [[0, 1, 1], [1, 2, 2 if duplicate else 3]],
@@ -610,6 +657,11 @@ def test_sparse_coo_tensor_with_dims_and_tensors_backward(
         device=flag_gems.device,
     )
     values = _make_input(dtype, (3,) + dense_shape, ["-1", "1"]).requires_grad_()
+    required_grad_device, required_grad_dtype, required_grad_shape = (
+        values.device,
+        values.dtype,
+        values.shape,
+    )
     ref_indices = _to_reference(indices)
     ref_values = _to_reference(values).detach().requires_grad_()
     ref_out = torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors(
@@ -636,5 +688,8 @@ def test_sparse_coo_tensor_with_dims_and_tensors_backward(
     grad = torch.sparse_coo_tensor(indices, grad_values, size)
     ref_grad = torch.autograd.grad(ref_out, ref_values, _to_reference(grad))[0]
     res_grad = torch.autograd.grad(res_out, values, grad)[0]
-    assert res_grad.device == values.device and res_grad.dtype == values.dtype
+    assert res_grad.device == required_grad_device
+    assert (
+        res_grad.dtype == required_grad_dtype and res_grad.shape == required_grad_shape
+    )
     _assert_component_equal(res_grad, ref_grad)
