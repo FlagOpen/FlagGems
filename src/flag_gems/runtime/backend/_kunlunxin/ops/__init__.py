@@ -30,7 +30,13 @@ from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_add_list_ import _foreach_add__List
+from ._foreach_addcdiv_ import (
+    _foreach_addcdiv__Scalar,
+    _foreach_addcdiv__ScalarList,
+    _foreach_addcdiv__Tensor,
+)
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
+from ._foreach_atan import _foreach_atan, _foreach_atan_
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -831,9 +837,14 @@ __all__ = [
     "_foreach_acos",
     "_foreach_acos_",
     "_foreach_add__List",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
+    "_foreach_addcdiv__Tensor",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
     "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_floor_",
