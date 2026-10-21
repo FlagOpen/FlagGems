@@ -510,7 +510,7 @@ _FULL_CONFIG = (
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
     (
         "_shape_as_tensor",
-        _shape_as_tensor,
+        shape_as_tensor,
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),

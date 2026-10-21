@@ -16,22 +16,13 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import base, consts
 
-# ``_shape_as_tensor`` starts with an underscore, and ``pytest.mark`` refuses
-# to generate a marker via attribute access for such names.
-setattr(
-    pytest.mark,
-    "_shape_as_tensor",
-    MarkDecorator(Mark("_shape_as_tensor", (), {}, _ispytest=True), _ispytest=True),
-)
-
 # 1-D sizes for the input tensor: cover small/large strided inputs.
-# _shape_as_tensor returns one int64 per dimension; the sweep exercises the
+# shape_as_tensor returns one int64 per dimension; the sweep exercises the
 # metadata-read path across input sizes (the op is O(1) in numel) and dtype
 # classes.
 SHAPE_AS_TENSOR_SHAPES = [(16,), (1024,), (65536,), (1048576,)]
@@ -51,12 +42,12 @@ class ShapeAsTensorBenchmark(base.Benchmark):
             yield (inp,)
 
 
-@pytest.mark._shape_as_tensor
-def test__shape_as_tensor():
+@pytest.mark.shape_as_tensor
+def test_shape_as_tensor():
     bench = ShapeAsTensorBenchmark(
-        op_name="_shape_as_tensor",
+        op_name="shape_as_tensor",
         torch_op=torch.ops.aten._shape_as_tensor,
-        gems_op=flag_gems._shape_as_tensor,
+        gems_op=flag_gems.shape_as_tensor,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()

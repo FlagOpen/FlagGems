@@ -22,14 +22,7 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The operator id starts with an underscore, so the #6359 marker convention
-# strips it: ``@pytest.mark._shape_as_tensor`` is refused by ``pytest.mark``'s
-# attribute access, and the derived marker that ``tools/test-op.sh`` selects
-# with (and ``check_operator_markers.py`` requires) is the stripped name
-# ``shape_as_tensor``. That name does not collide with a distinct operator id,
-# so no ``underscore_`` variant is needed.
-
-# ``_shape_as_tensor`` is a metadata query returning one int64 per dimension;
+# ``shape_as_tensor`` is a metadata query returning one int64 per dimension;
 # values and strides of the input are irrelevant. Coverage is driven by rank,
 # layout and emptiness instead of dtype: strided tensors of ranks 0-5
 # (0-dim -> empty result), sparse COO (plain, hybrid with dense trailing
@@ -58,12 +51,12 @@ def _make_coo(nnd, nnz, size, seed=0):
 
 @pytest.mark.shape_as_tensor
 @pytest.mark.parametrize("shape", STRIDED_SHAPES)
-def test_accuracy__shape_as_tensor_strided(shape):
+def test_accuracy_shape_as_tensor_strided(shape):
     inp = torch.randn(shape, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._shape_as_tensor(ref_inp)
-    res_out = flag_gems._shape_as_tensor(inp)
+    res_out = flag_gems.shape_as_tensor(inp)
 
     assert res_out.shape == (inp.dim(),)
     assert res_out.dtype == torch.int64
@@ -74,18 +67,18 @@ def test_accuracy__shape_as_tensor_strided(shape):
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_noncontiguous():
+def test_accuracy_shape_as_tensor_noncontiguous():
     inp = torch.randn(4, 6, device=flag_gems.device).t()
     assert not inp.is_contiguous()
 
     ref_out = torch.ops.aten._shape_as_tensor(utils.to_reference(inp))
-    res_out = flag_gems._shape_as_tensor(inp)
+    res_out = flag_gems.shape_as_tensor(inp)
     assert res_out.tolist() == [6, 4]
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_sparse_coo():
+def test_accuracy_shape_as_tensor_sparse_coo():
     cases = [
         ("plain", _make_coo(2, 3, (2, 3), seed=1), [2, 3]),
         ("1d", _make_coo(1, 3, (3,), seed=2), [3]),
@@ -109,14 +102,14 @@ def test_accuracy__shape_as_tensor_sparse_coo():
         sparse = sparse.to(flag_gems.device)
         ref_sparse = utils.to_reference(sparse)
         ref_out = torch.ops.aten._shape_as_tensor(ref_sparse)
-        res_out = flag_gems._shape_as_tensor(sparse)
+        res_out = flag_gems.shape_as_tensor(sparse)
         assert res_out.tolist() == expected, f"{name}: {res_out} != {expected}"
         assert res_out.device.type == "cpu"
         utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_sparse_compressed():
+def test_accuracy_shape_as_tensor_sparse_compressed():
     row = torch.tensor([0, 2, 4], dtype=torch.int64, device=flag_gems.device)
     col = torch.tensor([0, 1, 0, 1], dtype=torch.int64, device=flag_gems.device)
     val = torch.randn(4, device=flag_gems.device)
@@ -138,7 +131,7 @@ def test_accuracy__shape_as_tensor_sparse_compressed():
         ("bsc", bsc, [4, 4]),
         ("csr-empty", empty_nnz, [2, 3]),
     ]:
-        res_out = flag_gems._shape_as_tensor(t)
+        res_out = flag_gems.shape_as_tensor(t)
         assert res_out.tolist() == list(t.shape), f"{name}: {res_out} != {t.shape}"
         assert res_out.tolist() == expected, f"{name}: {res_out} != {expected}"
         assert res_out.device.type == "cpu"
@@ -147,38 +140,38 @@ def test_accuracy__shape_as_tensor_sparse_compressed():
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_matches_reference_table():
+def test_accuracy_shape_as_tensor_matches_reference_table():
     # Reference values captured in a process that never imported flag_gems
     # (un-substituted environment, H20 build): result values, dtype, device
     # and rank pinned as literals.
     dev = flag_gems.device
 
-    res = flag_gems._shape_as_tensor(torch.randn(2, 3, device=dev))
+    res = flag_gems.shape_as_tensor(torch.randn(2, 3, device=dev))
     assert res.tolist() == [2, 3]
     assert res.dtype == torch.int64
     assert res.device.type == "cpu"
 
     coo = _make_coo(2, 3, (2, 3), seed=5).to(dev)
-    assert flag_gems._shape_as_tensor(coo).tolist() == [2, 3]
+    assert flag_gems.shape_as_tensor(coo).tolist() == [2, 3]
 
     hybrid = torch.sparse_coo_tensor(
         torch.tensor([[0, 1]]), torch.randn(2, 3), (2, 3)
     ).to(dev)
-    assert flag_gems._shape_as_tensor(hybrid).tolist() == [2, 3]
+    assert flag_gems.shape_as_tensor(hybrid).tolist() == [2, 3]
 
     csr = coo.to_sparse_csr()
-    assert flag_gems._shape_as_tensor(csr).tolist() == [2, 3]
+    assert flag_gems.shape_as_tensor(csr).tolist() == [2, 3]
 
-    zero = flag_gems._shape_as_tensor(torch.tensor(2.5, device=dev))
+    zero = flag_gems.shape_as_tensor(torch.tensor(2.5, device=dev))
     assert zero.shape == (0,) and zero.dtype == torch.int64
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_fresh_storage_and_resize_independence():
+def test_accuracy_shape_as_tensor_fresh_storage_and_resize_independence():
     # Native returns a freshly allocated tensor: it never aliases ``self``
     # and later resizes of ``self`` must not retroactively change it.
     t = torch.randn(6, 7, device=flag_gems.device)
-    res = flag_gems._shape_as_tensor(t)
+    res = flag_gems.shape_as_tensor(t)
 
     assert res.dtype == torch.int64
     assert res.shape == (2,)
@@ -194,7 +187,7 @@ def test_accuracy__shape_as_tensor_fresh_storage_and_resize_independence():
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_device_is_cpu_for_cuda_input():
+def test_accuracy_shape_as_tensor_device_is_cpu_for_cuda_input():
     # Measured native rule: the C++ kernel builds the result from
     # TensorOptions(at::kLong) without a device, so the result is a CPU
     # tensor even for accelerator inputs (and for meta inputs). This is the
@@ -202,7 +195,7 @@ def test_accuracy__shape_as_tensor_device_is_cpu_for_cuda_input():
     dev = flag_gems.device
     if dev == "cpu":
         pytest.skip("requires an accelerator input to observe the rule")
-    res = flag_gems._shape_as_tensor(torch.randn(2, 3, device=dev))
+    res = flag_gems.shape_as_tensor(torch.randn(2, 3, device=dev))
     ref = torch.ops.aten._shape_as_tensor(
         utils.to_reference(torch.randn(2, 3, device=dev))
     )
@@ -213,17 +206,17 @@ def test_accuracy__shape_as_tensor_device_is_cpu_for_cuda_input():
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_quantized_and_pinned():
+def test_accuracy_shape_as_tensor_quantized_and_pinned():
     dev = flag_gems.device
     q = torch.quantize_per_tensor(torch.randn(2, 3, device=dev), 0.1, 10, torch.quint8)
-    res_q = flag_gems._shape_as_tensor(q)
+    res_q = flag_gems.shape_as_tensor(q)
     ref_q = torch.ops.aten._shape_as_tensor(utils.to_reference(q))
     assert res_q.tolist() == [2, 3]
     utils.gems_assert_equal(res_q, ref_q)
 
     # A pinned CPU tensor is still a plain strided tensor: same metadata.
     pinned = torch.empty(5, pin_memory=True)
-    res_p = flag_gems._shape_as_tensor(pinned)
+    res_p = flag_gems.shape_as_tensor(pinned)
     ref_p = torch.ops.aten._shape_as_tensor(pinned)
     assert res_p.tolist() == [5]
     assert res_p.device.type == "cpu"
@@ -231,7 +224,7 @@ def test_accuracy__shape_as_tensor_quantized_and_pinned():
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_disjoint_from_native_neighbors():
+def test_accuracy_shape_as_tensor_disjoint_from_native_neighbors():
     # The implementation must not re-dispatch the operator it implements
     # (registered on backend keys, an internal aten re-entry would recurse
     # into this very kernel), and it must not depend on related metadata ops
@@ -243,20 +236,20 @@ def test_accuracy__shape_as_tensor_disjoint_from_native_neighbors():
     csr = sparse.to_sparse_csr()
 
     for _ in range(3):
-        assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]
-        assert flag_gems._shape_as_tensor(sparse).tolist() == [2, 3]
-        assert flag_gems._shape_as_tensor(csr).tolist() == [2, 3]
+        assert flag_gems.shape_as_tensor(t).tolist() == [3, 4]
+        assert flag_gems.shape_as_tensor(sparse).tolist() == [2, 3]
+        assert flag_gems.shape_as_tensor(csr).tolist() == [2, 3]
 
     # Cross-op sanity: dispatching a related metadata op afterwards must not
-    # corrupt or re-route _shape_as_tensor.
+    # corrupt or re-route shape_as_tensor.
     nnz = torch.ops.aten._nnz(sparse)
     assert nnz == 5
-    assert flag_gems._shape_as_tensor(sparse).tolist() == [2, 3]
-    assert flag_gems._shape_as_tensor(t).tolist() == [3, 4]
+    assert flag_gems.shape_as_tensor(sparse).tolist() == [2, 3]
+    assert flag_gems.shape_as_tensor(t).tolist() == [3, 4]
 
 
 @pytest.mark.shape_as_tensor
-def test_accuracy__shape_as_tensor_dispatch_sentinel():
+def test_accuracy_shape_as_tensor_dispatch_sentinel():
     # Registration-path check: the op is registered on CUDA, SparseCUDA and
     # SparseCsrCUDA (measured on this build: the plain CUDA key intercepts
     # strided inputs, and the sparse keys become reachable once the CUDA key
@@ -267,7 +260,7 @@ def test_accuracy__shape_as_tensor_dispatch_sentinel():
 
     def sentinel(self):
         hits.append(str(self.layout))
-        return flag_gems._shape_as_tensor(self)
+        return flag_gems.shape_as_tensor(self)
 
     lib = torch.library.Library("aten", "IMPL")
     for key in ("CUDA", "SparseCUDA", "SparseCsrCUDA"):

@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # which the C++ factory ignores).
 
 
-def _shape_as_tensor(self: torch.Tensor) -> torch.Tensor:
+def shape_as_tensor(self: torch.Tensor) -> torch.Tensor:
     """Return the sizes of ``self`` as a fresh 1-D int64 tensor.
 
     Mirrors ``aten::_shape_as_tensor(Tensor self) -> Tensor``:

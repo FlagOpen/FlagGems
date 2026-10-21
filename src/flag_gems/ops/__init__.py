@@ -361,7 +361,6 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 )
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
-from flag_gems.ops._shape_as_tensor import _shape_as_tensor
 from flag_gems.ops._slow_conv2d_backward import _slow_conv2d_backward
 from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
@@ -1301,6 +1300,7 @@ from flag_gems.ops.set_ import (
 )
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
+from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.sign import sign, sign_, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
@@ -1887,7 +1887,6 @@ __all__ = [
     "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
-    "_shape_as_tensor",
     "_slow_conv2d_backward",
     "_slow_conv2d_forward",
     "_sobol_engine_ff_",
@@ -2904,6 +2903,7 @@ __all__ = [
     "sgn",
     "sgn_",
     "sgn_out",
+    "shape_as_tensor",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
