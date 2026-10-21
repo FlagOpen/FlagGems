@@ -29,6 +29,7 @@ import numbers
 import struct
 from functools import reduce
 from operator import or_
+from types import BuiltinFunctionType
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch
@@ -1219,6 +1220,24 @@ _LAUNCH_CACHE: Dict[Tuple[Any, ...], Tuple[Any, Any, Any]] = {}
 # which is what makes a "the cache is write-only" bug visible without a probe.
 _LAUNCH_STATS: Dict[str, int] = {"replay": 0, "dispatch": 0}
 
+# One-hit memo in front of ``_LAUNCH_CACHE``.  The key tuple holds a device and
+# two Triton dtypes, and building plus hashing it measured 1.1us a call at
+# sixteen positions; the identity compares below ask the same question in a
+# handful of pointer comparisons.  A repeated call shape presents the same metadata tensor object
+# (``_device_meta`` hands the cached one back), the same kernel, function and
+# constexprs, and the same grid, so every field of the dict key is covered:
+# ``kernel``, ``nt``, ``fn``, both dtypes, ``block`` and ``grid`` are compared
+# directly, and ``meta.device`` plus the alignment bit follow from ``meta is
+# last[0]`` (a tensor's device never changes and the bit is a property of its
+# ``data_ptr``).  The element at index 8 is a replay closure that captures the
+# launcher and reads the stream per call.
+#
+# The entry is only ever the launcher for a key that already replayed
+# successfully, and a memo miss falls through to the dict, which is still the
+# authority.  A dispatch clears it, since Triton may have replaced the compiled
+# entry.
+_LAST_UNARY_REPLAY: List[Any] = [None]
+
 
 def launch_cache_stats() -> Dict[str, int]:
     """Cumulative hits/misses of the executor launch cache (diagnostics only).
@@ -1227,6 +1246,90 @@ def launch_cache_stats() -> Dict[str, int]:
     snapshot used by the tests.
     """
     return dict(_LAUNCH_STATS)
+
+
+def _bind_executor_launcher(
+    entry: Tuple[Any, Any, Any],
+    grid: Tuple[int, int],
+    nt: int,
+    meta: torch.Tensor,
+    fn: Callable,
+    dt_in: Any,
+    dt_out: Any,
+    block: int,
+) -> Callable[[], None]:
+    """Bind a cached launcher into a zero-argument replay closure.
+
+    The closure cells are read instead of indexing a tuple on every call, and
+    the stream is deliberately *not* captured: ``get_current_stream`` is read
+    at launch time so a replay issued under a different ``torch.cuda.stream``
+    still lands on the current stream.
+
+    ``CudaLauncher.__call__`` does two ``allocate_scratch`` calls and two
+    attribute reads before forwarding its ``*args`` to ``self.launch``.  When
+    there is nothing to allocate and ``self.launch`` is the bare C function --
+    true for every executor kernel, whose signature has no ``tensordesc``
+    entry -- calling it with the full positional list skips that wrapper, which
+    measured 0.58us of the 4.3us replay at sixteen positions.  Anything else
+    takes the public call, exactly as before.
+    """
+    launcher, function, packed = entry
+    idx = meta.device.index
+    g0, g1 = grid
+    raw = launcher.launch
+    if (
+        isinstance(raw, BuiltinFunctionType)
+        and launcher.global_scratch_size == 0
+        and launcher.profile_scratch_size == 0
+    ):
+        coop = launcher.launch_cooperative_grid
+        pdl = launcher.launch_pdl
+
+        def replay() -> None:
+            raw(
+                g0,
+                g1,
+                1,
+                _triton_driver.active.get_current_stream(idx),
+                function,
+                coop,
+                pdl,
+                None,
+                None,
+                packed,
+                None,
+                None,
+                None,
+                meta,
+                fn,
+                nt,
+                dt_in,
+                dt_out,
+                block,
+            )
+
+        return replay
+
+    def replay() -> None:
+        launcher(
+            g0,
+            g1,
+            1,
+            _triton_driver.active.get_current_stream(idx),
+            function,
+            packed,
+            None,
+            None,
+            None,
+            meta,
+            fn,
+            nt,
+            dt_in,
+            dt_out,
+            block,
+        )
+
+    return replay
 
 
 def _launch_executor_kernel(
@@ -1239,6 +1342,28 @@ def _launch_executor_kernel(
     dt_out: Any,
     block: int,
 ) -> None:
+    last = _LAST_UNARY_REPLAY[0]
+    if (
+        last is not None
+        and last[0] is meta
+        and last[1] is kernel
+        and last[2] == nt
+        and last[3] is fn
+        and last[4] is dt_in
+        and last[5] is dt_out
+        and last[6] == block
+        and last[7] == grid
+        and not knobs.runtime.launch_enter_hook.calls
+        and not knobs.runtime.launch_exit_hook.calls
+    ):
+        try:
+            last[8]()
+        except Exception:
+            # Fall through: the dict path below retries once, then dispatches.
+            _LAST_UNARY_REPLAY[0] = None
+        else:
+            _LAUNCH_STATS["replay"] += 1
+            return
     # ``meta.device`` is part of the key: a compiled kernel belongs to one
     # device's module, so replaying device A's launcher for device B would use
     # the wrong context.
@@ -1264,33 +1389,39 @@ def _launch_executor_kernel(
         and not runtime.launch_enter_hook.calls
         and not runtime.launch_exit_hook.calls
     ):
+        # Binding is inside the ``try`` as well: a Triton build whose launcher
+        # has no ``launch_pdl`` or a different raw signature raises here, and
+        # that must fall back to dispatch like any other unusable entry rather
+        # than fail every call after the first.
         try:
-            entry[0](
-                grid[0],
-                grid[1],
-                1,
-                _triton_driver.active.get_current_stream(meta.device.index),
-                entry[1],
-                entry[2],
-                None,
-                None,
-                None,
-                meta,
-                fn,
-                nt,
-                dt_in,
-                dt_out,
-                block,
+            replay = _bind_executor_launcher(
+                entry, grid, nt, meta, fn, dt_in, dt_out, block
             )
-            _LAUNCH_STATS["replay"] += 1
-            return
+            replay()
         except Exception:
             # A launcher that cannot be replayed this way is not a correctness
             # problem: forget the entry and let Triton dispatch as usual.
             _LAUNCH_CACHE.pop(key, None)
+        else:
+            _LAST_UNARY_REPLAY[0] = (
+                meta,
+                kernel,
+                nt,
+                fn,
+                dt_in,
+                dt_out,
+                block,
+                grid,
+                replay,
+            )
+            _LAUNCH_STATS["replay"] += 1
+            return
     _LAUNCH_STATS["dispatch"] += 1
     compiled = kernel[grid](meta, fn, nt, dt_in, dt_out, block)
     if compiled is not None:
+        # A dispatch may have replaced the compiled entry, so a closure bound to
+        # the previous one is no longer known to be current.
+        _LAST_UNARY_REPLAY[0] = None
         _LAUNCH_CACHE[key] = (
             compiled.run,
             compiled.function,
