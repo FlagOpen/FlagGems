@@ -232,7 +232,14 @@ def _dense_identity(inp):
 def _candidate(inp):
     if not isinstance(inp, torch.Tensor):
         return getattr(flag_gems, _NATIVE_OP_NAME)(inp)
-    abi = (inp.device, inp.dtype, inp.layout, inp.requires_grad)
+    abi = (
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        inp.requires_grad,
+        inp.is_neg(),
+        inp.is_conj(),
+    )
     if not inp.is_nested:
         parts, metadata = [inp], ()
     elif inp.layout == torch.strided:
@@ -250,7 +257,14 @@ def _candidate(inp):
     try:
         result = getattr(flag_gems, _NATIVE_OP_NAME)(inp)
     finally:
-        assert (inp.device, inp.dtype, inp.layout, inp.requires_grad) == abi
+        assert (
+            inp.device,
+            inp.dtype,
+            inp.layout,
+            inp.requires_grad,
+            inp.is_neg(),
+            inp.is_conj(),
+        ) == abi
         if not inp.is_nested:
             after, after_metadata = [inp], ()
         elif inp.layout == torch.strided:
