@@ -368,7 +368,9 @@ def test_allocation_structure(case, dtype):
         and torch.device(flag_gems.device).type != "cpu"
         and dtype == torch.float64
     ):
-        pytest.skip("Kunlunxin cannot allocate true float64 compressed values on device")
+        pytest.skip(
+            "Kunlunxin cannot allocate true float64 compressed values on device"
+        )
     layout, dense_dim, size, blocksize, nnz = case
     ref = torch.ops.aten._sparse_compressed_tensor_with_dims(
         nnz,
