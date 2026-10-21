@@ -8576,6 +8576,28 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: fused_inv_rope_fp8_quant
+  description: 'Fused inverse RoPE and FP8 group quantization for DeepSeekV4 attention
+    output. Applies GPT-J inverse rotary embedding to the rope part of every head
+    and quantizes the grouped head output to FP8 with per-group scales, optionally
+    packed as UE8M0 exponents.
+
+    '
+  for:
+  - fused_inv_rope_fp8_quant
+  name:
+  - fused_inv_rope_fp8_quant
+  source:
+  - vllm
+  labels:
+  - fused
+  - Attention
+  - vLLM
+  - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
 - id: fused_marlin_moe_w4a16_int4
   description: Fused MoE with GPTQ INT4 (uint4b8) W4A16 weights in plain row-major
     layout; Triton wna16 fused-dequant GEMM with SwiGLU activation, aligned with
