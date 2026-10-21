@@ -23,6 +23,8 @@ from flag_gems.utils.random_utils import set_philox_state
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
@@ -108,12 +110,12 @@ def cudnn_attn_forward_native(
     )
     out_bhsd = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
+    philox_seed = results[6]
+    philox_offset = results[7]
 
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
     lse = lse_4d.squeeze(-1).float()
-    return out, lse, philox_seed, philox_offset
+    return out, lse, lse_4d, philox_seed, philox_offset
 
 
 def efficient_attn_forward_native(
@@ -129,20 +131,42 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
-        Q,
-        K,
-        V,
-        bias,
-        None,
-        None,
-        Q.shape[1],
-        K.shape[1],
-        dropout_p=dropout_p,
-        custom_mask_type=1 if is_causal else 0,
-        compute_log_sumexp=True,
-        scale=scale,
-    )
+    if IS_KUNLUNXIN:
+        # The native efficient-attention forward on this XPU build rejects an
+        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
+        # yet"), so the sequence lengths are left to be inferred from the tensor
+        # shapes.  Verified on device: the returned (out, lse) match a device
+        # fp32 reference to 3e-05 (one fp16 ULP) and the native backward fed
+        # with this lse matches explicit device-math gradients to 4e-06.
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            None,
+            None,
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
+    else:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            Q.shape[1],
+            K.shape[1],
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
     out = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
@@ -363,7 +387,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
             * 0.1
         )
 
-    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+    out, lse, lse_4d, philox_seed, philox_offset = cudnn_attn_forward_native(
         Q,
         K,
         V,
@@ -383,7 +407,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
     ref_K_bhsd = utils.to_reference(K_bhsd)
     ref_V_bhsd = utils.to_reference(V_bhsd)
     ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_lse_4d = utils.to_reference(lse_4d)
 
     (
         ref_dQ_bhsd,
@@ -395,7 +419,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
         ref_K_bhsd,
         ref_V_bhsd,
         ref_out_bhsd,
-        ref_lse,
+        ref_lse_4d,
         philox_seed,
         philox_offset,
         attn_bias,

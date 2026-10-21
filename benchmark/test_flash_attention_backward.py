@@ -25,6 +25,13 @@ from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
 
+# kunlunxin: this backend's dense efficient-attention kernels cap the
+# sequence length at 1024 (widening the guard hangs the device) and do
+# not implement the attention-bias gradient, so the benchmark roster is
+# restricted to the configurations the backend can actually execute.
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+_KUNLUNXIN_MAX_SEQ = 1024
+
 
 def _is_unsafe_decode_causal(seq_len: int, is_causal: bool) -> bool:
     return seq_len == 1 and is_causal
@@ -146,8 +153,8 @@ def cudnn_attn_forward_native(
     )
     out = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
+    philox_seed = results[6]
+    philox_offset = results[7]
 
     lse = lse_4d.squeeze(-1).float()
     return out, lse, philox_seed, philox_offset
@@ -170,20 +177,39 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
-        Q_fa,
-        K_fa,
-        V_fa,
-        bias,
-        None,
-        None,
-        Q.shape[2],
-        K.shape[2],
-        dropout_p=dropout_p,
-        custom_mask_type=1 if is_causal else 0,
-        compute_log_sumexp=True,
-        scale=scale,
-    )
+    if IS_KUNLUNXIN:
+        # The native efficient-attention forward on this XPU build rejects an
+        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
+        # yet"), so the sequence lengths are inferred from the tensor shapes.
+        results = torch.ops.aten._efficient_attention_forward(
+            Q_fa,
+            K_fa,
+            V_fa,
+            bias,
+            None,
+            None,
+            None,
+            None,
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
+    else:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q_fa,
+            K_fa,
+            V_fa,
+            bias,
+            None,
+            None,
+            Q.shape[2],
+            K.shape[2],
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
     out_fa = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
@@ -688,7 +714,7 @@ def _cudnn_attn_bwd_aten(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse,
+        lse.unsqueeze(-1),
         philox_seed,
         philox_offset,
         attn_bias,
@@ -792,6 +818,8 @@ def efficient_attn_bwd_input_fn(config, dtype, device):
     batch, num_heads, seq_len, head_size, custom_mask_type, has_bias, _ = config
     is_causal = custom_mask_type == 1
     if _is_unsafe_decode_causal(seq_len, is_causal):
+        return
+    if IS_KUNLUNXIN and (seq_len > _KUNLUNXIN_MAX_SEQ or has_bias):
         return
     scale = 1.0 / math.sqrt(head_size)
 
@@ -898,7 +926,7 @@ def _efficient_attn_bwd_aten(
         custom_mask_type,
         bias_requires_grad,
         scale=scale,
-        num_splits_key=0,
+        num_splits_key=None if IS_KUNLUNXIN else 0,
     )
 
 
@@ -922,7 +950,16 @@ def _efficient_attn_bwd_gems(
     lse,
     scale=None,
 ):
-    return flag_gems.ops.efficient_attention_backward(
+    # kunlunxin registers a backend implementation of this operator, and that
+    # is the implementation the accuracy test exercises.  `flag_gems.ops.*` is
+    # the generic module and resolves to a different, unrelated kernel there, so
+    # on kunlunxin the candidate is taken from the public (registered) name.
+    _candidate = (
+        flag_gems.efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.efficient_attention_backward
+    )
+    return _candidate(
         dOut_bshd,
         Q_bshd,
         K_bshd,
@@ -1117,7 +1154,12 @@ def _sdp_eff_attn_bwd_gems(
     is_causal,
     scale=None,
 ):
-    return flag_gems.ops.scaled_dot_product_efficient_attention_backward(
+    _candidate = (
+        flag_gems.scaled_dot_product_efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.scaled_dot_product_efficient_attention_backward
+    )
+    return _candidate(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
