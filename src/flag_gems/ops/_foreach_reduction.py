@@ -497,6 +497,74 @@ _NORM_SINGLE_LAUNCH_BLOCK = 16384
 # single-launch path (+15.5us).
 _NORM_SINGLE_LAUNCH_MAX_NUMEL = 1 << 16
 
+# The C++ grouping helper torch's own foreach decompositions use.  It returns
+# ``{key: [[tensors], [indices]]}`` in one pass, and on a list of sixteen it
+# costs 1.7us against 3.7us for the Python ``setdefault`` loop it replaces.
+# ``is_contiguous`` is taken unbound so a tensor subclass cannot substitute its
+# own notion of contiguity for the layout the kernel actually indexes.
+_GROUP_BY_DEVICE_DTYPE = torch._C._group_tensors_by_device_and_dtype
+_IS_CONTIGUOUS = torch.Tensor.is_contiguous
+
+
+def _norm_group(
+    work: List[torch.Tensor],
+    numels: List[int],
+    device: torch.device,
+    in_dtype: torch.dtype,
+    ord_key: Any,
+    root: bool,
+    inf_mode: int,
+) -> torch.Tensor:
+    """Launch the norm for one ``(device, dtype)`` group; return the result buffer.
+
+    ``work`` is non-empty and at least one entry has elements.  The result
+    buffer is ``len(work)`` values in the input dtype, one per tensor.
+    """
+    nt = len(work)
+    max_numel = max(numels)
+    if max_numel <= _NORM_SINGLE_LAUNCH_MAX_NUMEL:
+        g = 1
+    else:
+        g = _reduction_chunks(nt, max_numel, device, 1024)
+    meta = _device_meta([w.data_ptr() for w in work] + numels, device)
+    in_dt = tl_dtype(in_dtype)
+    if g == 1:
+        # ``G == 1`` makes the chunk the whole tensor, and stage one then stores
+        # straight to ``out_ptr``: the partial pointer is never dereferenced, so
+        # the fp32 partial buffer the two-stage path needs is dead weight here
+        # (~2us of host time for the allocation, on a host-bound call).  Hand
+        # ``out`` to that slot the way ``_foreach_max`` already does.
+        out = torch.empty(nt, dtype=in_dtype, device=device)
+        partial = out
+        block = min(
+            _NORM_SINGLE_LAUNCH_BLOCK, max(1024, triton.next_power_of_2(max_numel))
+        )
+    else:
+        # fp32 partials keep the accumulation accuracy of the single-stage
+        # kernel even though the output dtype may be fp16/bf16.
+        partial = torch.empty(nt * g, dtype=torch.float32, device=device)
+        out = torch.empty(nt, dtype=in_dtype, device=device)
+        block = 1024
+    _launch(
+        _norm_stage1_kernel,
+        (nt, g),
+        (ord_key, root, inf_mode, in_dt, in_dt, g, block),
+        (meta, partial, out, ord_key, root, inf_mode, in_dt, in_dt, g, block),
+        (meta, partial, out),
+        device,
+    )
+    if g > 1:
+        block_p = triton.next_power_of_2(g)
+        _launch(
+            _norm_stage2_kernel,
+            (nt, 1),
+            (ord_key, root, inf_mode, in_dt, g, block_p),
+            (meta, partial, out, ord_key, root, inf_mode, in_dt, g, block_p),
+            (meta, partial, out),
+            device,
+        )
+    return out
+
 
 def _pow_sum_list(
     tensors: List[torch.Tensor], ord_: Any, dtype: Optional[torch.dtype]
@@ -507,6 +575,31 @@ def _pow_sum_list(
     ord_key = 1 if ord_f == 1.0 else (2 if ord_f == 2.0 else ord_f)
     # Orders 0/1/±inf accumulate the norm directly; the rest need the root.
     root = inf_mode == 0 and ord_f not in (0.0, 1.0)
+
+    # Fast path for the shape a foreach call actually has: no dtype conversion
+    # requested, every entry already contiguous and floating point, and a single
+    # ``(device, dtype)`` group.  The generic path below then walks the list four
+    # times (convert, group, rebuild the per-group work/numel lists, assemble the
+    # views) and its Python dict grouping costs twice the C++ group.  These calls
+    # are host-bound instead of kernel-bound -- the scored latency tracks host
+    # time minus a constant ~30us at every cell, list of 16, while the kernels
+    # take 6-20us -- so that bookkeeping is most of the 512x512 cell.  Measured
+    # there (fp16, do_bench median): 27.2us before, 20.4us after, same kernels.
+    nt = len(tensors)
+    if dtype is None and nt:
+        in_dtype = tensors[0].dtype
+        if in_dtype.is_floating_point and all(map(_IS_CONTIGUOUS, tensors)):
+            # One C++ pass answers both "same device" and "same dtype".
+            if len(_GROUP_BY_DEVICE_DTYPE([tensors], False)) == 1:
+                device = tensors[0].device
+                numels = [t.numel() for t in tensors]
+                if 0 not in numels:
+                    out = _norm_group(
+                        tensors, numels, device, in_dtype, ord_key, root, inf_mode
+                    )
+                    # Plain ``select``: ``unbind`` is registered by FlagGems
+                    # itself, so inside ``use_gems`` it costs ~7us more.
+                    return [out[i] for i in range(nt)]
 
     prepared = []
     for t in tensors:
@@ -525,53 +618,10 @@ def _pow_sum_list(
     for (device, in_dtype), idxs in groups.items():
         work = [prepared[i] for i in idxs]
         numels = [w.numel() for w in work]
-        max_numel = max(numels)
-        if max_numel > 0:
-            if max_numel <= _NORM_SINGLE_LAUNCH_MAX_NUMEL:
-                g = 1
-            else:
-                g = _reduction_chunks(len(work), max_numel, device, 1024)
-            meta = _device_meta([w.data_ptr() for w in work] + numels, device)
-            # fp32 partials keep the accumulation accuracy of the single-stage
-            # kernel even though the output dtype may be fp16/bf16.
-            partial = torch.empty(len(work) * g, dtype=torch.float32, device=device)
-            out = torch.empty(len(work), dtype=in_dtype, device=device)
-            in_dt = tl_dtype(in_dtype)
-            block = (
-                min(_NORM_SINGLE_LAUNCH_BLOCK,
-                    max(1024, triton.next_power_of_2(max_numel)))
-                if g == 1
-                else 1024
+        if max(numels) > 0:
+            out = _norm_group(
+                work, numels, device, in_dtype, ord_key, root, inf_mode
             )
-            _launch(
-                _norm_stage1_kernel,
-                (len(work), g),
-                (ord_key, root, inf_mode, in_dt, in_dt, g, block),
-                (
-                    meta,
-                    partial,
-                    out,
-                    ord_key,
-                    root,
-                    inf_mode,
-                    in_dt,
-                    in_dt,
-                    g,
-                    block,
-                ),
-                (meta, partial, out),
-                device,
-            )
-            if g > 1:
-                block_p = triton.next_power_of_2(g)
-                _launch(
-                    _norm_stage2_kernel,
-                    (len(work), 1),
-                    (ord_key, root, inf_mode, in_dt, g, block_p),
-                    (meta, partial, out, ord_key, root, inf_mode, in_dt, g, block_p),
-                    (meta, partial, out),
-                    device,
-                )
         else:
             # Every entry is empty; the stage-two kernel would not be launched,
             # so initialize the results instead of returning uninitialized memory.
