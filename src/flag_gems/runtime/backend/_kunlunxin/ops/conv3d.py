@@ -50,19 +50,7 @@ def conv3d_output_size(
     return conv2d_output_size(in_size, kernel_size, stride, padding, dilation)
 
 
-# Runtime (non-constexpr) arguments, in signature order. The launcher decodes
-# the generated kernelParams table by ORIGINAL triton argument index (0..40)
-# and expects:
-#   0-3 pointers, 4 in_n, 5-7 input dims, 8 out_c, 9-11 out dims,
-#   12-26 tensor strides, 27 weight_c, 28-30 weight dims, 31-33 strides,
-#   34-36 paddings, 37-39 dilations, 40 groups.
-# The XPU launcher re-numbers the emitted table to the *ordinal position* of
-# each surviving non-constexpr argument (driver.py: make_launcher ->
-# expanded_signature), so any argument that triton value-specializes to
-# constexpr (e.g. in_n == 1, out_c == 1, a size-1 stride == 1) silently shifts
-# every later slot and the handler decodes the wrong scalars. Pinning the whole
-# 0..40 carrier range as runtime with `do_not_specialize` keeps the emitted
-# positions equal to the original indices. See AGENTS.md conv3d entries.
+# Scalar arguments kept as runtime values so a value of 1 is not folded out.
 _CONV3D_RUNTIME_ARGS = [
     "in_n",
     "input_depth",
@@ -291,15 +279,10 @@ def conv3d_forward_kernel(
     tl.store(output_pointer, accum, mask=output_mask)
 
 
-# The vendor 3D convolution has no working pointwise (1x1x1) kernel as soon as
-# any spatial padding is non-zero: both this launch-table handler and the native
-# F.conv3d fail with `CUDNN_STATUS_EXECUTION_FAILED` / `err_code 1` for every
-# stride and input size (kernel sizes >= 2 and the whole 2D family are
-# unaffected).  A 1x1x1 convolution with padding p is, however, exactly the same
-# convolution with padding 0 applied to the spatially zero-padded input -- the
-# output extent `(n + 2p - 1) // s + 1` is identical and the kernel reads the
-# same shifted samples -- so `conv3d` folds the padding into the input for that
-# shape and keeps the vendor fast path for the launch.
+# A 1x1x1 convolution with padding p is exactly the same convolution with
+# padding 0 applied to the spatially zero-padded input: the output extent
+# `(n + 2p - 1) // s + 1` is identical and the kernel reads the same shifted
+# samples. `conv3d` folds the padding into the input for that shape.
 _ZERO_PAD3D_BLOCK = 1024
 
 
@@ -326,13 +309,11 @@ def _zero_pad3d_spatial_kernel(
     BLOCK: tl.constexpr,
 ):
     # `dst` is a freshly allocated contiguous (n, c, dst_d, dst_h, dst_w) tensor,
-    # so the flat program offset already is its element index.  The source is
+    # so the flat program offset already is its element index. The source is
     # addressed through its own strides, which keeps non-contiguous inputs exact.
-    #
     # Every computed address is kept inside the source by clamping, and the zero
-    # fill is done with `tl.where` rather than by relying on `other=` on a masked
-    # load: a masked load whose address runs off the tensor returns undefined
-    # data on this backend (measured), so the mask alone is not enough.
+    # fill is done with `tl.where` rather than by relying on `other=` on a
+    # masked load.
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     in_range = offs < total
@@ -423,9 +404,9 @@ def _raw_stream3(dev_index):
 def _record3(out, cap, input, out_c, out_dtype, compute_dtype, promote):
     """Build a replay record from a captured launcher call.
 
-    Only the launcher and its SCALAR arguments are retained; every tensor slot
-    is nulled here and re-spliced on each replay, so no tensor CONTENT is ever
-    keyed by address (unlike the vendor g_fg_moe_cache).
+    Only the launcher and its scalar arguments are retained; every tensor slot
+    is nulled here and re-spliced on each replay, so no tensor content is keyed
+    by address.
     """
     a2 = cap.get("a2")
     launcher = cap.get("launcher")
@@ -527,11 +508,10 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # `padding` may be the strings "valid"/"same".  "valid" is exactly
     # symmetric zero padding; "same" pads dilation*(k-1) in total, split as
     # floor(total/2) before and the remainder after, so an ODD total needs an
-    # ASYMMETRIC pad, which neither this kernel nor the launch handler can
-    # express (both take one symmetric value per axis).  For an odd total we
-    # launch with ceil(total/2) symmetric (the output is one element larger per
-    # such axis) and drop the leading element, which is the identical
-    # convolution shifted by one -- a slice, not a pad/copy chain.
+    # ASYMMETRIC pad, which this kernel cannot express (it takes one symmetric
+    # value per axis).  For an odd total we launch with ceil(total/2) symmetric
+    # (the output is one element larger per such axis) and drop the leading
+    # element, which is the identical convolution shifted by one.
     crop = (0, 0, 0)
     if isinstance(padding, str):
         if padding == "valid":
@@ -563,9 +543,8 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
 
-    # See `_zero_pad3d_spatial_kernel`: a 1x1x1 kernel with non-zero padding has
-    # no working vendor kernel, and folding the padding into the input is exact
-    # (identical output extent, identical sampled positions).
+    # See `_zero_pad3d_spatial_kernel`: fold the padding of a 1x1x1 kernel into
+    # the input (identical output extent, identical sampled positions).
     if (
         weight_depth == 1
         and weight_height == 1
