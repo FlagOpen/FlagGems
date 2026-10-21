@@ -273,23 +273,52 @@ def foreach_unary_kernel(
     are fully masked out, which costs a load and an exit -- cheaper than
     materializing an explicit chunk table on the CPU, which measured as the
     single largest overhead in the end-to-end benchmark.
+
+    The alignment split matters more than it looks.  A pointer read out of the
+    metadata buffer is an ``int64`` the compiler knows nothing about, so it
+    assumes one-element alignment and picks a one-element-per-lane layout,
+    emitting one ``ld.global.b16``/``st.global.b16`` per element.  Measured at
+    512^2 fp16 x 16 tensors that costs 1.3us on a copy and 2.6us on ``log``.
+    Declaring the divisibility we have just checked, *and* giving the compiler
+    a mask-free chunk, lets it choose an eight-element layout and emit
+    ``ld.global.v4.b32``: 128 bits per lane.  The two changes are only useful
+    together -- the hint without the mask-free chunk widens the layout while
+    the access stays 16-bit, which measured 2.2x *slower* than the plain loop.
     """
     t = tl.program_id(0)
     offset = tl.program_id(1) * BLOCK
 
-    in_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(IN_DT))
-    out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(OUT_DT))
+    in_v = tl.load(meta_ptr + t)
+    out_v = tl.load(meta_ptr + NT + t)
     n_elements = tl.load(meta_ptr + 2 * NT + t)
 
     idx = offset + tl.arange(0, BLOCK)
-    mask = idx < n_elements
-    x = tl.load(in_ptr + idx, mask=mask, other=0)
-    # The value is promoted to the output dtype *before* the math runs, which is
-    # what ``pointwise_dynamic`` does for its scalar functions.  Those functions
-    # commonly end in ``.to(x.dtype)``, so handing them an unpromoted integer
-    # would truncate the result: ``log1p`` on int64 measured 0.693 of error
-    # until the promotion was moved ahead of the call.
-    tl.store(out_ptr + idx, fn(x.to(OUT_DT)).to(OUT_DT), mask=mask)
+    if (in_v & 15) == 0 and (out_v & 15) == 0:
+        in_ptr = tl.multiple_of(in_v.to(tl.pointer_type(IN_DT)), 16)
+        out_ptr = tl.multiple_of(out_v.to(tl.pointer_type(OUT_DT)), 16)
+        if offset + BLOCK <= n_elements:
+            x = tl.load(in_ptr + idx)
+            tl.store(out_ptr + idx, fn(x.to(OUT_DT)).to(OUT_DT))
+        else:
+            # Last chunk of a tensor: keep the masked path.  Programs past a
+            # shorter tensor's count land here too and touch nothing.
+            mask = idx < n_elements
+            x = tl.load(in_ptr + idx, mask=mask, other=0)
+            tl.store(out_ptr + idx, fn(x.to(OUT_DT)).to(OUT_DT), mask=mask)
+    else:
+        # Sliced or otherwise unaligned tensor: no vector access is available,
+        # so run exactly the loop this kernel has always run.
+        in_ptr = in_v.to(tl.pointer_type(IN_DT))
+        out_ptr = out_v.to(tl.pointer_type(OUT_DT))
+        mask = idx < n_elements
+        x = tl.load(in_ptr + idx, mask=mask, other=0)
+        # The value is promoted to the output dtype *before* the math runs,
+        # which is what ``pointwise_dynamic`` does for its scalar functions.
+        # Those functions commonly end in ``.to(x.dtype)``, so handing them an
+        # unpromoted integer would truncate the result: ``log1p`` on int64
+        # measured 0.693 of error until the promotion was moved ahead of the
+        # call.
+        tl.store(out_ptr + idx, fn(x.to(OUT_DT)).to(OUT_DT), mask=mask)
 
 
 @triton.jit
