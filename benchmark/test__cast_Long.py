@@ -29,6 +29,15 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+
+def _unsupported_native_case(dtype, shape):
+    return (
+        flag_gems.vendor_name == "ascend"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and all(extent != 0 for extent in shape)
+    )
+
+
 # Performance-relevant shapes for a memory-bound cast.
 CAST_LONG_SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)]
 
@@ -122,6 +131,17 @@ class CastLongBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=CAST_LONG_SHAPES)
         self.shapes = [_validated_shape(shape) for shape in self.shapes]
 
+    def get_case_iter(self, dtype):
+        for case in super().get_case_iter(dtype):
+            # Keep supported public IDs and custom empty shapes unchanged.
+            if _unsupported_native_case(dtype, case.shape["input"]):
+                if case.case_id in (getattr(base.Config, "case_ids", None) or ()):
+                    raise ValueError(
+                        f"Unsupported benchmark case {case.case_id}: Ascend native _cast_Long has no nonempty FP8 conversion"
+                    )
+                continue
+            yield case
+
 
 @pytest.mark.underscore_cast_Long
 def test__cast_Long():
@@ -134,3 +154,18 @@ def test__cast_Long():
         dtypes=CAST_LONG_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_cast_Long
+@pytest.mark.parametrize(
+    "dtype",
+    (
+        (torch.float8_e4m3fn, torch.float8_e5m2)
+        if flag_gems.vendor_name == "ascend"
+        else []
+    ),
+)
+def test__cast_Long_native_unsupported_nonempty(dtype):
+    pytest.skip(
+        "Ascend native _cast_Long has no nonempty FP8 conversion; excluded from timing while empty shapes remain supported"
+    )
