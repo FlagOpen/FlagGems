@@ -36,6 +36,8 @@ broadcast, and an integral result carries no autograd history, so there is no
 backward family.
 """
 
+import math
+
 import pytest
 import torch
 
@@ -43,6 +45,114 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_CAST_DTYPE = torch.int8
+
+
+def _copy_dense_to(inp, device):
+    # Copy storage independently and retain the view before observing values.
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .to(device)
+        .clone()
+    )
+    result = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    assert result.dtype == inp.dtype and result.shape == inp.shape
+    assert (
+        result.stride() == inp.stride()
+        and result.storage_offset() == inp.storage_offset()
+    )
+    assert (result.is_conj(), result.is_neg()) == (inp.is_conj(), inp.is_neg())
+    expected_device = torch.device(device)
+    assert result.device.type == expected_device.type
+    if expected_device.index is not None:
+        assert result.device == expected_device
+    if inp.device == result.device and inp.untyped_storage().nbytes():
+        assert inp.untyped_storage().data_ptr() != result.untyped_storage().data_ptr()
+    return result
+
+
+def _skip_native_input(dtype, shape):
+    nonempty = all(extent != 0 for extent in shape)
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES and nonempty:
+        pytest.skip("Ascend _cast_Char has no native nonempty FP8 conversion")
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_cast_abi(result, reference, inp):
+    assert inp.device == result.device == _expected_device()
+    assert result.dtype == reference.dtype == _CAST_DTYPE
+    assert result.shape == reference.shape == inp.shape
+    assert result.layout == reference.layout == inp.layout
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else inp.device)
+
+
+def _assert_cast_equal(result, reference, inp):
+    # Reject an incorrect original device or ABI before numerical CPU copies.
+    _check_cast_abi(result, reference, inp)
+    tu.assert_result_equal(result, reference)
+
+
+def _reference(inp):
+    assert inp.device == _expected_device()
+    _skip_native_input(inp.dtype, inp.shape)
+    reference = (
+        _copy_dense_to(inp, "cpu")
+        if utils.TO_CPU and inp.layout == torch.strided
+        else tu.to_reference(inp)
+    )
+    # Tensor.to has no portable floating-to-integer value outside this domain.
+    # Inspect only the input, never the candidate or the observed discrepancy.
+    if utils.TO_CPU:
+        values = (
+            reference._values() if reference.layout == torch.sparse_coo else reference
+        )
+        if values.numel() and (
+            values.dtype.is_floating_point or values.dtype.is_complex
+        ):
+            if values.is_complex():
+                values = values.real
+            values = values.to(torch.float64)
+            low, high = float(values.amin()), float(values.amax())
+            bounds = torch.iinfo(_CAST_DTYPE)
+            if (
+                not (math.isfinite(low) and math.isfinite(high))
+                or math.trunc(low) < bounds.min
+                or math.trunc(high) > bounds.max
+            ):
+                pytest.skip(
+                    "CPU/device floating-to-integer comparison has no portable value "
+                    "for nonfinite or truncated out-of-range inputs"
+                )
+    return reference
+
+
+def _make_input(dtype, shape, value_range):
+    _skip_native_input(dtype, shape)
+    return tu.make_input(dtype, shape, value_range)
+
+
+def _make_special_input(dtype, scenario):
+    _skip_native_input(dtype, (5,))
+    return tu.make_special_input(dtype, scenario)
+
 
 _BF16 = utils.bf16_is_supported
 _INT64 = utils.int64_is_supported
@@ -135,8 +245,24 @@ _FIXTURE_VALUES = (
 )
 
 
+def _cpu_fixture(dtype, count):
+    values = _FIXTURE_VALUES
+    if dtype == torch.uint8:
+        values = tuple(abs(value) for value in values)
+    elif not dtype.is_floating_point:
+        values = tuple(int(value) for value in values)
+    repeats = -(-count // len(values))
+    return (
+        torch.tensor(values, dtype=torch.float32, device="cpu")
+        .repeat(repeats)[:count]
+        .to(dtype)
+    )
+
+
 def _fixture_tensor(dtype, count):
     """A deterministic non-zero payload for ``dtype`` of exactly ``count`` values."""
+    if flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES:
+        return _cpu_fixture(dtype, count).to(flag_gems.device)
     values = _FIXTURE_VALUES
     if dtype == torch.uint8:
         values = tuple(abs(value) for value in values)
@@ -172,13 +298,13 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__cast_Char(dtype, shape, value_range):
-    inp = tu.make_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_input(dtype, shape, value_range)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _LAYOUTS = ("transpose", "channels_last", "stride_slice", "offset_slice")
@@ -189,6 +315,10 @@ def _layout_input(layout, dtype):
     if layout == "transpose":
         return _fixture(dtype, (8, 10)).transpose(0, 1)
     if layout == "channels_last":
+        if flag_gems.vendor_name == "ascend":
+            cpu = _cpu_fixture(dtype, 256).reshape(2, 8, 4, 4)
+            cpu = cpu.to(torch.float64).to(memory_format=torch.channels_last).to(dtype)
+            return _copy_dense_to(cpu, flag_gems.device)
         return _fixture(dtype, (2, 8, 4, 4)).to(memory_format=torch.channels_last)
     if layout == "stride_slice":
         return _fixture(dtype, (8, 24))[:, 1::3]
@@ -200,12 +330,12 @@ def _layout_input(layout, dtype):
 @pytest.mark.parametrize("dtype", _FIXTURE_DTYPES)
 def test__cast_Char_view_layouts(dtype, layout):
     inp = _layout_input(layout, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # Same-dtype (int8) forms, where the native operator aliases instead of copying.
@@ -231,7 +361,7 @@ def _identity_input(form):
     if form == "offset_slice":
         return _fixture(torch.int8, (8, 5)).reshape(-1)[4:36]
     if form == "channels_last":
-        return _fixture(torch.int8, (2, 8, 4, 4)).to(memory_format=torch.channels_last)
+        return _layout_input("channels_last", torch.int8)
     if form == "empty_view":
         return _fixture(torch.int8, (0, 10)).transpose(0, 1)
     return _fixture(torch.int8, ()).reshape(())
@@ -241,12 +371,12 @@ def _identity_input(form):
 @pytest.mark.parametrize("form", _IDENTITY_WORKLOADS)
 def test__cast_Char_int8_identity(form):
     inp = _identity_input(form)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
     # Native hands back the int8 operand itself, so a de-aliased copy is not
     # equivalent even when its values, stride and storage offset match.
     assert res_out is inp
@@ -260,12 +390,12 @@ _EMPTY_EXTENT_SHAPES = tu.selected_cases(((0,), (0, 3), (3, 0), (2, 0, 5)), quic
 @pytest.mark.parametrize("dtype", _GRID_DTYPES)
 def test__cast_Char_empty_extent(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _EMPTY_VIEWS = ("rows", "cols", "block", "transposed")
@@ -287,12 +417,12 @@ def _empty_view_input(kind, dtype):
 @pytest.mark.parametrize("dtype", _FIXTURE_DTYPES)
 def test__cast_Char_empty_view(dtype, kind):
     inp = _empty_view_input(kind, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # Payloads at the int8 wrap boundary, at the float infinity edge and over the
@@ -350,13 +480,16 @@ _BOUNDARY_WORKLOADS = tu.selected_cases(_boundary_rows(), quick=[])
 @pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("dtype,payload", _BOUNDARY_WORKLOADS)
 def test__cast_Char_boundaries(dtype, payload):
+    _skip_native_input(dtype, (len(payload),))
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU and dtype == torch.int32:
+        pytest.skip("Ascend wide int32-to-int8 narrowing does not match the CPU oracle")
     inp = torch.tensor(payload, dtype=dtype, device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _PARAM_SHAPE = (1024, 1024)
@@ -384,12 +517,12 @@ def test__cast_Char_non_blocking(dtype, form):
     # The main grid already calls the omitted schema default; these rows pin the
     # explicit ``False``/``True`` forms on the non-zero 1024x1024 fixture.
     inp = _fixture(dtype, _PARAM_SHAPE)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp, non_blocking=form == "true")
     res_out = flag_gems._cast_Char(inp, non_blocking=form == "true")
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 _SPECIAL_DTYPES = tuple(dtype for dtype in _dtypes() if dtype.is_floating_point)
@@ -407,13 +540,13 @@ _SPECIAL_WORKLOADS = tu.selected_cases(
 @pytest.mark.underscore_cast_Char
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_WORKLOADS)
 def test__cast_Char_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
-    ref_inp = tu.to_reference(inp)
+    inp = _make_special_input(dtype, scenario)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 # Narrowing to an integral dtype drops autograd history, so there is no backward
@@ -439,12 +572,12 @@ def test__cast_Char_grad_enabled_input(dtype):
     ref_out = torch.ops.aten._cast_Char(ref_inp)
     res_out = flag_gems._cast_Char(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_cast_equal(res_out, ref_out, inp)
 
 
 @pytest.mark.underscore_cast_Char
 def test__cast_Char_rejects_out_keyword():
-    inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 4), ["-1", "1"])
     out = torch.empty((4, 4), dtype=torch.int8, device=flag_gems.device)
 
     with pytest.raises((TypeError, RuntimeError)):
@@ -453,7 +586,7 @@ def test__cast_Char_rejects_out_keyword():
 
 @pytest.mark.underscore_cast_Char
 def test__cast_Char_rejects_non_bool_non_blocking():
-    inp = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
+    inp = _make_input(torch.float32, (4, 4), ["-1", "1"])
 
     with pytest.raises((TypeError, RuntimeError)):
         flag_gems._cast_Char(inp, non_blocking="yes")
