@@ -751,7 +751,7 @@ def _prune_configs(configs, named_args, **kwargs):
             # established geometry and tune K blocking and pipeline depth.
             load_m = min(64, max(16, triton.next_power_of_2(m)))
             load_n = min(128, max(64, triton.next_power_of_2(n)))
-            if k <= 128 or m <= 32:
+            if k <= 128 or m <= 32 or n < 64:
                 load_n = 64
             if k >= 2048 and m <= 128 and n <= 512:
                 load_m, load_n = (16 if m <= 64 else 32), 64
@@ -834,8 +834,13 @@ def mm_w8a8_fp8_kernel(
     GROUP_M: tl.constexpr,
     PERSISTENT: tl.constexpr,
 ):
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
+    # Keep physical FP8 instruction tiles when FlagTree shrinks logical blocks.
+    # This also lets masked loads cover sub-tile M/N and short K natively.
+    BM: tl.constexpr = BLOCK_M if DESCRIPTOR else max(16, BLOCK_M)
+    BN: tl.constexpr = BLOCK_N if DESCRIPTOR else max(64, BLOCK_N)
+    BK: tl.constexpr = BLOCK_K if DESCRIPTOR else max(32, BLOCK_K)
+    grid_m = tl.cdiv(M, BM)
+    grid_n = tl.cdiv(N, BN)
     first = tl.program_id(0)
     count = tl.cdiv(grid_m * grid_n - first, NUM_SMS) if PERSISTENT else 1
     for tile in range(count):
@@ -844,17 +849,17 @@ def mm_w8a8_fp8_kernel(
         group_m = tl.minimum(GROUP_M, grid_m - group * GROUP_M)
         pm = group * GROUP_M + pid % group_m
         pn = pid % (GROUP_M * grid_n) // group_m
-        rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
-        rk = tl.arange(0, BLOCK_K)
+        rm = pm * BM + tl.arange(0, BM)
+        rn = pn * BN + tl.arange(0, BN)
+        rk = tl.arange(0, BK)
         split = tl.program_id(1) if SPLIT_K > 1 else 0
-        acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-        for block in tl.range(split, tl.cdiv(K, BLOCK_K), SPLIT_K):
+        acc = tl.zeros((BM, BN), tl.float32)
+        for block in tl.range(split, tl.cdiv(K, BK), SPLIT_K):
             if DESCRIPTOR:
-                a = tl.load_tensor_descriptor(A, [pm * BLOCK_M, block * BLOCK_K])
-                bt = tl.load_tensor_descriptor(B, [pn * BLOCK_N, block * BLOCK_K])
+                a = tl.load_tensor_descriptor(A, [pm * BM, block * BK])
+                bt = tl.load_tensor_descriptor(B, [pn * BN, block * BK])
             else:
-                k = block * BLOCK_K + rk
+                k = block * BK + rk
                 a = tl.load(
                     A + rm[:, None].to(tl.int64) * AM + k[None, :].to(tl.int64) * AK,
                     (rm[:, None] < M) & (k[None, :] < K),
@@ -898,6 +903,74 @@ def mm_w8a8_fp8_kernel(
 
 @libentry()
 @triton.jit
+def _gemv_fp8(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    Bias,
+    SR,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    BN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    SA_STRIDE: tl.constexpr,
+    SB_STRIDE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
+    TRANSPOSE: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+):
+    v = tl.program_id(0) * BLOCK_V + tl.arange(0, BLOCK_V)
+    outer = tl.program_id(1)
+    split = tl.program_id(2)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
+    for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+        kk = (block * SPLIT_K + split) * BLOCK_K + rk
+        if TRANSPOSE:
+            aa = tl.load(
+                A + v[:, None].to(tl.int64) * AM + kk[None, :],
+                (v[:, None] < M) & (kk[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(tl.float32)
+            acc += aa * bb[None, :]
+        else:
+            aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(tl.float32)
+            bb = tl.load(
+                B + v[:, None].to(tl.int64) * BN + kk[None, :],
+                (v[:, None] < N) & (kk[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            acc += aa[None, :] * bb
+    rm = v if TRANSPOSE else outer
+    rn = outer if TRANSPOSE else v
+    mask = (rm < M) & (rn < N)
+    value = tl.sum(acc, axis=1)
+    value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
+    value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
+    if SPLIT_K > 1:
+        ptr = C + split * M * N + rm.to(tl.int64) * N + rn
+    else:
+        if HAS_BIAS:
+            value += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0).to(tl.float32)
+        if HAS_SR:
+            value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
+        ptr = C + rm.to(tl.int64) * CM + rn.to(tl.int64) * CN
+    tl.store(ptr, value, mask)
+
+
+@libentry()
+@triton.jit
 def _reduce_split_k(
     P,
     C,
@@ -929,6 +1002,9 @@ def _reduce_split_k(
 
 
 def _select_split_k(m, n, k, descriptor):
+    if descriptor and 32 <= m < 128 and 512 < n <= 2048 and 4096 <= k < 8192:
+        # Two K partitions shorten long TME loops without large reductions.
+        return 2
     if k >= 2048 and m <= 128 and n <= 512:
         # Increase CTA count only for skinny grids. Partial sums stay in FP32.
         bm = 16 if m <= 64 else 32
@@ -946,12 +1022,95 @@ def _select_split_k(m, n, k, descriptor):
         tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
         target_ctas = 128 if m <= 64 else 64
         return min(16, triton.next_power_of_2(triton.cdiv(target_ctas, tiles)))
+    if not descriptor and m < 16 and k >= 2048 and n <= 8192:
+        tiles = triton.cdiv(n, 64)
+        return min(
+            8,
+            triton.next_power_of_2(triton.cdiv(128, tiles)),
+            max(1, k // 256),
+        )
     return 1
 
 
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    if (
+        (n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
+        and k >= 256
+        and a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == b.stride(0) == 1
+    ):
+        # Avoid padded MMA work for vector-shaped outputs.
+        # Very small output grids split K to expose independent CTAs.
+        split = 1
+        if m * n <= 128:
+            bv, bk = 1, 1024 if k >= 8192 else 512
+            split = min(16, max(1, triton.cdiv(k, bk)))
+        elif n == 1:
+            bv, bk = (8, 512) if k <= 2048 else (4, 1024)
+        elif k >= 2048 and n <= 512:
+            bv, bk = 4, 256
+            split = min(16, triton.cdiv(k, 1024))
+        elif k >= 2048:
+            bv, bk = 2, 1024
+        else:
+            bv, bk = 8, min(256, triton.next_power_of_2(k))
+        partial = (
+            torch.empty((split, m, n), device=a.device, dtype=torch.float32)
+            if split > 1
+            else out
+        )
+        epilogue = dict(
+            HAS_BIAS=bias is not None,
+            BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+            HAS_SR=sr is not None,
+            SR_STRIDE=sr_stride,
+        )
+        transpose = n <= 4
+        _gemv_fp8[
+            (triton.cdiv(m if transpose else n, bv), n if transpose else m, split)
+        ](
+            a,
+            b,
+            partial,
+            sa,
+            sb,
+            bias,
+            sr,
+            m,
+            n,
+            k,
+            a.stride(0),
+            b.stride(1),
+            out.stride(0),
+            out.stride(1),
+            sa_stride,
+            sb_stride,
+            **epilogue,
+            TRANSPOSE=transpose,
+            BLOCK_V=bv,
+            BLOCK_K=bk,
+            SPLIT_K=split,
+            num_warps=4,
+            num_stages=1,
+        )
+        if split > 1:
+            _reduce_split_k[(triton.cdiv(m * n, 512),)](
+                partial,
+                out,
+                bias,
+                sr,
+                m,
+                n,
+                out.stride(0),
+                out.stride(1),
+                SPLIT_K=split,
+                BLOCK=512,
+                **epilogue,
+                num_warps=4,
+            )
+        return out
     # E5M2 descriptor loads fail S5000 accuracy checks. Masked FP8 loads also
     # cover unaligned and non-contiguous inputs without BF16 dequantization.
     descriptor = (
@@ -964,6 +1123,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         and b.stride(1) % 16 == 0
         and a.data_ptr() % 16 == 0
         and b.data_ptr() % 16 == 0
+        and min(m, n) >= 16
         and k >= 16
     )
     split = _select_split_k(m, n, k, descriptor)
@@ -1031,7 +1191,9 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     num_sms = torch_device_fn.get_device_properties(a.device).multi_processor_count
 
     def grid(meta):
-        tiles = triton.cdiv(m, meta["BLOCK_M"]) * triton.cdiv(n, meta["BLOCK_N"])
+        bm = meta["BLOCK_M"] if descriptor else max(16, meta["BLOCK_M"])
+        bn = meta["BLOCK_N"] if descriptor else max(64, meta["BLOCK_N"])
+        tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
         return (min(num_sms, tiles) if meta["PERSISTENT"] else tiles, split)
 
     kernel = mm_w8a8_fp8_kernel

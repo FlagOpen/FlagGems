@@ -171,6 +171,43 @@ def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, scalar_a):
 
 @pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
+        (1, 4096, 1024),
+        (1, 1536, 4096),
+        (1, 64, 4096),
+        (1, 4, 16384),
+        (2, 1536, 4096),
+        (4, 16160, 7168),
+        (512, 1, 2048),
+        (64, 4, 16384),
+        (64, 1536, 4096),
+        (100, 1536, 4096),
+    ],
+)
+@pytest.mark.parametrize("rowwise", [False, True])
+def test_mm_w8a8_fp8_mthreads_skinny_epilogue(M, N, K, rowwise):
+    torch.manual_seed(42)
+    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, K), device=a.device).to(a.dtype).T
+    sa, sb = _external_scales(a, b, rowwise)
+    sr = torch.linspace(0.75, 1.25, M, device=a.device)
+    for dtype in (torch.bfloat16, torch.float32):
+        bias = torch.linspace(-0.25, 0.25, N, device=a.device).to(dtype)
+        storage = torch.empty((M, N * 2), device=a.device, dtype=dtype)
+        out = storage[:, ::2]
+        result = flag_gems.mm_w8a8_fp8_out(
+            a, b, sa, sb, bias=bias, scale_result=sr, out=out
+        )
+        assert result is out
+        ref = (_scaled_fp8_reference(a, b, sa, sb) + bias.float()) / sr[:, None]
+        rtol, atol = (5e-4, 0.003) if dtype == torch.float32 else (0.016, 0.01)
+        torch.testing.assert_close(result, ref.to(dtype), rtol=rtol, atol=atol)
+
+
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("N", [384, 1024, 2048, 4096])
 def test_mm_w8a8_fp8_mthreads_dense_reuse(N):
     torch.manual_seed(42)
