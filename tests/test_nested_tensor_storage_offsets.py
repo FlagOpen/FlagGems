@@ -22,13 +22,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-# The operator id starts with an underscore, so the #6359 marker convention
-# strips it: ``@pytest.mark._nested_tensor_storage_offsets`` is refused by
-# ``pytest.mark``'s attribute access, and the derived marker that
-# ``tools/test-op.sh`` selects with (and ``check_operator_markers.py``
-# requires) is the stripped name ``nested_tensor_storage_offsets``. That name
-# does not collide with a distinct operator id, so no ``underscore_`` variant
-# is needed.
+# The #6359 marker convention derives the pytest marker from the operator id,
+# which is ``nested_tensor_storage_offsets`` here (the underscored
+# ``_nested_tensor_storage_offsets`` is only the ATen name in ``for:``). That
+# is the marker ``tools/test-op.sh`` selects with and
+# ``check_operator_markers.py`` requires; it does not collide with a distinct
+# operator id, so no ``underscore_`` variant is needed.
 
 # The operator reads only layout metadata: the output is a CPU int64 tensor of
 # shape (num_tensors,) and never depends on the constituent values or dtypes.
@@ -66,11 +65,11 @@ def _make_nested(dtype, device, shapes):
 @pytest.mark.nested_tensor_storage_offsets
 @pytest.mark.parametrize("dtype", NT_DTYPES)
 @pytest.mark.parametrize("shapes", NT_SHAPE_SETS, ids=["1d", "2d", "3d", "single"])
-def test_accuracy__nested_tensor_storage_offsets(dtype, shapes):
+def test_accuracy_nested_tensor_storage_offsets(dtype, shapes):
     nt = _make_nested(dtype, flag_gems.device, shapes)
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.shape == (len(shapes),)
     assert res_out.dtype == torch.int64
@@ -79,7 +78,7 @@ def test_accuracy__nested_tensor_storage_offsets(dtype, shapes):
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_from_shared_buffer_views():
+def test_nested_tensor_storage_offsets_from_shared_buffer_views():
     # Nested tensors built from views of one buffer with holes between the
     # views: ``nested_tensor`` repacks contiguous parts (running sum of
     # numels), but keeps the hole when the parts are non-contiguous in their
@@ -94,7 +93,7 @@ def test__nested_tensor_storage_offsets_from_shared_buffer_views():
     nt = torch.nested.nested_tensor(parts, device=flag_gems.device)
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.shape == (3,)
     assert res_out.dtype == torch.int64
@@ -103,7 +102,7 @@ def test__nested_tensor_storage_offsets_from_shared_buffer_views():
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_stored_offsets_with_gap():
+def test_nested_tensor_storage_offsets_stored_offsets_with_gap():
     # ``_nested_view_from_buffer`` stores the offsets verbatim: with sizes
     # (2, 3), (4, 3) and offsets [0, 12] the buffer has a 6-element hole after
     # the first constituent, and native returns [0, 12] while the exclusive
@@ -121,7 +120,7 @@ def test__nested_tensor_storage_offsets_stored_offsets_with_gap():
     assert nt.is_nested
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert ref_out.tolist() == [0, 12]
     assert res_out.tolist() == [0, 12]
@@ -129,13 +128,13 @@ def test__nested_tensor_storage_offsets_stored_offsets_with_gap():
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_empty_nested():
+def test_nested_tensor_storage_offsets_empty_nested():
     # A nested tensor with zero constituents has empty metadata; the output is
     # an empty int64 CPU tensor (shape (0,)).
     nt = torch.nested.nested_tensor([], device=flag_gems.device)
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.shape == (0,)
     assert res_out.dtype == torch.int64
@@ -144,7 +143,7 @@ def test__nested_tensor_storage_offsets_empty_nested():
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_scalar_nesting():
+def test_nested_tensor_storage_offsets_scalar_nesting():
     # Scalars nested (0-dim constituents): sizes are (N, 0) and the offsets
     # are 0..N-1, one per scalar.
     nt = torch.nested.nested_tensor(
@@ -152,7 +151,7 @@ def test__nested_tensor_storage_offsets_scalar_nesting():
     )
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.shape == (3,)
     assert res_out.tolist() == [0, 1, 2]
@@ -160,19 +159,19 @@ def test__nested_tensor_storage_offsets_scalar_nesting():
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_cpu_nested():
+def test_nested_tensor_storage_offsets_cpu_nested():
     # A CPU nested tensor takes the NestedTensorCPU native path.
     nt = torch.nested.nested_tensor([torch.randn(2, 3), torch.randn(4, 5)])
 
     ref_out = utils.to_reference(nt)._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.shape == (2,)
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_aliases_native_metadata():
+def test_nested_tensor_storage_offsets_aliases_native_metadata():
     # The returned tensor is a zero-copy view of the nested tensor's internal
     # metadata storage: the same storage native hands out (identical
     # data_ptr), and writes through it are visible to a later query. The
@@ -182,7 +181,7 @@ def test__nested_tensor_storage_offsets_aliases_native_metadata():
     nt = _make_nested(torch.float32, flag_gems.device, ((2, 3), (4, 5)))
 
     native = nt._nested_tensor_storage_offsets()
-    res_out = flag_gems._nested_tensor_storage_offsets(nt)
+    res_out = flag_gems.nested_tensor_storage_offsets(nt)
 
     assert res_out.data_ptr() == native.data_ptr()
     assert res_out.untyped_storage().data_ptr() == native.untyped_storage().data_ptr()
@@ -198,7 +197,7 @@ def test__nested_tensor_storage_offsets_aliases_native_metadata():
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_non_nested_error():
+def test_nested_tensor_storage_offsets_non_nested_error():
     # Dense input has no nested metadata; native ATen has no kernel for it and
     # the dispatcher raises NotImplementedError (also mirrored by the impl, so
     # that the registration on the device key cannot recurse). Per the CI
@@ -210,25 +209,25 @@ def test__nested_tensor_storage_offsets_non_nested_error():
     with pytest.raises(Exception):
         torch.ops.aten._nested_tensor_storage_offsets.default(ref_dense)
     with pytest.raises(NotImplementedError):
-        flag_gems._nested_tensor_storage_offsets(dense)
+        flag_gems.nested_tensor_storage_offsets(dense)
     # The message names the operator; the wording after that is native's, so
     # only the stable operator-name fragment is pinned.
     with pytest.raises(NotImplementedError, match="_nested_tensor_storage_offsets"):
-        flag_gems._nested_tensor_storage_offsets(dense)
+        flag_gems.nested_tensor_storage_offsets(dense)
 
 
 @pytest.mark.nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets_dispatch_stability():
+def test_nested_tensor_storage_offsets_dispatch_stability():
     # The impl delegates to the very op it registers (below the autograd key);
     # repeated dispatcher calls with an unrelated native op in between must
     # stay stable: no recursion, no state drift, identical values and aliasing.
     nt = _make_nested(torch.float32, flag_gems.device, ((2, 3), (4, 5)))
 
-    first = flag_gems._nested_tensor_storage_offsets(nt)
+    first = flag_gems.nested_tensor_storage_offsets(nt)
     for _ in range(3):
         x = torch.randn(8, device=flag_gems.device)
         _ = torch.relu(x)
-        again = flag_gems._nested_tensor_storage_offsets(nt)
+        again = flag_gems.nested_tensor_storage_offsets(nt)
         assert again.equal(first)
         assert again.data_ptr() == first.data_ptr()
 

@@ -441,7 +441,7 @@ _FULL_CONFIG = (
     ("_nested_tensor_softmax_with_shape", _nested_tensor_softmax_with_shape),
     (
         "_nested_tensor_storage_offsets",
-        _nested_tensor_storage_offsets,
+        nested_tensor_storage_offsets,
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),

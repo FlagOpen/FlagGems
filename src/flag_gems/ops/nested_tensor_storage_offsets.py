@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # "Could not run ... with arguments from the 'CUDA' backend" dispatcher text).
 
 
-def _nested_tensor_storage_offsets(self: torch.Tensor) -> torch.Tensor:
+def nested_tensor_storage_offsets(self: torch.Tensor) -> torch.Tensor:
     """Return the per-tensor storage offsets metadata of a nested tensor.
 
     Mirrors ``aten::_nested_tensor_storage_offsets(Tensor self) -> Tensor``: a

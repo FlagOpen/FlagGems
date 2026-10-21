@@ -21,26 +21,6 @@ import flag_gems
 
 from . import base, consts
 
-# ``_nested_tensor_storage_offsets`` starts with an underscore, and
-# ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names (pytest 8.1.1 and 9.x both raise AttributeError("Marker name must NOT
-# start with underscore") from MarkGenerator.__getattr__, so registering the
-# name in pytest.ini or via pytest_configure cannot enable the decorator -- it
-# is the attribute access itself that is refused). Build the decorator from the
-# PUBLIC ``pytest.Mark`` / ``pytest.MarkDecorator`` exports (pytest >= 8.0)
-# instead of importing the private _pytest.mark.structures module, then
-# register it on the MarkGenerator so
-# ``@pytest.mark._nested_tensor_storage_offsets`` and
-# ``-m _nested_tensor_storage_offsets`` both work.
-setattr(
-    pytest.mark,
-    "_nested_tensor_storage_offsets",
-    pytest.MarkDecorator(
-        pytest.Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True),
-        _ispytest=True,
-    ),
-)
-
 # Fixed set of nested tensors: three constituent-shape groups (1-D inner,
 # 2-D inner, many constituents). The dtype sweep applies to the TENSORS inside
 # the nested tensor; the op itself reads only metadata and returns a CPU int64
@@ -101,12 +81,12 @@ class NestedTensorStorageOffsetsBenchmark(base.Benchmark):
             yield (torch.nested.nested_tensor(parts, device=self.device),)
 
 
-@pytest.mark._nested_tensor_storage_offsets
-def test__nested_tensor_storage_offsets():
+@pytest.mark.nested_tensor_storage_offsets
+def test_nested_tensor_storage_offsets():
     bench = NestedTensorStorageOffsetsBenchmark(
-        op_name="_nested_tensor_storage_offsets",
+        op_name="nested_tensor_storage_offsets",
         torch_op=torch.ops.aten._nested_tensor_storage_offsets,
-        gems_op=flag_gems._nested_tensor_storage_offsets,
+        gems_op=flag_gems.nested_tensor_storage_offsets,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
