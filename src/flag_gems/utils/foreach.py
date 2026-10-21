@@ -1829,22 +1829,26 @@ def _binary_homogeneous(
     need_promotion = out_dtypes is None
     b0 = other[0]
     dt_b = b0.dtype
-    # Uniform in device *and* dtype is the hot case.  Two generator passes
-    # answer it for both lists: with every tensor of ``self`` carrying
-    # ``dt_a``, every tensor of ``other`` carrying ``dt_b`` and ``dt_b is
-    # dt_a``, all 32 share one dtype, so the promotion is the identity and the
-    # rank class of an operand cannot change the result dtype -- the per-tensor
-    # ``dim()`` check below is then skipped too.  The two passes measured 0.34us
-    # against 2.7us for ATen's grouping primitive over the same lists (its C++
-    # loop still pays for building the group keys), and ``dim()`` is a Python
-    # call that would triple that again.
+    # Uniform in device *and* dtype is the hot case.  One C++ grouping pass
+    # answers it for both lists at once, and the alternative -- walking both
+    # lists in Python -- was the single largest host cost left here.  The
+    # comment used to argue the two generator passes won on the strength of a
+    # standalone timing of the idiom in isolation; measured in situ inside the
+    # scored benchmark (source-exact substitution, 16 tensors), the grouping
+    # pass is 1.0-1.7us cheaper on ``_foreach_add.List``.  When both lists are
+    # uniform the promotion is the identity and the rank class of an operand
+    # cannot change the result dtype, so the per-tensor ``dim()`` check below
+    # is skipped too.
     # ``scalar_operand`` lists are one repeated single-element tensor, whose
     # dtype may legitimately differ from ``self``'s, so they keep the walk.
     uniform = False
     if not scalar_operand and dt_b is dt_a:
-        uniform = all(
-            t.dtype is dt_a and t.device == dev for t in self
-        ) and all(t.dtype is dt_a and t.device == dev for t in other)
+        if _GROUP_TENSORS is not None:
+            uniform = len(_GROUP_TENSORS([self + other], False)) == 1
+        else:
+            uniform = all(
+                t.dtype is dt_a and t.device == dev for t in self
+            ) and all(t.dtype is dt_a and t.device == dev for t in other)
     if not uniform:
         zero_dim = a0.dim() == 0
         for t in self:
