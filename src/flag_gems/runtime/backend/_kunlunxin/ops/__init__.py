@@ -97,6 +97,7 @@ from ._masked_scale import _masked_scale  # noqa: F401
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._pad_enum import _pad_enum
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -105,6 +106,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
+from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
@@ -624,6 +626,7 @@ from .rnn_relu import rnn_relu
 from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
+from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -691,6 +694,7 @@ from .special_erfcx import special_erfcx
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
 from .special_expit import special_expit
+from .special_expm1 import special_expm1
 from .special_gammainc import special_gammainc
 from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln
@@ -877,6 +881,7 @@ __all__ = [
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
+    "_pad_enum",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -885,6 +890,8 @@ __all__ = [
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_thnn_fused_gru_cell",
+    "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
@@ -1481,6 +1488,8 @@ __all__ = [
     "round",
     "round_",
     "round_out",
+    "row_indices_copy",
+    "row_indices_copy_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -1568,6 +1577,7 @@ __all__ = [
     "special_erfinv_out",
     "special_exp2",
     "special_expit",
+    "special_expm1",
     "special_gammainc",
     "special_gammaincc",
     "special_gammaln",
