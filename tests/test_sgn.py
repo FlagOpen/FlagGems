@@ -53,11 +53,24 @@ def _make_input(shape, dtype):
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
 
+_DEVICE_REF_UNSUPPORTED = (
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.complex32,
+    torch.complex64,
+)
+
+
 def _to_reference(inp):
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype in _DEVICE_REF_UNSUPPORTED:
+        return utils.to_reference(inp.cpu(), inp.dtype in utils.COMPLEX_DTYPES)
     return utils.to_reference(inp, inp.dtype in utils.COMPLEX_DTYPES)
 
 
 def _assert_sgn_equal(result, reference, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and reference.device.type == "cpu":
+        result = result.cpu()
     if dtype in utils.COMPLEX_DTYPES:
         utils.gems_assert_close(result, reference, dtype, equal_nan=True)
     else:
@@ -137,12 +150,15 @@ def test_sgn_complex_nonfinite_values():
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.sgn(ref_inp)
     res_out = flag_gems.sgn(inp)
 
-    res_real = torch.view_as_real(utils.to_cpu(res_out, ref_out))
+    if flag_gems.vendor_name == "kunlunxin":
+        res_real = torch.view_as_real(res_out.to(ref_out.device))
+    else:
+        res_real = torch.view_as_real(utils.to_cpu(res_out, ref_out))
     ref_real = torch.view_as_real(ref_out).to(dtype=res_real.dtype)
     assert torch.equal(torch.isnan(res_real), torch.isnan(ref_real))
     torch.testing.assert_close(res_real, ref_real, equal_nan=True)
