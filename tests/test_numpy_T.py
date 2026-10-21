@@ -20,24 +20,102 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
-def _assert_result_equal(result, reference):
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
-        # CPU observes complex values; validate the original tensor metadata first.
-        device = torch.device(flag_gems.device)
-        if device.index is None:
-            device = torch.device(device.type, torch.npu.current_device())
-        assert result.device == device
-        assert result.dtype == reference.dtype
-        assert result.layout == reference.layout
-        assert result.shape == reference.shape
-        if result.dtype == torch.complex32:
-            # Copy the real storage components: NPU complex32 copy is unavailable.
-            result = torch.view_as_complex(torch.view_as_real(result).cpu())
-            reference = torch.view_as_complex(torch.view_as_real(reference).cpu())
-        else:
-            result, reference = result.cpu(), reference.cpu()
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_storage_view(inp):
+    # Copy physical bytes, retaining the original geometry before decoding.
+    assert inp.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=inp.device)
+        .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    return torch.empty(0, dtype=inp.dtype, device="cpu").set_(
+        raw.untyped_storage(), inp.storage_offset(), inp.size(), inp.stride()
+    )
+
+
+def _numeric_values(inp):
+    result = _cpu_storage_view(inp)
+    # Decode before resolving lazy bits: CPU FP8/C32 arithmetic is limited.
+    if result.dtype in _FP8_DTYPES:
+        result = result.float()
+    if result.dtype == torch.complex32:
+        result = result.to(torch.complex64)
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    return result.resolve_conj().resolve_neg()
+
+
+def _assert_result_equal(result, reference, *, required_device):
+    # Validate the original ABI before observing numerical values on CPU.
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if utils.TO_CPU else result.device)
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if (
+        result.dtype in _FP8_DTYPES
+        or result.dtype == torch.complex32
+        or (flag_gems.vendor_name in ("ascend", "kunlunxin") and result.is_complex())
+        or (flag_gems.vendor_name == "ascend" and result.dtype == torch.int64)
+        or (flag_gems.vendor_name == "iluvatar" and result.dtype == torch.float64)
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (result.is_neg() or reference.is_neg())
+        )
+    ):
+        result, reference = _numeric_values(result), _numeric_values(reference)
     tu.assert_result_equal(result, reference)
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+        if low == high:
+            result = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        result = result.to(flag_gems.device)
+    else:
+        result = tu.make_input(dtype, shape, value_range)
+    assert result.dtype == dtype and result.shape == torch.Size(shape)
+    assert result.device == _expected_device()
+    return result
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        result = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(flag_gems.device)
+        )
+    else:
+        result = tu.make_special_input(dtype, scenario)
+    assert result.dtype == dtype and result.shape == (5,)
+    assert result.device == _expected_device()
+    return result
 
 
 # aten::numpy_T is a zero-copy metadata view (Tensor(a) -> Tensor(a)): it
@@ -58,9 +136,9 @@ _NUMPY_T_DTYPES = (
 )
 
 
-def _assert_view_result(res_out, ref_out, inp, ref_inp):
+def _assert_view_result(res_out, ref_out, inp, ref_inp, *, required_device):
     """Shared value comparison plus the alias facts it cannot observe."""
-    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out, required_device=required_device)
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert res_out.is_conj() == ref_out.is_conj()
@@ -68,6 +146,7 @@ def _assert_view_result(res_out, ref_out, inp, ref_inp):
     assert res_out._is_view() == ref_out._is_view()
     assert res_out is not inp
     assert res_out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
+    assert res_out.untyped_storage()._cdata == inp.untyped_storage()._cdata
     assert inp.shape == ref_inp.shape
     assert inp.stride() == ref_inp.stride()
     assert inp.storage_offset() == ref_inp.storage_offset()
@@ -79,11 +158,6 @@ _DTYPE_RANGE_CASES = [
     pytest.param(
         dtype,
         value_range,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
     )
     for dtype in _NUMPY_T_DTYPES
     for value_range in (
@@ -101,13 +175,14 @@ _DTYPE_RANGE_CASES = [
     _DTYPE_RANGE_CASES,
 )
 def test_numpy_T_value_ranges(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
 
 _RANK_CASES = [
@@ -135,14 +210,15 @@ _RANK_CASES = [
 def test_numpy_T_rank_boundaries(shape, expected, dtype):
     # Every rank is accepted, including 0-D and zero-element shapes that the
     # seven-shape grid does not reach; the expected shape is the full reversal.
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
     assert res_out.shape == expected
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
     # Even the 0-D "identity" is a view: the native op never hands back the
     # input object itself.
     assert res_out is not inp
@@ -179,15 +255,16 @@ def test_numpy_T_noncontiguous_base(base_shape, kind, dtype):
     # Non-unit strides, a nonzero storage offset and a stride-0 broadcast
     # dimension: the reversal must keep the input's own layout instead of
     # compacting it.
-    base = tu.make_input(dtype, base_shape, ["-1", "1"])
+    base = _make_input(dtype, base_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _strided_view(base, kind)
     ref_inp = _strided_view(ref_base, kind)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
 
 def _stateful_view(tensor, kind):
@@ -216,19 +293,20 @@ _STATE_CASES = [
 )
 def test_numpy_T_preserves_lazy_state(name, dtype, kind, shape):
     del name  # the row id documents which lazy bit the case exercises
-    base = tu.make_input(dtype, shape, ["-1", "1"])
+    base = _make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
     inp = _stateful_view(base, kind)
     ref_inp = _stateful_view(ref_base, kind)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
     # The reversal must not materialize or drop the lazy bit, and the values of
     # a lazy conjugated view differ from those of the raw storage.
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
 
 # Writing through the result must update the original input storage.
@@ -243,22 +321,35 @@ _MUTATION_CASES = [
 @pytest.mark.numpy_T
 @pytest.mark.parametrize(
     "shape,dtype",
-    _MUTATION_CASES,
+    [
+        pytest.param(
+            shape,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name in ("iluvatar", "kunlunxin")
+                and shape == (2, 3, 4)
+                and dtype == torch.float64,
+                reason="Native float64 mutation cannot preserve the requested payload on this backend",
+            ),
+        )
+        for shape, dtype in _MUTATION_CASES
+    ],
 )
 def test_numpy_T_writes_through_to_input(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
     res_out.fill_(3)
     ref_out.fill_(3)
 
     # One storage behind both: a write through the reversed view has to appear
     # in the original tensor, exactly as it does for the native op.
-    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp, required_device=required_device)
 
 
 # Backward is default-only; the compact rank/layout/state/mutation/overload rows
@@ -276,34 +367,30 @@ _BACKWARD_CASES = tu.selected_cases(
     [
         pytest.param(
             dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype in _NUMPY_T_DTYPES
         if dtype.is_floating_point or dtype.is_complex
     ],
 )
 def test_numpy_T_backward(shape, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"]).detach().requires_grad_(True)
+    inp = _make_input(dtype, shape, ["-1", "1"]).detach().requires_grad_(True)
     ref_inp = tu.to_reference(inp).detach().requires_grad_(True)
-    upstream = tu.make_input(dtype, tuple(reversed(shape)), ["-1", "1"])
+    upstream = _make_input(dtype, tuple(reversed(shape)), ["-1", "1"])
     ref_upstream = tu.to_reference(upstream)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
     assert res_out.requires_grad == ref_out.requires_grad
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
     # Differentiate through the original leaf: the gradient of a pure dimension
     # reversal is that same reversal applied to the upstream gradient, i.e. an
     # exact relayout with no arithmetic.
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
-    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad, required_device=required_device)
 
 
 # Positive special-value cases are default-only; the shared generator decides
@@ -321,24 +408,20 @@ _SPECIAL_SHAPES = [(1, 5), (1, 1, 5)]
         pytest.param(
             dtype,
             scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
         )
         for dtype, scenario in _SPECIAL_CASES
     ],
 )
 @pytest.mark.parametrize("shape", _SPECIAL_SHAPES)
 def test_numpy_T_special_values(dtype, scenario, shape):
-    inp = tu.make_special_input(dtype, scenario).reshape(shape)
+    inp = _make_special_input(dtype, scenario).reshape(shape)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.numpy_T(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
 
 # Both runtime overloads of aten::numpy_T have the same semantics; the candidate
@@ -351,13 +434,14 @@ _OVERLOAD_SHAPES = [(), (5,), (2, 3), (2, 3, 4)]
 @pytest.mark.parametrize("overload", ["default", "a"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
 def test_numpy_T_overload_call_forms(shape, overload, dtype):
-    inp = tu.make_input(dtype, shape, ["-1", "1"])
+    inp = _make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
 
     ref_out = getattr(torch.ops.aten.numpy_T, overload)(ref_inp)
+    required_device = inp.device
     res_out = flag_gems.numpy_T(inp)
 
-    _assert_view_result(res_out, ref_out, inp, ref_inp)
+    _assert_view_result(res_out, ref_out, inp, ref_inp, required_device=required_device)
 
 
 # numpy_T accepts every dtype and every rank up to the framework's MAX_DIMS and
