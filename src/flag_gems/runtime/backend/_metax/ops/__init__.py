@@ -81,6 +81,7 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
+from .mode import mode
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -239,6 +240,7 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mode",
     "mv",
     "mvlgamma",
     "mvlgamma_",

@@ -250,12 +250,7 @@ def _mode_radix_sort(arr, k_bits=8, descending=False):
                 descending,
             )
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
-        if runtime.device.vendor_name == "metax":
-            # MACA lacks UInt32 copy kernels. Counts fit in INT32 because n < 2**30;
-            # reinterpret the storage to preserve unsigned kernel pointer types.
-            ex_cumsum_bins = ex_cumsum_bins.to(torch.int32).view(torch.uint32)
-        else:
-            ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
+        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         arr_in = torch.clone(arr)
@@ -284,9 +279,6 @@ def _mode_radix_sort(arr, k_bits=8, descending=False):
                 from flag_gems import zero_
 
                 zero_(status)
-            elif runtime.device.vendor_name == "metax":
-                # Clear the same storage without requiring a UInt32 fill kernel.
-                status.view(torch.int32).zero_()
             else:
                 status.zero_()
             _mode_sort_sweep[grid_for_sweep](
