@@ -382,7 +382,7 @@ def test_int_repr_result_is_independent_of_input_storage(qdtype, layout):
     utils.gems_assert_equal(torch.ops.aten.int_repr(inp), expected)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", QUANTIZED_DTYPES)
 @pytest.mark.parametrize("shape", selected_shapes())
 def test_int_repr_out(shape, qdtype):
@@ -404,7 +404,7 @@ def test_int_repr_out(shape, qdtype):
     utils.gems_assert_equal(torch.ops.aten.int_repr(inp), before, equal_nan=True)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", OUT_RESIZE_ROWS)
 def test_int_repr_out_resizes_buffer(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])
@@ -424,7 +424,7 @@ def test_int_repr_out_resizes_buffer(qdtype):
     utils.gems_assert_equal(torch.ops.aten.int_repr(inp), before, equal_nan=True)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", OUT_STRIDED_ROWS)
 def test_int_repr_out_writes_through_strided_buffer(qdtype):
     inp = _quantized_input((4, 5, 6), qdtype, ["-1", "1"])
@@ -534,7 +534,7 @@ def test_int_repr_degenerate_shape(shape, qdtype):
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("shape,qdtype", DEGENERATE_ROWS)
 def test_int_repr_out_degenerate_shape(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
@@ -567,7 +567,7 @@ def test_int_repr_rejects_non_tensor_argument():
         flag_gems.int_repr([1, 2, 3])
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 @pytest.mark.parametrize("qdtype", QUANTIZED_DTYPES)
 def test_int_repr_out_rejects_mismatched_dtype(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])

@@ -305,7 +305,7 @@ def test_int_repr():
     bench.run()
 
 
-@pytest.mark.int_repr
+@pytest.mark.int_repr_out
 def test_int_repr_out():
     bench = IntReprBenchmark(
         op_name="int_repr_out",

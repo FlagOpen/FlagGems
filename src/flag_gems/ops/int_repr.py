@@ -52,7 +52,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run"]
+__all__ = ["int_repr"]
 
 
 # Quantized storage dtype -> plain integer dtype of the result.
@@ -214,7 +214,7 @@ def _padded(n, seq, fill):
     return (fill,) * (n - len(seq)) + tuple(int(v) for v in seq)
 
 
-def run(self, out=None):
+def int_repr(self, out=None):
     """Return the raw integer codes of the affine-quantized tensor ``self``.
 
     Implements both ``aten::int_repr(Tensor self) -> Tensor`` and
