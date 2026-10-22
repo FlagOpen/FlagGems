@@ -184,6 +184,8 @@ def test_row_stack_out_memory_format(shape, memory_format, dtype):
     ATen keeps the out tensor's layout when it is already the derived format,
     and re-imposes the derived format when the shape had to be resized.
     """
+    if flag_gems.vendor_name == "ascend" and memory_format != torch.contiguous_format:
+        pytest.skip("Ascend supports only contiguous/preserve input memory formats")
     inp = [
         torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
             memory_format=memory_format
