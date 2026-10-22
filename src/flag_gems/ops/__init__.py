@@ -59,6 +59,10 @@ from flag_gems.ops._conj_physical import _conj_physical, _conj_physical_out
 from flag_gems.ops._convert_weight_to_int4pack import _convert_weight_to_int4pack
 from flag_gems.ops._convolution_double_backward import _convolution_double_backward
 from flag_gems.ops._convolution_mode import _convolution_mode
+from flag_gems.ops._copy_from_and_resize import (
+    _copy_from_and_resize,
+    _copy_from_and_resize_out,
+)
 from flag_gems.ops._cslt_sparse_mm import _cslt_sparse_mm
 from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
@@ -309,6 +313,9 @@ from flag_gems.ops._nested_sum_backward import _nested_sum_backward
 from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
+)
+from flag_gems.ops._nested_tensor_from_tensor_list import (
+    _nested_tensor_from_tensor_list,
 )
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
@@ -786,6 +793,7 @@ from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.geqrf import geqrf
+from flag_gems.ops.ger import run as ger
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -1336,6 +1344,7 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
+from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -1638,6 +1647,8 @@ __all__ = [
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
+    "_copy_from_and_resize",
+    "_copy_from_and_resize_out",
     "_cslt_sparse_mm",
     "_ctc_loss",
     "_ctc_loss_backward",
@@ -1856,6 +1867,7 @@ __all__ = [
     "_nested_sum_backward",
     "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
+    "_nested_tensor_from_tensor_list",
     "_nested_tensor_softmax_with_shape",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
@@ -2341,6 +2353,7 @@ __all__ = [
     "geometric",
     "geometric_",
     "geqrf",
+    "ger",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -2955,6 +2968,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "sparse_broadcast_to",
+    "sparse_bsc_tensor",
     "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
