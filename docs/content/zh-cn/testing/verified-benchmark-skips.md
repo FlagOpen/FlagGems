@@ -7,3 +7,7 @@
 不捕获运行时 OOM 后伪装成功，不跳过 API/kernel 缺失、形状错误、输出 dtype 不一致、共享内存超限或未知错误。全 SKIP 不等于 reference/preflight 通过。reference、preflight 按 case 记录 SKIP 并继续后续 case。
 
 同时迁移 master@4897cc306 的相关已有策略：EXTRA_INT_DTYPES 服从 support_int64，tsingmicro 的 linalg_svdvals FP32 skip，以及 enflame 的 linalg_ldl_factor FP64 skip。保留 kernelgen-dev 的注入接口及已有测试覆盖。master 通用 foreach bool CPU reference skip 对应的新测试结构在此分支尚不存在，当前 per-operator foreach abs 没有 bool 正常测例，因此不引入整套新测试或无效规则。master 缩小 foreach shape 属于 workload 变更，不作为 skip 同步。
+
+## 验证
+
+对原始 1,908 个 case 回放匹配，恰好 370 个命中，另外 1,538 个不变。昇腾、海光、沐曦在 Gems@64b81d01 / KGS@95a5f62b 完成真实 reference-only 回归：正常 case PASSED、指定坏 case SKIP、仅选坏 case 返回 ALL_SKIP；昇腾额外验证 put BF16。各平台 host 回归 61 passed，归档 verified-skips-final-20261022-AioW9W。随后补充单 case preflight 的 pytest.skip 传播，以保持外部注入探针能够识别 SKIP；最终 host 专项 5 passed，覆盖精确匹配、单 case 传播、多 case 继续以及全 SKIP 不通过 preflight。没有把全部 95 个算子重新跑完，不宣称 74 项都已审核通过。
