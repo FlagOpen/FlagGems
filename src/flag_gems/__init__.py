@@ -1081,6 +1081,7 @@ _FULL_CONFIG = (
     ("geometric", geometric),
     ("geometric_", geometric_),
     ("geqrf", geqrf),
+    ("ger", ger),
     ("glu", glu),
     ("glu_backward", glu_backward),
     ("glu_backward_jvp", glu_backward_jvp),
