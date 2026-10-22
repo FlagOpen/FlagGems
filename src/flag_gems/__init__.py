@@ -112,6 +112,7 @@ _FULL_CONFIG = (
     ("__xor__.Scalar", xor_scalar),
     ("__xor__.Tensor", xor),
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
+    ("_adaptive_avg_pool2d.out", adaptive_avg_pool2d_out),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
     ("_adaptive_avg_pool3d", adaptive_avg_pool3d),
     ("_adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
