@@ -9363,12 +9363,11 @@ ops:
   stages:
   - alpha: '5.4'
 - id: hadamard_transform_mn
-  description: Applies a fused Hadamard transform for dimensions decomposed as M times
-    a power of two.
+  description: Applies a fused Hadamard transform to dimensions M * 2^k,
+    where M is 3, 5, or 7.
   for:
   - hadamard_transform_mn
-  labels:
-  - pointwise
+  labels: []
   kind:
   - Math
   stages:
