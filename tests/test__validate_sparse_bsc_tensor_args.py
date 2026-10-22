@@ -23,12 +23,114 @@ from . import test_utils as tu
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
-def _assert_result_equal(result, reference):
-    # Compare complex and high-rank payloads on CPU; keep their original metadata checks.
-    assert result.dtype == reference.dtype
-    if not utils.TO_CPU:
-        assert result.device == reference.device
-    if flag_gems.vendor_name == "ascend" and (result.is_complex() or result.ndim > 8):
+def _required_device():
+    return torch.empty(0, dtype=torch.uint8, device=flag_gems.device).device
+
+
+def _index_to_device(tensor, dtype):
+    source = tensor.to(dtype)
+    device = _required_device()
+    result = source.to(device)
+    # MetaX changes an ordinary contiguous rank-4 CPU index to channels-last.
+    # Restore only a contiguous host index; later offset/negative views remain.
+    if (
+        flag_gems.vendor_name == "metax"
+        and source.device.type == "cpu"
+        and source.is_contiguous()
+    ):
+        result = result.contiguous()
+    assert result.dtype == dtype and result.shape == source.shape
+    assert result.device == device
+    return result
+
+
+def _raw_cpu(tensor):
+    storage = tensor.untyped_storage()
+    raw = torch.empty(0, dtype=torch.uint8, device=tensor.device).set_(
+        storage, 0, (storage.nbytes(),), (1,)
+    )
+    return raw.cpu().clone()
+
+
+def _cpu_physical(tensor):
+    raw = _raw_cpu(tensor)
+    result = (
+        torch.empty(0, dtype=torch.uint8, device="cpu")
+        .view(tensor.dtype)
+        .set_(
+            raw.untyped_storage(),
+            tensor.storage_offset(),
+            tensor.shape,
+            tensor.stride(),
+        )
+    )
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _input_signature(tensor):
+    storage = tensor.untyped_storage()
+    return (
+        type(tensor),
+        tensor.device,
+        tensor.dtype,
+        tensor.layout,
+        tuple(tensor.shape),
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.is_conj(),
+        tensor.is_neg(),
+        tensor.requires_grad,
+        tensor._version,
+        storage._cdata,
+        tensor.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+
+
+def _call_validator(*args, required_device, **kwargs):
+    # Used only by original positive callers. Native negative calls remain direct.
+    try:
+        tensors = [x for x in (*args, *kwargs.values()) if isinstance(x, torch.Tensor)]
+        assert len(tensors) == 3
+        assert all(
+            x.device == required_device and x.layout == torch.strided for x in tensors
+        )
+        states = [
+            (x, x.untyped_storage(), _input_signature(x), _raw_cpu(x)) for x in tensors
+        ]
+    except Exception as error:
+        raise AssertionError("invalid positive validator input") from error
+    try:
+        return flag_gems._validate_sparse_bsc_tensor_args(*args, **kwargs)
+    finally:
+        # Validate original ABI and held storage before observing post-call bytes.
+        try:
+            for tensor, storage, signature, before in states:
+                assert _input_signature(tensor) == signature
+                assert tensor.untyped_storage()._cdata == storage._cdata
+                assert torch.equal(_raw_cpu(tensor), before)
+        except Exception as error:
+            raise AssertionError("validator modified a read-only input") from error
+
+
+def _assert_result_equal(result, reference, required_device):
+    assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
+    assert result.device == required_device
+    assert reference.device == (
+        torch.device("cpu") if utils.TO_CPU else required_device
+    )
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    if flag_gems.vendor_name == "kunlunxin" and (
+        result.is_complex() or reference.is_complex()
+    ):
+        result, reference = _cpu_physical(result), _cpu_physical(reference)
+    elif flag_gems.vendor_name == "ascend" and (result.is_complex() or result.ndim > 8):
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
@@ -127,8 +229,8 @@ def _bsc_inputs(batch, nrows, ncols, dense, blocksize, fill, dtype, index_dtype=
         .to(dtype)
     )
     return (
-        ccol.to(index_dtype).to(flag_gems.device),
-        row.to(index_dtype).to(flag_gems.device),
+        _index_to_device(ccol, index_dtype),
+        _index_to_device(row, index_dtype),
         values.to(flag_gems.device),
         size,
     )
@@ -169,26 +271,27 @@ _DTYPE_RANGE_CASES = [
 def test__validate_sparse_bsc_tensor_args_values(shape, value_range, dtype):
     # 1x1 blocks keep the main-grid descriptor shape (nnz == number of columns);
     # the structural rows below supply the nontrivial and dense block shapes.
+    required_device = _required_device()
     batch = tuple(shape[:-2])
     ccol, row, values_shape, size = _bsc_layout(
         batch, shape[-2], shape[-1], (), (1, 1), 1
     )
-    ccol = ccol.to(_MAIN_INDEX_DTYPE).to(flag_gems.device)
-    row = row.to(_MAIN_INDEX_DTYPE).to(flag_gems.device)
+    ccol = _index_to_device(ccol, _MAIN_INDEX_DTYPE)
+    row = _index_to_device(row, _MAIN_INDEX_DTYPE)
     values = tu.make_input(dtype, values_shape, value_range)
     ccol_ref = tu.to_reference(ccol)
     row_ref = tu.to_reference(row)
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
     # The operator only inspects descriptors: it must leave the index tensors and
     # the values payload exactly as it received them.
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # --- structural descriptors --------------------------------------------------
@@ -236,6 +339,7 @@ _LAYOUT_ROWS = [
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 def test__validate_sparse_bsc_tensor_args_layout(layout, dtype, index_dtype):
+    required_device = _required_device()
     _, batch, nrows, ncols, blocksize, fill, dense = layout
     ccol, row, values, size = _bsc_inputs(
         batch, nrows, ncols, dense, blocksize, fill, dtype, index_dtype
@@ -245,12 +349,12 @@ def test__validate_sparse_bsc_tensor_args_layout(layout, dtype, index_dtype):
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # Every batch element has the same nnz here but distributes it over the block
@@ -262,12 +366,13 @@ def test__validate_sparse_bsc_tensor_args_layout(layout, dtype, index_dtype):
 )
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
 def test__validate_sparse_bsc_tensor_args_batch_distributions(dtype, index_dtype):
+    required_device = _required_device()
     counts = torch.tensor([[1, 0, 1, 1], [0, 3, 0, 0]], dtype=torch.int64)
     ccol = torch.cat((torch.zeros(2, 1, dtype=torch.int64), counts.cumsum(1)), 1)
     row = torch.tensor([[0, 0, 1], [0, 1, 2]], dtype=torch.int64)
     values = torch.arange(6, dtype=torch.float32).reshape(2, 3, 1, 1).to(dtype)
-    ccol = ccol.to(index_dtype).to(flag_gems.device)
-    row = row.to(index_dtype).to(flag_gems.device)
+    ccol = _index_to_device(ccol, index_dtype)
+    row = _index_to_device(row, index_dtype)
     values = values.to(flag_gems.device)
     size = [2, 4, 4]
     ccol_ref = tu.to_reference(ccol)
@@ -275,12 +380,12 @@ def test__validate_sparse_bsc_tensor_args_batch_distributions(dtype, index_dtype
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # Accepted descriptors whose tensors are not canonical: index tensors may be
@@ -302,6 +407,7 @@ _OFFSET_CASES = tu.selected_cases(
     "dtype", tu.selected_cases([torch.float32, torch.float16], quick=[])
 )
 def test__validate_sparse_bsc_tensor_args_offset_and_strided_inputs(case, dtype):
+    required_device = _required_device()
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, dtype)
     pad = 3
     ccol_parent = torch.zeros(
@@ -339,14 +445,14 @@ def test__validate_sparse_bsc_tensor_args_offset_and_strided_inputs(case, dtype)
     )
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(
-        ccol_arg, row_arg, values_arg, size
+    result = _call_validator(
+        ccol_arg, row_arg, values_arg, size, required_device=required_device
     )
 
     assert result is None
-    _assert_result_equal(ccol_parent, ccol_parent_ref)
-    _assert_result_equal(row_parent, row_parent_ref)
-    _assert_result_equal(values_parent, values_parent_ref)
+    _assert_result_equal(ccol_parent, ccol_parent_ref, required_device)
+    _assert_result_equal(row_parent, row_parent_ref, required_device)
+    _assert_result_equal(values_parent, values_parent_ref, required_device)
 
 
 # The native row bound is the full logical extent and the block-row index is
@@ -363,6 +469,7 @@ _HUGE_ROW_CASES = tu.selected_cases(
 @pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("dtype", _HUGE_ROW_CASES)
 def test__validate_sparse_bsc_tensor_args_int64_row_range(dtype):
+    required_device = _required_device()
     size = [2**32 + 4, 1]
     ccol = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
     row = torch.tensor([2**32 + 3], dtype=torch.int64, device=flag_gems.device)
@@ -372,12 +479,12 @@ def test__validate_sparse_bsc_tensor_args_int64_row_range(dtype):
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # The native worker clamps a zero block extent to 1 (`std::max<int64_t>(1,
@@ -390,6 +497,7 @@ _ZERO_BLOCK_CASES = tu.selected_cases([torch.float32], quick=[])
 @pytest.mark.underscore_validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("dtype", _ZERO_BLOCK_CASES)
 def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
+    required_device = _required_device()
     ccol = torch.tensor(
         [0, 1, 1, 1, 1, 1, 1, 1, 1],
         dtype=_MAIN_INDEX_DTYPE,
@@ -403,12 +511,12 @@ def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # --- accepted `size` call forms ---------------------------------------------
@@ -419,6 +527,7 @@ def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
     "form", tu.selected_cases(["list", "tuple", "torch.Size", "keyword"], quick=[])
 )
 def test__validate_sparse_bsc_tensor_args_size_forms(form):
+    required_device = _required_device()
     ccol, row, values, size = _bsc_inputs((), 8, 8, (), (2, 2), 1, torch.float32)
     if form == "tuple":
         size = tuple(size)
@@ -432,19 +541,21 @@ def test__validate_sparse_bsc_tensor_args_size_forms(form):
         torch.ops.aten._validate_sparse_bsc_tensor_args(
             ccol_ref, row_ref, values_ref, size=size
         )
-        result = flag_gems._validate_sparse_bsc_tensor_args(
-            ccol, row, values, size=size
+        result = _call_validator(
+            ccol, row, values, size=size, required_device=required_device
         )
     else:
         torch.ops.aten._validate_sparse_bsc_tensor_args(
             ccol_ref, row_ref, values_ref, size
         )
-        result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+        result = _call_validator(
+            ccol, row, values, size, required_device=required_device
+        )
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # --- special values ----------------------------------------------------------
@@ -473,23 +584,24 @@ _SPECIAL_CASES = tu.selected_cases(
     ],
 )
 def test__validate_sparse_bsc_tensor_args_special_values(dtype, scenario):
+    required_device = _required_device()
     payload = tu.make_special_input(dtype, scenario)
     nnz = int(payload.numel())
     ccol, row, _, size = _bsc_layout((), 4, nnz, (), (1, 1), 1)
-    ccol = ccol.to(_MAIN_INDEX_DTYPE).to(flag_gems.device)
-    row = row.to(_MAIN_INDEX_DTYPE).to(flag_gems.device)
+    ccol = _index_to_device(ccol, _MAIN_INDEX_DTYPE)
+    row = _index_to_device(row, _MAIN_INDEX_DTYPE)
     values = payload.reshape(nnz, 1, 1)
     ccol_ref = tu.to_reference(ccol)
     row_ref = tu.to_reference(row)
     values_ref = tu.to_reference(values)
 
     torch.ops.aten._validate_sparse_bsc_tensor_args(ccol_ref, row_ref, values_ref, size)
-    result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
+    result = _call_validator(ccol, row, values, size, required_device=required_device)
 
     assert result is None
-    _assert_result_equal(ccol, ccol_ref)
-    _assert_result_equal(row, row_ref)
-    _assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref, required_device)
+    _assert_result_equal(row, row_ref, required_device)
+    _assert_result_equal(values, values_ref, required_device)
 
 
 # --- rejected input space ----------------------------------------------------

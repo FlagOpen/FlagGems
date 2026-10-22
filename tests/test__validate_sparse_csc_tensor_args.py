@@ -17,7 +17,121 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+
+def _required_device():
+    return torch.empty(0, dtype=torch.uint8, device=flag_gems.device).device
+
+
+def _index_to_device(tensor, dtype):
+    source = tensor.to(dtype)
+    device = _required_device()
+    result = source.to(device)
+    # MetaX changes an ordinary contiguous rank-4 CPU index to channels-last.
+    # Restore only a contiguous host index; later offset/negative views remain.
+    if (
+        flag_gems.vendor_name == "metax"
+        and source.device.type == "cpu"
+        and source.is_contiguous()
+    ):
+        result = result.contiguous()
+    assert result.dtype == dtype and result.shape == source.shape
+    assert result.device == device
+    return result
+
+
+def _raw_cpu(tensor):
+    storage = tensor.untyped_storage()
+    raw = torch.empty(0, dtype=torch.uint8, device=tensor.device).set_(
+        storage, 0, (storage.nbytes(),), (1,)
+    )
+    return raw.cpu().clone()
+
+
+def _cpu_physical(tensor):
+    raw = _raw_cpu(tensor)
+    result = (
+        torch.empty(0, dtype=torch.uint8, device="cpu")
+        .view(tensor.dtype)
+        .set_(
+            raw.untyped_storage(),
+            tensor.storage_offset(),
+            tensor.shape,
+            tensor.stride(),
+        )
+    )
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _input_signature(tensor):
+    storage = tensor.untyped_storage()
+    return (
+        type(tensor),
+        tensor.device,
+        tensor.dtype,
+        tensor.layout,
+        tuple(tensor.shape),
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.is_conj(),
+        tensor.is_neg(),
+        tensor.requires_grad,
+        tensor._version,
+        storage._cdata,
+        tensor.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+
+
+def _call_validator(*args, required_device, **kwargs):
+    # Used only by original positive callers. Native negative calls remain direct.
+    try:
+        tensors = [x for x in (*args, *kwargs.values()) if isinstance(x, torch.Tensor)]
+        assert len(tensors) == 3
+        assert all(
+            x.device == required_device and x.layout == torch.strided for x in tensors
+        )
+        states = [
+            (x, x.untyped_storage(), _input_signature(x), _raw_cpu(x)) for x in tensors
+        ]
+    except Exception as error:
+        raise AssertionError("invalid positive validator input") from error
+    try:
+        return flag_gems._validate_sparse_csc_tensor_args(*args, **kwargs)
+    finally:
+        # Validate original ABI and held storage before observing post-call bytes.
+        try:
+            for tensor, storage, signature, before in states:
+                assert _input_signature(tensor) == signature
+                assert tensor.untyped_storage()._cdata == storage._cdata
+                assert torch.equal(_raw_cpu(tensor), before)
+        except Exception as error:
+            raise AssertionError("validator modified a read-only input") from error
+
+
+def _assert_result_equal(result, reference, required_device):
+    assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
+    assert result.device == required_device
+    assert reference.device == (
+        torch.device("cpu") if utils.TO_CPU else required_device
+    )
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    if flag_gems.vendor_name == "kunlunxin" and (
+        result.is_complex() or reference.is_complex()
+    ):
+        result, reference = _cpu_physical(result), _cpu_physical(reference)
+    elif flag_gems.vendor_name == "ascend" and (result.is_complex() or result.ndim > 8):
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
 
 _ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -244,8 +358,8 @@ def _csc_indices(size, nnz, index_dtype, dense_ndim=0):
         column = torch.searchsorted(starts, offsets, right=True) - 1
         row = offsets - torch.gather(starts, 1, column)
     return (
-        ccol.reshape(batch + (ncols + 1,)).to(index_dtype).to(flag_gems.device),
-        row.reshape(batch + (nnz,)).to(index_dtype).to(flag_gems.device),
+        _index_to_device(ccol.reshape(batch + (ncols + 1,)), index_dtype),
+        _index_to_device(row.reshape(batch + (nnz,)), index_dtype),
     )
 
 
@@ -318,14 +432,15 @@ def _snapshot(*tensors):
             tensor,
             tu.to_reference(tensor),
             (tensor.shape, tensor.stride(), tensor.storage_offset()),
+            tensor.device,
         )
         for tensor in tensors
     ]
 
 
 def _assert_untouched(snapshot):
-    for tensor, reference, geometry in snapshot:
-        tu.assert_result_equal(tensor, reference)
+    for tensor, reference, geometry, required_device in snapshot:
+        _assert_result_equal(tensor, reference, required_device)
         assert (tensor.shape, tensor.stride(), tensor.storage_offset()) == geometry
 
 
@@ -396,6 +511,7 @@ def _schema_defect_args(defect, ccol, row, values, call_size):
 def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
     # One stored entry per column of every matrix in the batch, always within the
     # nrows * ncols capacity.
+    required_device = _required_device()
     nnz = size[-1]
     ccol, row, values, call_size, parents = _make_csc_inputs(
         size, nnz, INDEX_DTYPE_LONG, dtype, value_range
@@ -405,7 +521,9 @@ def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
     torch.ops.aten._validate_sparse_csc_tensor_args(
         snapshot[0][1], snapshot[1][1], snapshot[2][1], call_size
     )
-    res_out = flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, call_size)
+    res_out = _call_validator(
+        ccol, row, values, call_size, required_device=required_device
+    )
 
     # The schema returns (), so the only comparable value is the returned None.
     assert res_out is None
@@ -432,6 +550,7 @@ def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
 def test__validate_sparse_csc_tensor_args_structure(
     size, nnz, dense_ndim, index_dtype, layout, value_range
 ):
+    required_device = _required_device()
     ccol, row, values, call_size, parents = _make_csc_inputs(
         size, nnz, index_dtype, torch.float32, value_range, dense_ndim, layout
     )
@@ -440,7 +559,9 @@ def test__validate_sparse_csc_tensor_args_structure(
     torch.ops.aten._validate_sparse_csc_tensor_args(
         snapshot[0][1], snapshot[1][1], snapshot[2][1], call_size
     )
-    res_out = flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, call_size)
+    res_out = _call_validator(
+        ccol, row, values, call_size, required_device=required_device
+    )
 
     assert res_out is None
     _assert_untouched(snapshot)
@@ -455,6 +576,7 @@ def test__validate_sparse_csc_tensor_args_structure(
     ],
 )
 def test__validate_sparse_csc_tensor_args_special_values(dtype, scenario):
+    required_device = _required_device()
     values = tu.make_special_input(dtype, scenario)
     ccol, row = _csc_indices(SPECIAL_SIZE, values.numel(), INDEX_DTYPE_LONG)
     snapshot = _snapshot(ccol, row, values)
@@ -462,8 +584,8 @@ def test__validate_sparse_csc_tensor_args_special_values(dtype, scenario):
     torch.ops.aten._validate_sparse_csc_tensor_args(
         snapshot[0][1], snapshot[1][1], snapshot[2][1], list(SPECIAL_SIZE)
     )
-    res_out = flag_gems._validate_sparse_csc_tensor_args(
-        ccol, row, values, list(SPECIAL_SIZE)
+    res_out = _call_validator(
+        ccol, row, values, list(SPECIAL_SIZE), required_device=required_device
     )
 
     assert res_out is None
@@ -507,13 +629,16 @@ def test__validate_sparse_csc_tensor_args_schema_defects(defect):
     "index_dtype", tu.selected_cases([torch.int64] if HAS_INT64_INDEX else [], quick=[])
 )
 def test__validate_sparse_csc_tensor_args_large_row_coordinate(index_dtype):
+    required_device = _required_device()
     ccol, row, values, call_size = _large_row_inputs(index_dtype, LARGE_ROW_COORDINATE)
     snapshot = _snapshot(ccol, row, values)
 
     torch.ops.aten._validate_sparse_csc_tensor_args(
         snapshot[0][1], snapshot[1][1], snapshot[2][1], call_size
     )
-    res_out = flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, call_size)
+    res_out = _call_validator(
+        ccol, row, values, call_size, required_device=required_device
+    )
 
     assert res_out is None
     _assert_untouched(snapshot)
