@@ -74,6 +74,189 @@ _VALUE_CASES = [
 ]
 
 
+_OP_NAME = "_coalesce"
+
+_ASCEND_REDUCTION_UNSUPPORTED = {
+    torch.float64,
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.int64,
+    torch.bool,
+}
+
+
+def _require_native_case(dtype, *, coalesced=False):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin COO FP64 target storage narrows to FP32")
+    if not coalesced:
+        if flag_gems.vendor_name == "ascend" and dtype in _ASCEND_REDUCTION_UNSUPPORTED:
+            pytest.skip("Ascend COO reduction supports FP16, BF16, FP32 and INT32")
+        if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+            pytest.skip("Iluvatar native FP64 COO reduction returns zero value bytes")
+
+
+def _expected_device():
+    device = torch.device(flag_gems.device)
+    if device.type != "cpu" and device.index is None:
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _check_input(inp, dtype, *, coo=True, shape=None, nnz=None):
+    try:
+        assert isinstance(inp, torch.Tensor)
+        assert inp.dtype == dtype, "factory must preserve the requested dtype"
+        assert (
+            inp.device == _expected_device()
+        ), "factory must preserve the target device"
+        if shape is not None:
+            assert tuple(inp.shape) == tuple(
+                shape
+            ), "factory must preserve the requested shape"
+        if coo:
+            assert inp.layout == torch.sparse_coo
+            if nnz is not None:
+                assert inp._nnz() == nnz, "factory must preserve the requested nnz"
+    except Exception as error:
+        raise AssertionError("Invalid input contract or metadata inspection") from error
+
+
+def _input_snapshot(inp):
+    # Hold the original storages and immutable scalars independently. Only
+    # initialized component elements are observed, never allocator padding.
+    try:
+        if inp.layout == torch.sparse_coo:
+            parts = (inp._indices(), inp._values())
+            geometry = (
+                inp.sparse_dim(),
+                inp.dense_dim(),
+                inp._nnz(),
+                inp.is_coalesced(),
+            )
+        elif inp.layout == torch.sparse_csr:
+            parts = (inp.crow_indices(), inp.col_indices(), inp.values())
+            geometry = (inp.sparse_dim(), inp.dense_dim(), inp._nnz())
+        else:
+            assert inp.layout == torch.strided
+            parts = (inp,)
+            geometry = (tuple(inp.stride()), inp.storage_offset())
+        outer = (
+            type(inp),
+            inp.layout,
+            inp.dtype,
+            inp.device,
+            tuple(inp.shape),
+            inp.requires_grad,
+            inp._version,
+            geometry,
+        )
+        witnesses = []
+        for part in parts:
+            storage = part.untyped_storage()
+            metadata = (
+                type(part),
+                part.dtype,
+                part.device,
+                tuple(part.shape),
+                tuple(part.stride()),
+                part.storage_offset(),
+                part.data_ptr(),
+                storage._cdata,
+                storage.data_ptr(),
+                storage.nbytes(),
+                part.requires_grad,
+                part._version,
+                part.is_conj(),
+                part.is_neg(),
+            )
+            payload = part.detach().contiguous().view(torch.uint8).cpu().clone()
+            witnesses.append((storage, metadata, payload))
+        return outer, witnesses
+    except Exception as error:
+        raise AssertionError("Unable to inspect the input contract") from error
+
+
+def _assert_readonly(inp, before):
+    try:
+        after = _input_snapshot(inp)
+        assert before[0] == after[0], "candidate changed input metadata"
+        assert len(before[1]) == len(after[1])
+        for original, current in zip(before[1], after[1]):
+            assert (
+                original[1] == current[1]
+            ), "candidate changed input storage or component metadata"
+            assert torch.equal(
+                original[2], current[2]
+            ), "candidate changed input values or indices"
+    except Exception as error:
+        raise AssertionError(
+            "Invalid read-only input contract or metadata inspection"
+        ) from error
+
+
+def _cpu_oracle(inp, *, out=None):
+    """Native CPU bootstrap for the original no-grad COO test cases."""
+    assert not inp.requires_grad
+    if _OP_NAME == "coalesce" and inp.layout == torch.sparse_coo and inp.is_coalesced():
+        return inp
+    native = getattr(torch.ops.aten, _OP_NAME)
+    if inp.layout != torch.sparse_coo:
+        # Preserve native rejection for the original dense/CSR negative rows.
+        return native(inp.cpu())
+    cpu = torch.sparse_coo_tensor(
+        inp._indices().cpu(),
+        inp._values().cpu(),
+        inp.shape,
+        dtype=inp.dtype,
+        is_coalesced=inp.is_coalesced(),
+    )
+    result = native(cpu)
+    if inp.device.type != "cpu":
+        result = torch.sparse_coo_tensor(
+            result._indices().to(inp.device),
+            result._values().to(inp.device),
+            result.shape,
+            dtype=result.dtype,
+            is_coalesced=result.is_coalesced(),
+        )
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
+
+
+def _reference_coalesce(inp, *, out=None):
+    if flag_gems.vendor_name == "kunlunxin":
+        return _cpu_oracle(inp, out=out)
+    native = getattr(torch.ops.aten, _OP_NAME)
+    return native(inp) if out is None else native.out(inp, out=out)
+
+
+def _call_candidate(inp, dtype, *, out=None):
+    _check_input(inp, dtype, coo=False)
+    before = _input_snapshot(inp)
+    device, shape, layout = before[0][3], before[0][4], before[0][1]
+    candidate = getattr(flag_gems, _OP_NAME)
+    try:
+        result = candidate(inp) if out is None else candidate(inp, out=out)
+    finally:
+        # Guard failures remain AssertionErrors, even inside a caller's
+        # expected native RuntimeError block. Genuine API errors propagate.
+        _assert_readonly(inp, before)
+    try:
+        assert isinstance(result, torch.Tensor)
+        assert result.device == device and result.dtype == dtype
+        assert result.shape == shape and result.layout == layout
+    except Exception as error:
+        raise AssertionError(
+            "Invalid output contract or metadata inspection"
+        ) from error
+    return result
+
+
 def _default_bounds(dtype):
     if dtype.is_floating_point or dtype == torch.bool:
         return 0.0, 1.0
@@ -135,27 +318,29 @@ def _assert_coalesced(res_out, ref_out, dtype, *, equal_nan=False):
     assert res_out.dtype == ref_out.dtype
     assert res_out.is_coalesced()
     # Indices are int64 and must match exactly (unique, sorted coordinates).
-    utils.gems_assert_equal(res_out.indices(), ref_out.indices())
+    utils.gems_assert_equal(res_out.indices().cpu(), ref_out.indices().cpu())
     # Values are sums of duplicates: tolerance for float, exact for int/bool.
     if dtype.is_floating_point or dtype.is_complex:
         utils.gems_assert_close(
-            res_out.values(), ref_out.values(), dtype, equal_nan=equal_nan
+            res_out.values().cpu(), ref_out.values().cpu(), dtype, equal_nan=equal_nan
         )
     else:
-        utils.gems_assert_equal(res_out.values(), ref_out.values())
+        utils.gems_assert_equal(res_out.values().cpu(), ref_out.values().cpu())
 
 
 @pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
 def test__coalesce(case, dtype):
+    _require_native_case(dtype)
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
     assert not inp.is_coalesced()
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._coalesce(ref_inp)
-    res_out = flag_gems._coalesce(inp)
+    ref_out = _reference_coalesce(ref_inp)
+    res_out = _call_candidate(inp, dtype)
 
     _assert_coalesced(res_out, ref_out, dtype)
     # Coalescing returns a fresh tensor and must not mutate the input.
@@ -166,13 +351,15 @@ def test__coalesce(case, dtype):
 @pytest.mark.underscore_coalesce
 @pytest.mark.parametrize("value_range,dtype,case", _VALUE_CASES)
 def test__coalesce_value_ranges(value_range, dtype, case):
+    _require_native_case(dtype)
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype, value_range=value_range)
     assert not inp.is_coalesced()
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._coalesce(ref_inp)
-    res_out = flag_gems._coalesce(inp)
+    ref_out = _reference_coalesce(ref_inp)
+    res_out = _call_candidate(inp, dtype)
 
     _assert_coalesced(res_out, ref_out, dtype)
     assert res_out is not inp
@@ -186,6 +373,7 @@ def test__coalesce_value_ranges(value_range, dtype, case):
     tu.selected_cases(tu.special_value_cases(_COALESCE_DTYPES)),
 )
 def test__coalesce_nan_inf(case, dtype, scenario):
+    _require_native_case(dtype)
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
     # Keep duplicate indices and vary the special-value scenario independently.
@@ -196,10 +384,11 @@ def test__coalesce_nan_inf(case, dtype, scenario):
         device=flag_gems.device,
     )
     assert not inp.is_coalesced()
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._coalesce(ref_inp)
-    res_out = flag_gems._coalesce(inp)
+    ref_out = _reference_coalesce(ref_inp)
+    res_out = _call_candidate(inp, dtype)
 
     _assert_coalesced(res_out, ref_out, dtype, equal_nan=True)
     assert res_out is not inp
@@ -210,15 +399,18 @@ def test__coalesce_nan_inf(case, dtype, scenario):
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
 def test__coalesce_out(case, dtype):
+    _require_native_case(dtype)
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
     assert not inp.is_coalesced()
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
     out = _make_empty_out(shape, dtype, flag_gems.device)
+    _check_input(out, dtype, shape=shape, nnz=0)
     ref_out = _make_empty_out(shape, dtype, ref_inp.device)
 
-    ref_ret = torch.ops.aten._coalesce.out(ref_inp, out=ref_out)
-    res_ret = flag_gems._coalesce(inp, out=out)
+    ref_ret = _reference_coalesce(ref_inp, out=ref_out)
+    res_ret = _call_candidate(inp, dtype, out=out)
 
     # The .out variant must write into and return the out tensor itself.
     assert res_ret is out
@@ -232,7 +424,7 @@ def test__coalesce_rejects_dense_input():
     with pytest.raises(RuntimeError):
         torch.ops.aten._coalesce(inp)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        flag_gems._coalesce(inp)
+        _call_candidate(inp, inp.dtype)
 
 
 @pytest.mark.underscore_coalesce
@@ -242,15 +434,19 @@ def test__coalesce_rejects_csr_input():
     with pytest.raises(RuntimeError):
         torch.ops.aten._coalesce(inp)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
-        flag_gems._coalesce(inp)
+        _call_candidate(inp, inp.dtype)
 
 
 @pytest.mark.underscore_coalesce
 def test__coalesce_rejects_fp8_input():
     indices = torch.zeros((1, 3), dtype=torch.long, device=flag_gems.device)
-    values = torch.zeros(3, dtype=torch.float8_e4m3fn, device=flag_gems.device)
+    values = (
+        torch.zeros(3, dtype=torch.float32, device="cpu")
+        .to(torch.float8_e4m3fn)
+        .to(flag_gems.device)
+    )
     inp = torch.sparse_coo_tensor(indices, values, (4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten._coalesce(inp)
     with pytest.raises((RuntimeError, NotImplementedError)):
-        flag_gems._coalesce(inp)
+        _call_candidate(inp, inp.dtype)
