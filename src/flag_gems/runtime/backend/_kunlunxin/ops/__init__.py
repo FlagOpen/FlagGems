@@ -70,6 +70,7 @@ from ._foreach_binary_scalar import (  # noqa: F401
         )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_erf import _foreach_erf
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
@@ -97,6 +98,7 @@ from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
+from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -728,6 +730,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_i0 import special_i0, special_i0_out  # noqa: F401
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out  # noqa: F401
+from .special_i1e import special_i1e, special_i1e_out  # noqa: F401
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_log1p import special_log1p  # noqa: F401  (kunlunxin override)
 from .special_log1p import special_log1p_out
@@ -916,6 +919,8 @@ __all__ = [
     "_foreach_sub__List",
     "_foreach_tan",
     "_foreach_tan_",
+    "_foreach_zero",
+    "_foreach_zero_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -1635,6 +1640,8 @@ __all__ = [
     "special_i0_out",
     "special_i0e",
     "special_i0e_out",
+    "special_i1e",
+    "special_i1e_out",
     "special_legendre_polynomial_p",
     "special_log1p",
     "special_log1p_out",
