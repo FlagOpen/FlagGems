@@ -43,9 +43,9 @@ class MetadataBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_conj
-def test_is_conj():
+def test_is_conj(monkeypatch):
     # There is no GPU work to time; both paths use the existing operator timer.
-    Config.mode = consts.BenchMode.OPERATOR
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MetadataBenchmark(
         op_name="is_conj",
         torch_op=torch.ops.aten.is_conj.default,
