@@ -160,7 +160,9 @@ def test_index_add_empty_index(inplace, dtype):
     inp = torch.ones((2, 4, 8), dtype=dtype, device=flag_gems.device)
     index = torch.empty(0, dtype=torch.int64, device=flag_gems.device)
     src = torch.empty((2, 0, 8), dtype=dtype, device=flag_gems.device)
-    expected = inp.clone()
+    # Snapshot through to_reference so the baseline follows the reference
+    # device (CPU in quick-cpu mode) that gems_assert_equal expects.
+    expected = utils.to_reference(inp.clone())
 
     if inplace:
         flag_gems.index_add_(inp, 1, index, src)
