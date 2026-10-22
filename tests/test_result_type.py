@@ -31,6 +31,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 _DTYPE_FLAGS = {
@@ -80,11 +81,174 @@ PROMOTION_DTYPES = [
 ALL_DTYPES = PROMOTION_DTYPES + FP8_DTYPES
 
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _device(value):
+    device = torch.device(value)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _cpu_copy(value):
+    assert value.layout == torch.strided
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=value.device)
+        .set_(value.untyped_storage(), 0, (value.untyped_storage().nbytes(),), (1,))
+        .detach()
+        .cpu()
+        .clone()
+    )
+    result = (
+        torch.empty(0, dtype=torch.uint8, device="cpu")
+        .view(value.dtype)
+        .set_(
+            raw.untyped_storage(), value.storage_offset(), value.shape, value.stride()
+        )
+    )
+    if value.is_conj():
+        result = result.conj()
+    if value.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _input_bytes(value):
+    copy = _cpu_copy(value)
+    width = copy.element_size()
+    return torch.empty(0, dtype=torch.uint8, device="cpu").set_(
+        copy.untyped_storage(),
+        copy.storage_offset() * width,
+        (*copy.shape, width),
+        (*(v * width for v in copy.stride()), 1),
+    )
+
+
+def _signature(value):
+    return (
+        type(value),
+        value.device,
+        value.dtype,
+        value.layout,
+        tuple(value.shape),
+        tuple(value.stride()),
+        value.storage_offset(),
+        value.is_conj(),
+        value.is_neg(),
+        value.requires_grad,
+        value._is_view(),
+        value._version,
+        value.untyped_storage().nbytes(),
+    )
+
+
+def _make_input(dtype, shape, value_range):
+    device = _device(flag_gems.device)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        low = tu.resolve_bound(value_range[0], dtype)
+        high = tu.resolve_bound(value_range[1], dtype)
+        value = (
+            torch.full(shape, low, dtype=dtype, device="cpu")
+            if low == high
+            else torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        ).to(device)
+    else:
+        value = tu.make_input(dtype, shape, value_range)
+    assert value.dtype == dtype and value.device == device
+    assert tuple(value.shape) == tuple(shape)
+    return value
+
+
+def _make_special_input(dtype, scenario):
+    device = _device(flag_gems.device)
+    if (flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES) or (
+        flag_gems.vendor_name == "ascend" and dtype == torch.float64
+    ):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        value = (
+            torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+            .to(dtype)
+            .to(device)
+        )
+    else:
+        value = tu.make_special_input(dtype, scenario)
+    assert value.dtype == dtype and value.device == device
+    assert tuple(value.shape) == (5,)
+    return value
+
+
+def _check_input(value, dtype, shape, device):
+    assert value.device == device and value.dtype == dtype
+    assert tuple(value.shape) == tuple(shape)
+    return value
+
+
+def _reference(*args):
+    values = []
+    for value in args:
+        if isinstance(value, torch.Tensor):
+            expected_device = torch.device("cpu") if utils.TO_CPU else value.device
+            reference = _cpu_copy(value) if utils.TO_CPU else tu.to_reference(value)
+            _check_input(reference, value.dtype, value.shape, expected_device)
+            values.append(reference)
+        else:
+            values.append(value)
+    return torch.ops.aten.result_type(*values)
+
+
+def _candidate(*args):
+    # result_type only observes metadata. Keep both storage identity and every
+    # defined element byte so metadata-correct candidates cannot mutate inputs.
+    try:
+        before = []
+        seen = set()
+        for value in args:
+            if isinstance(value, torch.Tensor) and id(value) not in seen:
+                seen.add(id(value))
+                assert value.device == _device(flag_gems.device)
+                before.append(
+                    (
+                        value,
+                        _signature(value),
+                        value.untyped_storage(),
+                        value._base,
+                        _input_bytes(value),
+                    )
+                )
+    except Exception as error:
+        raise AssertionError("result_type input inspection failed") from error
+    try:
+        return flag_gems.result_type(*args)
+    finally:
+        try:
+            for value, signature, storage, base, payload in before:
+                assert _signature(value) == signature
+                assert value.untyped_storage()._cdata == storage._cdata
+                assert value._base is base
+                assert torch.equal(_input_bytes(value), payload)
+        except Exception as error:
+            # Inspection errors must not satisfy a negative API test.
+            raise AssertionError("result_type changed an input") from error
+
+
 def _make_tensor(dtype, shape):
-    # Element values never influence result_type, so a zero fill is used: it is
-    # defined for every dtype here (fp8 and complex included) and keeps the
-    # tests free of value-dependent behaviour.
-    return torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    # Keep the original zero recipe and rank; encode FP8 on CPU when the
+    # backend cannot fill its typed device storage directly.
+    device = _device(flag_gems.device)
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in _FP8_DTYPES:
+        value = torch.zeros(shape, dtype=dtype, device="cpu").to(device)
+    else:
+        value = torch.zeros(shape, dtype=dtype, device=device)
+    return _check_input(value, dtype, shape, device)
 
 
 def _assert_result(res, ref):
@@ -171,8 +335,8 @@ def test_result_type_tensor_pair(a_dtype, b_dtype):
     a = _make_tensor(a_dtype, (4,))
     b = _make_tensor(b_dtype, (4,))
 
-    ref = torch.ops.aten.result_type(a, b)
-    res = flag_gems.result_type(a, b)
+    ref = _reference(a, b)
+    res = _candidate(a, b)
 
     _assert_result(res, ref)
 
@@ -185,7 +349,7 @@ def test_result_type_fp8_mixed_pair_rejected(a_dtype, b_dtype):
 
     # An fp8 operand only promotes with a second operand of the same fp8 type.
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems.result_type(a, b)
+        _candidate(a, b)
 
 
 @pytest.mark.result_type
@@ -193,8 +357,8 @@ def test_result_type_fp8_mixed_pair_rejected(a_dtype, b_dtype):
 def test_result_type_tensor_scalar(dtype, scalar):
     inp = _make_tensor(dtype, (4,))
 
-    ref = torch.ops.aten.result_type(inp, scalar)
-    res = flag_gems.result_type(inp, scalar)
+    ref = _reference(inp, scalar)
+    res = _candidate(inp, scalar)
 
     _assert_result(res, ref)
 
@@ -204,8 +368,8 @@ def test_result_type_tensor_scalar(dtype, scalar):
 def test_result_type_scalar_tensor(dtype, scalar):
     inp = _make_tensor(dtype, (4,))
 
-    ref = torch.ops.aten.result_type(scalar, inp)
-    res = flag_gems.result_type(scalar, inp)
+    ref = _reference(scalar, inp)
+    res = _candidate(scalar, inp)
 
     _assert_result(res, ref)
 
@@ -215,8 +379,8 @@ def test_result_type_scalar_tensor(dtype, scalar):
 def test_result_type_tensor_scalar_complex(dtype, scalar):
     inp = _make_tensor(dtype, (4,))
 
-    ref = torch.ops.aten.result_type(inp, scalar)
-    res = flag_gems.result_type(inp, scalar)
+    ref = _reference(inp, scalar)
+    res = _candidate(inp, scalar)
 
     _assert_result(res, ref)
 
@@ -226,8 +390,8 @@ def test_result_type_tensor_scalar_complex(dtype, scalar):
 def test_result_type_scalar_tensor_complex(dtype, scalar):
     inp = _make_tensor(dtype, (4,))
 
-    ref = torch.ops.aten.result_type(scalar, inp)
-    res = flag_gems.result_type(scalar, inp)
+    ref = _reference(scalar, inp)
+    res = _candidate(scalar, inp)
 
     _assert_result(res, ref)
 
@@ -239,14 +403,14 @@ def test_result_type_fp8_complex_scalar_rejected(dtype, scalar):
 
     # A complex Python scalar has no promotion rule for the fp8 types.
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems.result_type(inp, scalar)
+        _candidate(inp, scalar)
 
 
 @pytest.mark.result_type
 @pytest.mark.parametrize("first,second", SCALAR_SCALAR_ROWS)
 def test_result_type_scalar_scalar(first, second):
-    ref = torch.ops.aten.result_type(first, second)
-    res = flag_gems.result_type(first, second)
+    ref = _reference(first, second)
+    res = _candidate(first, second)
 
     _assert_result(res, ref)
 
@@ -258,8 +422,8 @@ def test_result_type_tensor_with_none(dtype):
 
     # None matches the optional scalar argument and simply yields the tensor
     # dtype.
-    ref = torch.ops.aten.result_type(inp, None)
-    res = flag_gems.result_type(inp, None)
+    ref = _reference(inp, None)
+    res = _candidate(inp, None)
 
     _assert_result(res, ref)
 
@@ -272,8 +436,8 @@ def test_result_type_ignores_tensor_rank(shape_a, shape_b, dtype):
     a = _make_tensor(dtype, shape_a)
     b = _make_tensor(dtype, shape_b)
 
-    ref = torch.ops.aten.result_type(a, b)
-    res = flag_gems.result_type(a, b)
+    ref = _reference(a, b)
+    res = _candidate(a, b)
 
     _assert_result(res, ref)
 
@@ -284,8 +448,8 @@ def test_result_type_mixed_dtype_rank_role(a_dtype, a_rank, b_dtype, b_rank):
     a = _make_tensor(a_dtype, _RANK_SHAPES[a_rank])
     b = _make_tensor(b_dtype, _RANK_SHAPES[b_rank])
 
-    ref = torch.ops.aten.result_type(a, b)
-    res = flag_gems.result_type(a, b)
+    ref = _reference(a, b)
+    res = _candidate(a, b)
 
     # Swapping dtype/rank assignments can change promotion priority.
     _assert_result(res, ref)
@@ -296,8 +460,8 @@ def test_result_type_mixed_dtype_rank_role(a_dtype, a_rank, b_dtype, b_rank):
 def test_result_type_scalar_over_0d_tensor(dtype, scalar):
     inp = _make_tensor(dtype, ())
 
-    ref = torch.ops.aten.result_type(inp, scalar)
-    res = flag_gems.result_type(inp, scalar)
+    ref = _reference(inp, scalar)
+    res = _candidate(inp, scalar)
 
     _assert_result(res, ref)
 
@@ -307,10 +471,10 @@ def test_result_type_scalar_over_0d_tensor(dtype, scalar):
     "dtype,scenario", tu.selected_cases(SPECIAL_VALUE_ROWS, quick=[])
 )
 def test_result_type_ignores_element_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
 
-    ref = torch.ops.aten.result_type(inp, inp)
-    res = flag_gems.result_type(inp, inp)
+    ref = _reference(inp, inp)
+    res = _candidate(inp, inp)
 
     _assert_result(res, ref)
 
@@ -320,15 +484,22 @@ def test_result_type_ignores_element_values(dtype, scenario):
 def test_result_type_tensor_invalid_other(other):
     inp = _make_tensor(torch.float32, (4,))
 
-    with pytest.raises((TypeError, RuntimeError)):
-        flag_gems.result_type(inp, other)
+    # Newer Torch versions reject the out-of-range Python integer with
+    # OverflowError; other invalid schema arguments retain their old contract.
+    errors = (
+        (TypeError, RuntimeError, OverflowError)
+        if type(other) is int
+        else (TypeError, RuntimeError)
+    )
+    with pytest.raises(errors):
+        _candidate(inp, other)
 
 
 @pytest.mark.result_type
 @pytest.mark.parametrize("first,second", [("a", "b"), ([1, 2], 1), (1, [1, 2])])
 def test_result_type_invalid_scalar_pair(first, second):
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems.result_type(first, second)
+        _candidate(first, second)
 
 
 @pytest.mark.result_type
@@ -336,7 +507,7 @@ def test_result_type_missing_argument():
     inp = _make_tensor(torch.float32, (4,))
 
     with pytest.raises((TypeError, RuntimeError)):
-        flag_gems.result_type(inp)
+        _candidate(inp)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -356,10 +527,10 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_result_type_shared_grid(dtype, shape, value_range):
-    inp = tu.make_input(dtype, shape, value_range)
-    other = tu.make_input(dtype, (), ["-1", "1"])
-    ref = torch.ops.aten.result_type(inp, other)
+    inp = _make_input(dtype, shape, value_range)
+    other = _make_input(dtype, (), ["-1", "1"])
+    ref = _reference(inp, other)
 
-    res = flag_gems.result_type(inp, other)
+    res = _candidate(inp, other)
 
     _assert_result(res, ref)
