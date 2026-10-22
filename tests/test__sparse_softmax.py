@@ -151,7 +151,14 @@ def _cpu_oracle(inp, dim, half_to_float=None, *, dtype=None, out=None):
 
 
 def _coalesce_input(inp):
-    if flag_gems.vendor_name == "kunlunxin":
+    # Ascend's native coalescer rejects these stored-value dtypes before the
+    # softmax candidate runs. Keep their original payload/support on CPU rather
+    # than dropping the dtype or converting the input to a different dtype.
+    needs_cpu = flag_gems.vendor_name == "kunlunxin" or (
+        flag_gems.vendor_name == "ascend"
+        and inp.dtype in (torch.int8, torch.uint8, torch.int64)
+    )
+    if needs_cpu:
         return _copy_tensor(_copy_tensor(inp, "cpu").coalesce(), inp.device)
     return inp.coalesce()
 
