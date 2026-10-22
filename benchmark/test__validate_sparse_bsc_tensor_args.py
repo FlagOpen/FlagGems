@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -197,6 +199,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class _SparseBscArgsBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     def set_shapes(self, shape_file_path=None):
         # `default_shapes` keeps a caller-supplied shape file authoritative while
         # still listing the built-in descriptors when none is configured; a
@@ -211,7 +221,7 @@ def test__validate_sparse_bsc_tensor_args():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._validate_sparse_bsc_tensor_args,
-        gems_op=getattr(flag_gems, "_validate_sparse_bsc_tensor_args", None),
+        gems_op=flag_gems._validate_sparse_bsc_tensor_args,
         dtypes=_BENCH_DTYPES,
     )
     bench.run()
