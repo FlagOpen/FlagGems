@@ -429,6 +429,34 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _values_copy
+  description: 'Returns a fresh non-aliasing copy of the values tensor of a
+sparse COO tensor, shaped (nnz,) + dense_shape.
+
+    '
+  for:
+  - _values_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _values_copy_out
+  description: 'A variant of `_values_copy()` that writes the copied COO values
+tensor into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _values_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
@@ -3806,6 +3834,31 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: convert_indices_from_csr_to_coo
+  description: Decodes COO coordinates from CSR row pointers and stored column indices,
+    returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and
+    column positions.
+  for:
+  - _convert_indices_from_csr_to_coo
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: convert_indices_from_csr_to_coo_out
+  description: A variant of `_convert_indices_from_csr_to_coo()` that writes the decoded
+    COO coordinate table into the `out` tensor.
+  for:
+  - _convert_indices_from_csr_to_coo.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: convert_weight_to_int4pack
   description: Converts a weight tensor to int4 packed format.
   for:
@@ -3973,6 +4026,37 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_from_and_resize
+  description: 'Copies the elements of `self` into `dst` after resizing `dst` in place
+    to `self`''s shape, and returns `dst`. The data movement (including dtype casting)
+    runs in a Triton kernel.
+
+    '
+  for:
+  - _copy_from_and_resize
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: copy_from_and_resize_out
+  description: 'A variant of `_copy_from_and_resize()` that also mirrors the resized
+    result into the `out` tensor and returns `out`.
+
+    '
+  for:
+  - _copy_from_and_resize.out
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: copy_sparse_to_sparse_
   description: |
     Copy COO indices, values, and coalesced metadata into a sparse destination in place.
@@ -8760,6 +8844,34 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fw_primal_copy
+  description: 'Returns a fresh copy of the primal value saved by `fw_primal`,
+the copy companion of `_fw_primal`.
+
+    '
+  for:
+  - _fw_primal_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: fw_primal_copy_out
+  description: 'A variant of `fw_primal_copy()` that writes the fresh copy of the
+primal value saved by `fw_primal` into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _fw_primal_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
@@ -8968,6 +9080,19 @@ ops:
   - KernelGen
   kind:
   - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: ger
+  description: 'Outer product of two 1-D tensors: out[i, j] = self[i] * vec2[j].
+
+    '
+  for:
+  - ger
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
   stages:
   - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
@@ -10402,6 +10527,18 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: indices
+  description: Returns the coordinate (indices) tensor of a coalesced sparse COO tensor
+    as a zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
+  for:
+  - indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: indices_copy
   description: 'Returns a fresh non-aliasing copy of the coordinate (indices) tensor
     of a sparse COO tensor, shaped (sparse_dim, nnz).
@@ -13196,17 +13333,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: max_pool3d_backward
-  description: The backward version of `max_pool2d_with_indices()`.
-  for:
-  - nn.functional.max_pool3d
-  labels:
-  - aten
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: max_pool3d_with_indices
   description: Applies a 3D max pooling over an input signal composed of several input
     planes.
@@ -14500,6 +14626,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_tensor_list
+  description: Constructs a nested tensor from a list of tensors, each element of
+    which becomes a component of the resulting nested tensor.
+  for:
+  - _nested_tensor_from_tensor_list
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
@@ -14514,6 +14652,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_storage_offsets
+  description: 'Returns a zero-copy view of the per-tensor storage-offset metadata
+    of a nested tensor.
+
+    '
+  for:
+  - _nested_tensor_storage_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_to_padded_tensor
   description: Converts a nested (ragged) tensor into a padded dense tensor, filling
     unoccupied positions with a scalar padding value.
@@ -17860,6 +18012,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: shape_as_tensor
+  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the
+    CPU device (native resolves the result device from the factory default,
+    not from the input), mirroring `aten::_shape_as_tensor`.
+
+    '
+  for:
+  - _shape_as_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sigmoid
   description: Computes the expit (also known as the logistic sigmoid function) of
     the elements of `input`.
@@ -18580,6 +18747,22 @@ ops:
     '
   for:
   - _sparse_broadcast_to
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_bsc_tensor
+  description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
+    components (ccol_indices, row_indices, and the block values payload) with an optional
+    explicit size.
+
+    '
+  for:
+  - sparse_bsc_tensor.ccol_row_value
+  - sparse_bsc_tensor.ccol_row_value_size
   labels:
   - aten
   - KernelGen
