@@ -39,9 +39,9 @@ class MetadataBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_neg
-def test_is_neg():
+def test_is_neg(monkeypatch):
     # There is no GPU work to time; both paths use the existing operator timer.
-    Config.mode = consts.BenchMode.OPERATOR
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MetadataBenchmark(
         op_name="is_neg",
         torch_op=torch.ops.aten.is_neg.default,
