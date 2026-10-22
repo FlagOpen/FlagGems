@@ -98,6 +98,16 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class OptionalFloatlistBenchmark(OperatorBenchmark):
+    def record_shapes(self, values, addends=None):
+        # Keep the actual full list for native/candidate calls; report the
+        # original constant-list recipe rather than serializing its payload.
+        detail = (
+            {"length": len(addends), "recipe": "constant", "value": _ADDEND}
+            if isinstance(addends, list)
+            else addends
+        )
+        return {"values": list(values.shape), "addends": detail}
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = list(

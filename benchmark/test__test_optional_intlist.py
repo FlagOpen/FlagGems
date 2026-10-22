@@ -104,6 +104,16 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class OptionalIntlistBenchmark(OperatorBenchmark):
+    def record_shapes(self, values, addends=None):
+        # Only reporting is compact: timing still receives every original
+        # list element, including the shared grid's largest arithmetic cases.
+        detail = (
+            {"length": len(addends), "recipe": "constant", "value": _ADDEND}
+            if isinstance(addends, list)
+            else addends
+        )
+        return {"values": list(values.shape), "addends": detail}
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = list(

@@ -137,6 +137,19 @@ class OptionalFilledIntlistBenchmark(OperatorBenchmark):
     so no shared workload is replaced or dropped.
     """
 
+    def record_shapes(self, values, addends=None):
+        # The original core includes billion-element lists. Reporting their
+        # full payload duplicates gigabytes without adding case identity; the
+        # unchanged builder is completely described by its cycle and length.
+        detail = addends
+        if isinstance(addends, list):
+            detail = {
+                "length": len(addends),
+                "recipe": "repeated_cycle",
+                "cycle": list(_ADDEND_CYCLE),
+            }
+        return {"values": list(values.shape), "addends": detail}
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = _dedup_shapes(list(self.shapes) + _BENCH_EXTRA_SHAPES)
