@@ -758,6 +758,7 @@ def test_values_copy_backward(case, dtype):
     _assert_input_unchanged(inp, _input_state)
 
     _assert_copy_result(res_out, ref_out, inp, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
     # Nonuniform upstream, so a swapped or partially reduced gradient cannot pass.
     upstream = tu.make_input(dtype, res_out.shape, ["-1", "1"]) * 3.0 + 1.0
