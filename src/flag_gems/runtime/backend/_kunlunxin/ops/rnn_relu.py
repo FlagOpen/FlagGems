@@ -409,29 +409,13 @@ def _rnn_relu_with_autograd(
 
 
 def _patch_generic_wrapper():
-    """Route direct calls to the generic wrapper (flag_gems.ops.rnn_relu module)
-    to this backend override, but only on the kunlunxin backend.
+    """Route direct calls to the generic module's ``rnn_relu`` to this override."""
+    import sys
 
-    On other backends the generic path is used unchanged.
-    """
-    try:
-        import flag_gems
-
-        if getattr(flag_gems, "device", None) != "cuda" or not hasattr(
-            flag_gems, "vendor_name"
-        ):
-            # early import: flag_gems not fully initialised yet, defer
-            return
-        if getattr(flag_gems, "vendor_name", None) != "kunlunxin":
-            return
-
-        import sys
-
-        _generic_module = sys.modules.get("flag_gems.ops.rnn_relu")
-        if _generic_module is not None and hasattr(_generic_module, "rnn_relu"):
-            _generic_module.rnn_relu = _rnn_relu_with_autograd
-    except (ImportError, AttributeError):
-        pass
+    # ``flag_gems.ops.rnn_relu`` is the function, not the module, so look the
+    # module up in sys.modules.
+    _generic_module = sys.modules["flag_gems.ops.rnn_relu"]
+    _generic_module.rnn_relu = _rnn_relu_with_autograd
 
 
 _patch_generic_wrapper()
