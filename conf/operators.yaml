@@ -5043,7 +5043,7 @@ ops:
   kind:
   - Math
   stages:
-  - stable: '1.0'
+  - stable: '2.2'
 - id: divide
   description: An alias of `div()` for element-wise division.
   for:
