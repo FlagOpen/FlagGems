@@ -70,23 +70,17 @@ backends:
     python: "3.12"
     cmake_backend: CUDA
     triton: triton==3.6.0
-    # Pinned below flagtree 0.7.0: that version's bundled libflagcx.so is
-    # linked against libcudart.so.12, which doesn't exist on this CUDA 13
-    # backend (only libcudart.so.13 is present), so importing
-    # triton.experimental.tle fails with "libcudart.so.12: cannot open
-    # shared object file". flagtree 0.6.1 doesn't pull in that TLE/FlagCX
-    # dependency, so it works here.
-    flagtree: flagtree==0.6.1
+    flagtree: flagtree==0.7.0
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
-      # - flagcx==0.14.0rc2.post2+cuda13.3
     deps:
+      - flagcx==0.14.0rc2.post2+cuda13.3
       - torch==2.11.0+cu130
       - torchaudio==2.11.0+cu130
       - torchvision==0.26.0+cu130
-  ascend-cann850:
 
+  ascend-cann850:
     python: "3.11"
     cmake_backend: NPU
     triton: triton-ascend==3.2.0
