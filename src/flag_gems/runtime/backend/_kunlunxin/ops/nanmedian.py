@@ -2034,6 +2034,18 @@ def _nmdim_launch(rows, M, N, out_values, out_indices):
     kw = dict(num_warps=4, num_stages=1, buffer_size_limit=2048)
     lanes = _nmdim_tile_lanes(key_bits)
     block_n = max(64, triton.next_power_of_2(N))
+    # int64 (8-byte keys) fuses into a broken tile when the width is exactly
+    # 64 lanes: the generated access reads a full 64-lane int64 vector past
+    # the end of a short row, which raises KL_XID_KERNEL_EXCEPTION (status
+    # 719) whenever the over-read leaves the allocated page.  Measured with
+    # the same input/data: block_n=64 crashed in 5/10 fresh processes while
+    # an over-allocated input buffer crashed 0/8, and block_n=128 crashed
+    # 0/40 across N in {3,33,64,65,127,128} and M in {2,258}.  Bumping the
+    # 64-lane case to 128 keeps the exact same kernel semantics (the tile is
+    # clamped and lane-predicated, so N <= 64 still works) and costs nothing
+    # measurable for int64, which is not part of any benchmark matrix.
+    if key64 and block_n == 64:
+        block_n = 128
     dev = rows.device
     if block_n <= lanes:
         with torch_device_fn.device(dev):
