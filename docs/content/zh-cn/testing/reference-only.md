@@ -21,7 +21,7 @@ pytest -q benchmark/test_negative.py --reference-only --output benchmark-referen
 
 无需装饰器或逐个 pytest 声明，也不比较方法是否与基类为同一个函数对象。`get_latency(op, ...)` 的统一契约就是测量传入的 `op`；自定义包装器应委托共享计时层，不得忽略参数而调用 Gems candidate 或自行绕过单次策略。这个封装不承诺控制任意第三方黑盒计时器。`OperatorBenchmark` 已复用此路径。reference-only 不调用同时测量两侧的 `_measure_input`；仅在该方法中定义的自定义 baseline 语义须迁入 `torch_op`/`get_latency` 的统一契约，不能假定本模式会执行它。
 
-本接口不修改或执行正确性 pytest，不提供 correctness reference 的 marker、包装器或截断逻辑。正确性测试继续做源码 review，生成候选后运行原完整正确性测试。性能和正确性 reference 的 dtype、精度、设备、shape 可能不同，不能相互替代。
+本接口不修改或执行正确性 pytest，不提供 correctness reference 的 marker、包装器或截断逻辑。KG 可在此后通过独立注入探针确认正确性 pytest 是否调用候选，生成候选后再执行原完整正确性比较。性能和正确性 reference 的 dtype、精度、设备、shape 可能不同，不能相互替代。
 
 `--reference-only` 与 `--override`、`--override-config`、`--preflight-only`、`--profile-only`、`--list-cases`、`--query`、benchmark `--parallel` 及 xdist 并发互斥。不能与 `tests/` 下的正确性用例混跑。
 
@@ -42,9 +42,9 @@ pytest -q benchmark/test_negative.py --reference-only --output benchmark-referen
 }
 ```
 
-报告区分 `PASSED`、`FAILED`、`UNSUPPORTED`、`ALL_SKIP`、`NO_CASES`，成功测量保存诊断用 `latency_ms`，不含 speedup 或计时器内部调用 count。耗时须有限且非负；允许计时器返回分辨率内的零值，但零值不证明具有有效 headline performance。报告使用 `flaggems.reference/v2` 区别旧版不含测量值的报告，调用方需要同步更新校验。pytest 阶段级失败或跳过另带 `pytest_phase`。原 pytest 中途 skip 时，整个 node 按源语义跳过，之前的调用只保留为执行证据，不据此声称该 node 完整通过。全部跳过可能仍为 pytest exit code 0，因此调用方必须检查结构化状态，不能仅凭进程退出码判断就绪。
+报告区分 `PASSED`、`FAILED`、`UNSUPPORTED`、`ALL_SKIP`、`NO_CASES`，成功测量保存诊断用 `latency_ms`，不含 speedup 或计时器内部调用 count。耗时须有限且非负；允许计时器返回分辨率内的零值，但零值不证明具有有效 headline performance。报告使用 `flaggems.reference/v2` 区别旧版不含测量值的报告，调用方需要同步更新校验。pytest 阶段级失败或跳过另带 `pytest_phase`。fixture/marker 或 case 循环外的 node-level skip 按原节点语义处理，之前的调用只保留为执行证据，不据此声称该 node 完整通过。全部跳过可能仍为 pytest exit code 0，因此调用方必须检查结构化状态，不能仅凭进程退出码判断就绪。
 
-KGS 配套通过设备 slot 和隔离 worker 调用此命令，核对冻结 benchmark fingerprint 与 core case 覆盖，保存原报告；该执行事实不是模型审核结论，也不写入候选优化 ledger。KG 的 `skip_review` 仅跳过模型审核，不跳过这项目标验证。
+KGS 配套通过设备 slot 和隔离 worker 调用此命令，核对冻结 benchmark fingerprint 与 core case 覆盖，保存原报告；该执行事实不是模型审核结论，也不写入候选优化 ledger。KG 的 skip 选项不能绕过这项目标验证。
 
 ### 逐 case 失败信息
 
@@ -58,4 +58,8 @@ KGS 配套通过设备 slot 和隔离 worker 调用此命令，核对冻结 benc
 
 ## 验证范围
 
-当前封装基于官方 `kernelgen-dev@01522dc6`，不修改算子 correctness pytest。Host 测试使用现有 `kernelgen-nvidia-cu128` 容器，验证固定调用次数、普通 benchmark 不变、fresh-input、backward、精确 case 选择、skip/异常、配置互斥与既有 Preflight/Profile 路径；设备同步使用模拟实现。未安装或升级依赖，本轮尚未进行 GPU/跨芯片验收。此前 70 算子的 reference-only 结果属于旧实现，不能作为此次新计时封装的真机验收。
+逐 case 收集改动基于 `kernelgen-dev@0c4c52bd`，不修改算子 correctness pytest。独立 host 转移测试 11 项通过；H20 现有运行时执行完整 reference-only 回归 68 项通过，覆盖固定调用次数、普通 benchmark 不变、fresh-input、backward、case 选择、skip/异常和配置互斥。
+
+2026-10-22 真机验证代码为 `ba3f08bb`：摩尔原 foreach_erf core 测例收集到 28 PASSED、2 OUT_OF_MEMORY，失败后仍执行后续 case；原 bartlett_window 收集 10 个 TEST_ERROR，linalg_ldl_factor_ex 收集 4 个运行库错误，均保留失败。摩尔另用原生产 case 循环做设备 API 诊断，实际 BF16 不支持、缺失 Torch API、FP32 成功依次得到 FAILED/FAILED/PASSED，skip_eligible 分别为 true/false。昇腾原 kaiser_window 收集 15 个 backend 错误，均不可 skip。旧 _logcumsumexp 和 quantized_max_pool2d 的当前 pytest 缺少 case 接口，未进入 reference 循环，不计为通过。
+
+配套 KG 经真实 KGS HTTP 接口完成正常 fmod_scalar 与失败 bartlett_window 的 prepare/review 验证；后者返回 REFERENCE_TEST_ERROR 及 10 项失败摘要。所有失败仍阻止下游优化；没有模型调用、没有安装或升级运行时依赖。较早 70 算子的结果属于旧实现，不能替代本轮验证。
