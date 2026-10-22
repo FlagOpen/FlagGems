@@ -129,7 +129,7 @@ def test_true_divide_tensor_dispatch(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.true_divide_tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -144,7 +144,7 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     torch.ops.aten.true_divide_.Tensor(ref_inp1, ref_inp2)
-    res_out = flag_gems.true_divide_(inp1, inp2)
+    res_out = flag_gems.true_divide_tensor_(inp1, inp2)
 
     assert res_out is inp1
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
