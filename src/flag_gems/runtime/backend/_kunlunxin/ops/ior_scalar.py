@@ -11,3 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import logging
+
+from .bitwise_or import bitwise_or_scalar_
+
+logger = logging.getLogger(__name__)
+
+
+def ior_scalar(self, other):
+    """__ior__.Scalar == bitwise_or_.Scalar; delegate to the tuned kernel."""
+    logger.debug("GEMS_KUNLUNXIN IOR_SCALAR")
+    return bitwise_or_scalar_(self, other)
