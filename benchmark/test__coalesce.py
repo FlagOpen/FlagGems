@@ -245,11 +245,18 @@ class CoalesceBenchmark(OperatorBenchmark):
         if len(args) != 1 or not isinstance(args[0], torch.Tensor):
             raise ValueError("Expected the original single COO input")
         inp = args[0]
-        shape, nnz = tuple(inp.shape), (
-            inp._nnz() if inp.layout == torch.sparse_coo else -1
-        )
+        if inp.layout != torch.sparse_coo:
+            raise ValueError("External baseline requires a COO input")
+        expected_device = torch.device(flag_gems.device)
+        if expected_device.type != "cpu" and expected_device.index is None:
+            expected_device = torch.device(
+                expected_device.type, base.torch_device_fn.current_device()
+            )
+        shape, nnz = tuple(inp.shape), inp._nnz()
+        indices, values = inp._indices(), inp._values()
         if (
             inp.layout != torch.sparse_coo
+            or inp.device != expected_device
             or inp.is_coalesced()
             or inp.requires_grad
             or (shape, nnz) not in _COALESCE_SHAPES
@@ -262,6 +269,14 @@ class CoalesceBenchmark(OperatorBenchmark):
             or inp._indices().device != inp.device
             or inp._values().device != inp.device
             or inp._values().dtype != inp.dtype
+            or tuple(indices.stride()) != (nnz, 1)
+            or tuple(values.stride()) != (1,)
+            or indices.storage_offset() != 0
+            or values.storage_offset() != 0
+            or indices.is_conj()
+            or indices.is_neg()
+            or values.is_conj()
+            or values.is_neg()
         ):
             raise ValueError(
                 "External baseline requires the original uncoalesced COO recipe"

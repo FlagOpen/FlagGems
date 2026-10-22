@@ -117,15 +117,21 @@ def _expected_device():
     return device
 
 
-def _check_input(inp, dtype, *, coo=True):
+def _check_input(inp, dtype, *, coo=True, shape=None, nnz=None):
     try:
         assert isinstance(inp, torch.Tensor)
         assert inp.dtype == dtype, "factory must preserve the requested dtype"
         assert (
             inp.device == _expected_device()
         ), "factory must preserve the target device"
+        if shape is not None:
+            assert tuple(inp.shape) == tuple(
+                shape
+            ), "factory must preserve the requested shape"
         if coo:
             assert inp.layout == torch.sparse_coo
+            if nnz is not None:
+                assert inp._nnz() == nnz, "factory must preserve the requested nnz"
     except Exception as error:
         raise AssertionError("Invalid input contract or metadata inspection") from error
 
@@ -339,7 +345,7 @@ def test_coalesce(case, dtype):
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
     assert not inp.is_coalesced()
-    _check_input(inp, dtype)
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
     # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
@@ -362,10 +368,11 @@ def test_coalesce_coalesced_input(case, dtype):
     _require_native_case(dtype, coalesced=True)
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     # Prepare sorted, duplicate-free input on CPU, then test the target device.
     inp = inp.cpu().coalesce().to(flag_gems.device)
     assert inp.is_coalesced()
-    _check_input(inp, dtype)
+    _check_input(inp, dtype, shape=shape)
     ref_inp = tu.to_reference(inp)
 
     ref_out = _reference_coalesce(ref_inp)
@@ -399,7 +406,7 @@ def test_coalesce_value_ranges(value_range, dtype, case):
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype, value_range=value_range)
     assert not inp.is_coalesced()
-    _check_input(inp, dtype)
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
     # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
@@ -445,7 +452,7 @@ def test_coalesce_nan_inf(case, dtype, scenario):
         device=flag_gems.device,
     )
     assert not inp.is_coalesced()
-    _check_input(inp, dtype)
+    _check_input(inp, dtype, shape=shape, nnz=nnz)
     ref_inp = tu.to_reference(inp)
 
     # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
