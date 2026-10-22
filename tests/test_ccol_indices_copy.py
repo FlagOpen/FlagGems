@@ -161,10 +161,11 @@ def _make_payload(dtype, shape, value_range):
 
 
 def _make_special_payload(dtype, scenario):
-    if flag_gems.vendor_name == "kunlunxin" and dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
+        # Ascend's device-side float64 cast narrows these payloads to float32.
         payloads = {
             "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
             "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
