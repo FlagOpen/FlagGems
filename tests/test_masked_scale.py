@@ -53,8 +53,7 @@ def test_masked_scale(shape, dtype, scale):
     mask_before = mask.clone()
     ref_out = _reference(inp, mask, scale)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._masked_scale(inp, mask, scale)
+    res_out = flag_gems._masked_scale(inp, mask, scale)
 
     assert res_out.shape == inp.shape
     assert res_out.dtype == dtype
@@ -72,8 +71,7 @@ def test_masked_scale_noncontiguous():
     assert not mask.is_contiguous()
     ref_out = _reference(inp, mask, 2.0)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._masked_scale(inp, mask, 2.0)
+    res_out = flag_gems._masked_scale(inp, mask, 2.0)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -88,7 +86,6 @@ def test_masked_scale_special_values():
     mask = torch.tensor([1, 1, 1, 0, 1, 0], dtype=torch.uint8, device=flag_gems.device)
     ref_out = _reference(inp, mask, -0.5)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._masked_scale(inp, mask, -0.5)
+    res_out = flag_gems._masked_scale(inp, mask, -0.5)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
