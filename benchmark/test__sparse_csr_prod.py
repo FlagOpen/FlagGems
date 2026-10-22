@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from functools import cached_property
 from pathlib import Path
@@ -258,9 +259,21 @@ _NV_COLLECTION_SOURCE = "6e9d4fec5adb0c0d0bb864d74b3c7c1df50adfdd"
 @dataclass
 class _CrossMachineMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
+    candidate_timer: dict | None = None
 
 
 class SparseCsrProdBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        op = override if override is not None else self.gems_op
+        if not callable(op):
+            raise ValueError(
+                "CSR product benchmark requires a direct candidate callable"
+            )
+        # Missing candidates must never fall back to native/use_gems dispatch.
+        return op, nullcontext(), override is not None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=_PROD_SHAPES)
 
@@ -409,11 +422,32 @@ class SparseCsrProdBenchmark(OperatorBenchmark):
             # always executes the real timer, even for the identical callable.
             self._native_measurement_pending = False
             return self._import_nvidia_latency(args, kwargs)
-        return super().get_latency(op, *args, **kwargs)
+        latency = super().get_latency(op, *args, **kwargs)
+        if (
+            flag_gems.vendor_name == "ascend"
+            and base.Config.mode.value == "kernel"
+            and latency == math.inf
+        ):
+            # do_bench_npu returns +Inf when no kernel_details.csv exists.
+            # CPU-oracle bootstraps perform CPU work and transfers without NPU
+            # compute kernels. Measure the actual callable with synchronization
+            # instead; this is target timing, never the imported H800 baseline.
+            latency = base.measure_calls(
+                lambda: op(*args, **kwargs), warmup_calls=1, repeat_calls=3
+            )
+            self._candidate_timer = {
+                "kind": "synchronized_host_wall_clock",
+                "requested_mode": base.Config.mode.value,
+                "reason": "NPU kernel profiler returned +Inf",
+                "warmup_calls": 1,
+                "timed_calls": 3,
+            }
+        return latency
 
     def _measure_input(self, input, case_id=None):
         self._imported_baseline = None
         self._native_measurement_pending = False
+        self._candidate_timer = None
         external = _uses_external_baseline()
         if external and (
             self.is_backward
@@ -439,9 +473,11 @@ class SparseCsrProdBenchmark(OperatorBenchmark):
                 )
             ):
                 raise ValueError("Target candidate latency must be finite and positive")
-            if self._imported_baseline is not None:
+            if self._imported_baseline is not None or self._candidate_timer is not None:
                 return _CrossMachineMetrics(
-                    **asdict(metric), baseline_source=self._imported_baseline
+                    **asdict(metric),
+                    baseline_source=self._imported_baseline,
+                    candidate_timer=self._candidate_timer,
                 )
             return metric
         finally:

@@ -102,6 +102,8 @@ def _reference(inp, dim, keepdim=False, *, dtype=None, out=None):
 
 def _assert_result_close(result, reference, required_device):
     # Observe target results only after checking their original target ABI.
+    assert isinstance(result, torch.Tensor)
+    assert isinstance(reference, torch.Tensor)
     assert result.device == required_device
     assert result.dtype == reference.dtype
     assert result.shape == reference.shape
