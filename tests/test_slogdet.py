@@ -27,6 +27,20 @@ REAL_DTYPES = [torch.float32, torch.float64]
 COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 
+def _skip_native_reference(dtype):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and not utils.TO_CPU
+        and dtype in (torch.float64, torch.complex64, torch.complex128)
+    ):
+        pytest.skip("MUSA native slogdet reference does not support FP64/complex inputs")
+
+
+def _skip_eye_input(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        pytest.skip("Ascend torch.eye input construction does not support FP64")
+
+
 def _tols(dtype, n):
     """Tolerances scaled by matrix size: LU error grows with the pivot count."""
     if dtype in (torch.float32, torch.complex64):
@@ -39,6 +53,7 @@ def _tols(dtype, n):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet(shape, dtype):
     """Accuracy against the ATen reference for real dtypes."""
+    _skip_native_reference(dtype)
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
@@ -61,6 +76,11 @@ def test_slogdet(shape, dtype):
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_slogdet_complex(shape, dtype):
     """Complex input: sign is a unit-modulus complex number, logabsdet is real."""
+    _skip_native_reference(dtype)
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip(
+            "Ascend torch.randn input construction does not support complex dtypes"
+        )
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
@@ -92,6 +112,7 @@ def test_slogdet_near_singular_scaled(dtype):
     diag([1e-11, 1]) has determinant 1e-11: ATen returns a finite logabsdet, so
     classifying it as singular with a fixed 1e-10 threshold is wrong.
     """
+    _skip_native_reference(dtype)
     for small in (1e-8, 1e-11, 1e-12, 1e-20):
         vals = torch.tensor([small, 1.0], dtype=dtype, device=flag_gems.device)
         A = torch.diag(vals)
@@ -114,6 +135,8 @@ def test_slogdet_near_singular_scaled(dtype):
 @pytest.mark.parametrize("scale", [1e-3, 1e-2, 1e2, 1e3])
 def test_slogdet_scaled_identity(dtype, scale):
     """Uniformly scaled matrices stay accurate away from unit magnitude."""
+    _skip_native_reference(dtype)
+    _skip_eye_input(dtype)
     n = 4
     A = torch.eye(n, dtype=dtype, device=flag_gems.device) * scale
     ref = torch.linalg.slogdet(utils.to_reference(A))
@@ -132,6 +155,7 @@ def test_slogdet_scaled_identity(dtype, scale):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_singular(dtype):
     """Exactly singular matrices give sign 0 and logabsdet -inf."""
+    _skip_native_reference(dtype)
     cases = {
         "zeros": torch.zeros((4, 4), dtype=dtype, device=flag_gems.device),
         "zero_diag_entry": torch.diag(
@@ -167,6 +191,7 @@ def test_slogdet_singular(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_1x1(dtype):
     """1x1 matrices: sign(a), log|a|."""
+    _skip_native_reference(dtype)
     for val in (2.5, -2.5, 1.0):
         A = torch.tensor([[val]], dtype=dtype, device=flag_gems.device)
         ref = torch.linalg.slogdet(utils.to_reference(A))
@@ -213,6 +238,7 @@ def test_slogdet_empty_batch(dtype):
 @pytest.mark.parametrize("batch_shape", [(2,), (2, 3), (2, 3, 2)])
 def test_slogdet_multi_dim_batch(dtype, batch_shape):
     """Multi-dimensional batches reduce over the trailing two dims only."""
+    _skip_native_reference(dtype)
     n = 4
     A = torch.randn(*batch_shape, n, n, dtype=dtype, device=flag_gems.device)
     ref = torch.linalg.slogdet(utils.to_reference(A))
@@ -234,6 +260,7 @@ def test_slogdet_multi_dim_batch(dtype, batch_shape):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_non_contiguous(dtype):
     """Transposed and strided views must match, and must not be mutated."""
+    _skip_native_reference(dtype)
     n = 6
     base = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
 
@@ -302,6 +329,8 @@ def test_slogdet_large(n):
     Rounding both dimensions up to a power of two would make n=1025 build a
     2048x2048 block and exceed Triton's maximum tensor size.
     """
+    _skip_native_reference(torch.float64)
+    _skip_eye_input(torch.float64)
     dtype = torch.float64
     torch.manual_seed(0)
     # A diagonally dominant matrix keeps the LU well conditioned so the
@@ -321,6 +350,8 @@ def test_slogdet_large(n):
 @pytest.mark.slogdet
 def test_slogdet_large_1025():
     """The exact size called out in review: 1025x1025."""
+    _skip_native_reference(torch.float64)
+    _skip_eye_input(torch.float64)
     n = 1025
     dtype = torch.float64
     torch.manual_seed(0)
@@ -357,6 +388,8 @@ def test_slogdet_invalid_inputs():
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_backward(dtype):
     """d logabsdet / dA == inv(A)^T, matching ATen."""
+    _skip_native_reference(dtype)
+    _skip_eye_input(dtype)
     n = 5
     torch.manual_seed(0)
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
@@ -380,6 +413,8 @@ def test_slogdet_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_batched_backward(dtype):
     """Batched backward parity."""
+    _skip_native_reference(dtype)
+    _skip_eye_input(dtype)
     n = 4
     torch.manual_seed(0)
     A = torch.randn(3, n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
@@ -403,6 +438,7 @@ def test_slogdet_batched_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_identity(dtype):
     """The identity has sign 1 and logabsdet 0."""
+    _skip_eye_input(dtype)
     for n in (1, 3, 8, 65):
         A = torch.eye(n, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
