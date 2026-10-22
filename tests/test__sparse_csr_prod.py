@@ -47,6 +47,22 @@ def _cpu_oracle(inp, dim, keepdim=False, *, dtype=None, out=None):
     cpu = _move_reference(inp, "cpu")
     if out is None:
         expected = native.dim_dtype(cpu, dim, keepdim, dtype=dtype)
+        # Empty global CSR reductions on the inspected CPU stacks expose an
+        # uninitialized scalar values buffer despite crow=[0, 0] and no column
+        # indices. It represents no stored entry. Preserve the native support,
+        # result shape and promoted dtype, with a valid empty values component.
+        if (
+            expected.layout == torch.sparse_csr
+            and expected.col_indices().numel() == 0
+            and expected.values().ndim == 0
+        ):
+            expected = torch.sparse_csr_tensor(
+                expected.crow_indices().clone(),
+                expected.col_indices().clone(),
+                torch.empty(0, dtype=expected.dtype, device="cpu"),
+                size=expected.shape,
+                device="cpu",
+            )
         result = _move_reference(expected, inp.device)
     else:
         if out.device != inp.device:
