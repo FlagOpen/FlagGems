@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::sparse_csr_tensor.crow_col_value_size(Tensor crow_indices,
 #     Tensor col_indices, Tensor values, int[] size, *, ScalarType? dtype=None,
@@ -32,10 +34,8 @@ from . import base, consts
 #
 # The factory has no elementwise/unary/reduction analogue, so no public
 # Benchmark family applies; the two-phase GenericBenchmark (case_fn +
-# build_inputs_fn) is used instead. `gems_op` is resolved through
-# `getattr` because the candidate is injected by the KernelGen harness via
-# `--override` and is not necessarily present as a public
-# `flag_gems.sparse_csr_tensor` attribute at import time.
+# build_inputs_fn) is used instead. The candidate calls the direct flag_gems
+# callable by default while retaining an optional process-local override.
 #
 # Each benchmark case is (tensor_shape, nnz). The nnz is distributed across the
 # rows with a deterministic pattern, so the crow/col arrays and the values
@@ -102,6 +102,14 @@ class SparseCsrTensorBenchmark(OperatorBenchmark):
     """Two-phase GenericBenchmark feeding the raw CSR components to the
     ``sparse_csr_tensor`` factory call."""
 
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_SHAPES)
 
@@ -113,7 +121,7 @@ def test_sparse_csr_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_csr_tensor,
-        gems_op=getattr(flag_gems, "sparse_csr_tensor", None),
+        gems_op=flag_gems.sparse_csr_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
