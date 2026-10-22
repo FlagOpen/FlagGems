@@ -95,9 +95,18 @@ def _device(device):
 
 
 def _view_from_storage(inp, storage, device):
-    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
-        storage, inp.storage_offset(), inp.size(), inp.stride()
-    )
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype == torch.float64:
+        # A typed device factory narrows FP64; a byte view retains its storage.
+        raw = torch.empty(0, dtype=torch.uint8, device=device).set_(
+            storage, 0, (storage.nbytes(),), (1,)
+        )
+        out = raw.view(inp.dtype).as_strided(
+            inp.size(), inp.stride(), inp.storage_offset()
+        )
+    else:
+        out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+            storage, inp.storage_offset(), inp.size(), inp.stride()
+        )
     if inp.is_conj():
         out = out.conj()
     if inp.is_neg():
@@ -123,12 +132,6 @@ def _copy_to(inp, device):
 def _check_values(inp, dtype, shape):
     assert inp.shape == torch.Size(shape)
     assert inp.device == _device(flag_gems.device)
-    if (
-        flag_gems.vendor_name == "kunlunxin"
-        and dtype == torch.float64
-        and inp.dtype == torch.float32
-    ):
-        pytest.skip("Kunlunxin constructs requested float64 sparse payloads as float32")
     assert inp.dtype == dtype
     return inp
 
@@ -153,6 +156,7 @@ def _make_payload(dtype, shape, value_range):
     if flag_gems.vendor_name == "kunlunxin" and dtype in (
         torch.float8_e4m3fn,
         torch.float8_e5m2,
+        torch.float64,
     ):
         inp = _copy_to(_cpu_values(dtype, shape, value_range), flag_gems.device)
     else:
@@ -163,7 +167,7 @@ def _make_payload(dtype, shape, value_range):
 def _make_special_payload(dtype, scenario):
     if (
         flag_gems.vendor_name == "kunlunxin"
-        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2, torch.float64)
     ) or (flag_gems.vendor_name == "ascend" and dtype == torch.float64):
         # Ascend's device-side float64 cast narrows these payloads to float32.
         payloads = {
@@ -187,17 +191,21 @@ def _assert_values_equal(actual, expected, *, device, equal_nan=False):
     if flag_gems.vendor_name == "kunlunxin" and actual.dtype in (
         torch.float8_e4m3fn,
         torch.float8_e5m2,
+        torch.float64,
     ):
-        # Retain the original tensor contract before observing FP8 values on
-        # CPU, where decoding avoids the missing device comparison kernels.
+        # Retain the original contract before CPU observation; keep FP64
+        # precision while decoding FP8 for the missing comparison kernels.
         assert actual.dtype == expected.dtype
         assert actual.shape == expected.shape and actual.layout == expected.layout
         assert actual.device == device
         assert expected.device == (
             torch.device("cpu") if utils.TO_CPU else actual.device
         )
-        actual = _copy_to(actual, "cpu").float()
-        expected = _copy_to(expected, "cpu").float()
+        actual = _copy_to(actual, "cpu")
+        expected = _copy_to(expected, "cpu")
+        if actual.dtype != torch.float64:
+            actual = actual.float()
+            expected = expected.float()
     utils.gems_assert_equal(actual, expected, equal_nan=equal_nan)
 
 
