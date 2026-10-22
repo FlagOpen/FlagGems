@@ -12,50 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""KunlunXin (XPU) implementation of `upsample_linear1d_backward`.
-
-With ``align_corners=False`` and an integer size ratio (``output_size == k *
-input_size`` or ``input_size == k * output_size``) the source coordinate
-``source(o) = (o + 0.5) / k - 0.5`` is exactly ``k``-periodic, so the backward
-map becomes a fixed stencil:
-
-* upscale: input ``x`` reads the compile-time taps ``o = k*x + j`` with the
-  compile-time weights ``1 - |frac((j + 0.5)/k - 0.5)|``;
-* downscale: input ``x = k*o + q + p`` takes ``grad_out[o]`` times the
-  compile-time weight of ``p`` (``0.5`` at the two straddling positions when
-  ``k`` is even, ``1`` at ``q`` when it is odd).
-
-Both directions then address memory with an affine lane index and constant
-offsets, which KunlunXin lowers to block DMA. A runtime ``tl.minimum`` /
-``tl.maximum`` anywhere in an address instead turns the access into a per-lane
-discrete gather -- measured 10-20x slower on this operator -- so neither fast
-path clamps an address:
-
-* upscale: the taps of the two boundary columns of each row leave the row.
-  Those two columns are the *only* ones that do (see the proof below), so they
-  are recomputed by a 64-lane boundary kernel, and the main kernel is allowed
-  to read the neighbouring row's bytes for them. Only the very first and last
-  tap of the whole tensor would leave the *allocation*, which is covered by a
-  copy of ``grad_output`` with ``k`` zero elements of slack on each side.
-* downscale reads and writes need no repair at all: ``k*o + q + 1 <= in_w - 1``
-  for every ``o``.
-
-Two further XPU-specific constraints shaped these kernels:
-
-* **The lane index must be the flat element index, not a ``[rows, cols]``
-  tile.** The identical address pattern costs 0.72 ms flattened and 7.3 ms as
-  a 2-D tile -- a 10x penalty that has nothing to do with the addresses.
-* ``out_w == k * in_w`` implies ``row * out_w + k * col == k * (row * in_w +
-  col)``, so the flat index keeps the upscale addresses affine *across* rows;
-  the block size is therefore free of any row-alignment constraint.
-
-Everything else (``align_corners=True``, non-integer ratios, tiny tensors) uses
-the general gather kernel below, which clamps every address and gates the
-weight instead of relying on a masked load's ``other`` value: on KunlunXin a
-masked ``tl.load`` still issues the access, so an unclamped lane can address
-far outside ``grad_output`` and wedge the device.
-"""
-
 import logging
 import math
 
@@ -345,6 +301,56 @@ def _general_upsample_linear1d_backward(
             BLOCK=block,
         )
     return grad_in
+
+
+@libentry()
+@triton.jit
+def upsample_linear1d_backward_window_kernel(
+    grad_output,
+    grad_input,
+    in_w,
+    out_w,
+    scale,
+    inv_scale,
+    BI: tl.constexpr,
+    WIN: tl.constexpr,
+    ALIGN_CORNERS: tl.constexpr,
+):
+    row = ext.program_id(0)
+    blk = ext.program_id(1)
+    j = blk * BI + tl.arange(0, BI)
+    j = tl.minimum(j, in_w - 1)
+    jf = j.to(tl.float32)
+
+    if ALIGN_CORNERS:
+        # contributors satisfy i * scale in [j - 1, j + 1)
+        lower = (jf - 1.0) * inv_scale
+    else:
+        # contributors satisfy scale * (i + 0.5) - 0.5 in [j - 1, j + 1)
+        lower = (jf - 0.5) * inv_scale - 0.5
+    base = lower.to(tl.int32) - 1
+
+    out_base = row * out_w
+    acc = tl.zeros((BI,), dtype=tl.float32)
+    for k in tl.static_range(WIN):
+        i = base + k
+        valid = (i >= 0) & (i < out_w)
+        index = tl.minimum(tl.maximum(i, 0), out_w - 1)
+        grad = tl.load(grad_output + out_base + index).to(tl.float32)
+        if ALIGN_CORNERS:
+            src = index.to(tl.float32) * scale
+        else:
+            src = scale * (index.to(tl.float32) + 0.5) - 0.5
+            src = tl.maximum(src, 0.0)
+        # src >= 0 -> float-to-int truncation is exactly floor
+        x0 = src.to(tl.int32)
+        weight1 = src - x0.to(tl.float32)
+        weight0 = 1.0 - weight1
+        x1 = x0 + tl.where(x0 < in_w - 1, 1, 0)
+        weight = tl.where(x0 == j, weight0, 0.0) + tl.where(x1 == j, weight1, 0.0)
+        acc += grad * tl.where(valid, weight, 0.0)
+
+    tl.store(grad_input + row * in_w + j, acc)
 
 
 def upsample_linear1d_backward(
