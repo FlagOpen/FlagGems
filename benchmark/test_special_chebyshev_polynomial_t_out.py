@@ -90,7 +90,7 @@ def test_special_chebyshev_polynomial_t_out():
     bench = ChebyshevPolynomialTOutBenchmark(
         op_name="special_chebyshev_polynomial_t_out",
         torch_op=torch.special.chebyshev_polynomial_t,
-        gems_op=flag_gems.ops.special_chebyshev_polynomial_t_out,
+        gems_op=flag_gems.special_chebyshev_polynomial_t_out,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

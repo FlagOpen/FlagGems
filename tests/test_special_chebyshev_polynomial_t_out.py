@@ -27,7 +27,7 @@ def _seed_random_inputs():
 
 def _assert_out_dispatch(caplog):
     expected = (
-        f"{utils.gems_log_prefix(flag_gems.ops.special_chebyshev_polynomial_t_out)} "
+        f"{utils.gems_log_prefix(flag_gems.special_chebyshev_polynomial_t_out)} "
         "SPECIAL_CHEBYSHEV_POLYNOMIAL_T_OUT"
     )
     assert expected in caplog.text
@@ -45,7 +45,7 @@ def test_special_chebyshev_polynomial_t_out_scalar_degree(shape, dtype):
     out = torch.empty_like(x)
     original_pointer = out.data_ptr()
 
-    res_out = flag_gems.ops.special_chebyshev_polynomial_t_out(x, degree, out)
+    res_out = flag_gems.special_chebyshev_polynomial_t_out(x, degree, out)
 
     assert res_out is out
     assert res_out.data_ptr() == original_pointer
@@ -165,4 +165,4 @@ def test_special_chebyshev_polynomial_t_out_rejects_unsupported_dtype():
     out = torch.empty((16,), dtype=torch.float32, device=flag_gems.device)
 
     with pytest.raises(ValueError, match="only supports float32/float64"):
-        flag_gems.ops.special_chebyshev_polynomial_t_out(x, 3, out)
+        flag_gems.special_chebyshev_polynomial_t_out(x, 3, out)
