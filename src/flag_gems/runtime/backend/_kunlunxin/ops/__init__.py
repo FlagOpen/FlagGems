@@ -37,14 +37,19 @@ from ._foreach_addcdiv_ import (
     _foreach_addcdiv__Tensor,
 )
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
-from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
+from ._foreach_addcmul_scalar_list import (  # noqa: F401
+    _foreach_addcmul__Scalar,
+    _foreach_addcmul__ScalarList,
+    _foreach_addcmul__Tensor,
+    _foreach_addcmul_Scalar,
+    _foreach_addcmul_ScalarList,
+    _foreach_addcmul_Tensor,
+)
 from ._foreach_atan import _foreach_atan, _foreach_atan_
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__Scalar,
     _foreach_add__ScalarList,
-    _foreach_add_Scalar,
-    _foreach_add_ScalarList,
-    _foreach_clamp_max__Scalar,
+            _foreach_clamp_max__Scalar,
     _foreach_clamp_max__ScalarList,
     _foreach_clamp_max_Scalar,
     _foreach_clamp_max_ScalarList,
@@ -54,9 +59,7 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_clamp_min_ScalarList,
     _foreach_div__Scalar,
     _foreach_div__ScalarList,
-    _foreach_div_Scalar,
-    _foreach_div_ScalarList,
-    _foreach_maximum__Scalar,
+            _foreach_maximum__Scalar,
     _foreach_maximum__ScalarList,
     _foreach_maximum_Scalar,
     _foreach_maximum_ScalarList,
@@ -66,18 +69,12 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_minimum_ScalarList,
     _foreach_mul__Scalar,
     _foreach_mul__ScalarList,
-    _foreach_mul_Scalar,
-    _foreach_mul_ScalarList,
-    _foreach_pow__Scalar,
+            _foreach_pow__Scalar,
     _foreach_pow__ScalarList,
-    _foreach_pow_Scalar,
-    _foreach_pow_ScalarAndTensor,
-    _foreach_pow_ScalarList,
-    _foreach_sub__Scalar,
+        _foreach_pow_ScalarAndTensor,
+        _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
-    _foreach_sub_Scalar,
-    _foreach_sub_ScalarList,
-)
+        )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
@@ -792,6 +789,7 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .sym_numel import sym_numel
 from .t_copy import t_copy, t_copy_out
 from .take import take, take_out
 from .take_along_dim import take_along_dim_kernel  # noqa: F401
@@ -882,7 +880,12 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
+    "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
+    "_foreach_addcmul__Tensor",
+    "_foreach_addcmul_Scalar",
     "_foreach_addcmul_ScalarList",
+    "_foreach_addcmul_Tensor",
     "_foreach_asin",
     "_foreach_asin_",
     "_foreach_atan",
@@ -912,9 +915,7 @@ __all__ = [
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
     "_foreach_pow_List",
-    "_foreach_pow_Scalar",
     "_foreach_pow_ScalarAndTensor",
-    "_foreach_pow_ScalarList",
     "_foreach_round",
     "_foreach_round_",
     "_foreach_rsqrt",
@@ -1696,6 +1697,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "SUPPORTED_FP8_DTYPE",
+    "sym_numel",
     "t_copy",
     "t_copy_out",
     "take",
