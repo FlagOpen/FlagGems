@@ -28,6 +28,7 @@ builder.
 
 import itertools
 import numbers
+from contextlib import nullcontext
 
 import pytest
 import torch
@@ -147,6 +148,14 @@ def _build_inputs_fn(plan, dtype, device):
 class ValidateCompressedSparseIndicesBenchmark(OperatorBenchmark):
     """Descriptor-validator benchmark on the operator's own geometries."""
 
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     def set_shapes(self, shape_file_path=None):
         # The generic core_shapes.yaml entries are far too large once their last
         # dimension is read as a compressed dimension, so this operator's own
@@ -163,7 +172,7 @@ def test_validate_compressed_sparse_indices():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._validate_compressed_sparse_indices,
-        gems_op=getattr(flag_gems, "_validate_compressed_sparse_indices", None),
+        gems_op=flag_gems._validate_compressed_sparse_indices,
         dtypes=_INDEX_DTYPES,
     )
     bench.run()

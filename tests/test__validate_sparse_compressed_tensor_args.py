@@ -23,12 +23,89 @@ from . import test_utils as tu
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
-def _assert_result_equal(result, reference):
-    # Keep dtype/device checks before moving complex comparisons off the NPU.
-    assert result.dtype == reference.dtype
-    if not au.TO_CPU:
-        assert result.device == reference.device
-    if flag_gems.vendor_name == "ascend" and result.is_complex():
+def _required_device():
+    return torch.empty(0, dtype=torch.uint8, device=flag_gems.device).device
+
+
+def _raw_cpu(tensor):
+    storage = tensor.untyped_storage()
+    raw = torch.empty(0, dtype=torch.uint8, device=tensor.device).set_(
+        storage, 0, (storage.nbytes(),), (1,)
+    )
+    return raw.cpu().clone()
+
+
+def _cpu_physical(tensor):
+    raw = _raw_cpu(tensor)
+    result = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        raw.untyped_storage(), tensor.storage_offset(), tensor.shape, tensor.stride()
+    )
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _input_signature(tensor):
+    storage = tensor.untyped_storage()
+    return (
+        type(tensor),
+        tensor.device,
+        tensor.dtype,
+        tensor.layout,
+        tuple(tensor.shape),
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.is_conj(),
+        tensor.is_neg(),
+        tensor.requires_grad,
+        tensor._version,
+        storage._cdata,
+        tensor.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+
+
+def _call_validator(*args, required_device, **kwargs):
+    # Positive callers only; original negative calls retain their native errors.
+    try:
+        tensors = [x for x in (*args, *kwargs.values()) if isinstance(x, torch.Tensor)]
+        assert len(tensors) == 3
+        assert all(
+            x.device == required_device and x.layout == torch.strided for x in tensors
+        )
+        states = [
+            (x, x.untyped_storage(), _input_signature(x), _raw_cpu(x)) for x in tensors
+        ]
+    except Exception as error:
+        raise AssertionError("invalid positive validator input") from error
+    try:
+        return flag_gems._validate_sparse_compressed_tensor_args(*args, **kwargs)
+    finally:
+        # Held storage and scalar identity precede any post-candidate byte copy.
+        # Full initialized storage includes original offset prefixes/stride gaps.
+        try:
+            for tensor, storage, signature, before in states:
+                assert _input_signature(tensor) == signature
+                assert tensor.untyped_storage()._cdata == storage._cdata
+                assert torch.equal(_raw_cpu(tensor), before)
+        except Exception as error:
+            raise AssertionError("validator modified a read-only input") from error
+
+
+def _assert_result_equal(result, reference, required_device):
+    assert isinstance(result, torch.Tensor) and isinstance(reference, torch.Tensor)
+    assert result.device == required_device
+    assert reference.device == (torch.device("cpu") if au.TO_CPU else required_device)
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    if flag_gems.vendor_name == "kunlunxin" and (
+        result.is_complex() or reference.is_complex()
+    ):
+        result, reference = _cpu_physical(result), _cpu_physical(reference)
+    elif flag_gems.vendor_name == "ascend" and result.is_complex():
         result, reference = result.cpu(), reference.cpu()
     tu.assert_result_equal(result, reference)
 
@@ -328,6 +405,7 @@ _VALUE_DTYPE_RANGE_CASES = [
 def test_validate_sparse_compressed_tensor_args(
     layout, batch, base, dense, blocks, nnz, index_dtype, values_dtype, value_range
 ):
+    required_device = _required_device()
     compressed, plain, values, size = _description(
         layout, batch, base, dense, blocks, nnz, index_dtype, values_dtype, value_range
     )
@@ -340,14 +418,14 @@ def test_validate_sparse_compressed_tensor_args(
     torch.ops.aten._validate_sparse_compressed_tensor_args(
         ref_compressed, ref_plain, ref_values, list(size), layout
     )
-    res_out = flag_gems._validate_sparse_compressed_tensor_args(
-        compressed, plain, values, size, layout
+    res_out = _call_validator(
+        compressed, plain, values, size, layout, required_device=required_device
     )
 
     assert res_out is None
-    _assert_result_equal(compressed, ref_compressed)
-    _assert_result_equal(plain, ref_plain)
-    _assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed, required_device)
+    _assert_result_equal(plain, ref_plain, required_device)
+    _assert_result_equal(values, ref_values, required_device)
 
 
 _SPECIAL_VALUES_CASES = tu.selected_cases(
@@ -385,7 +463,16 @@ def _special_values(values_dtype, scenario, layout):
     nnz = -(-flat.numel() // block_elems)
     stored = nnz * block_elems
     if stored != flat.numel():
-        flat = torch.cat([flat, flat[: stored - flat.numel()]])
+        if flag_gems.vendor_name == "hygon" and values_dtype in _FP8_DTYPES:
+            # Concatenate the exact encoded elements: no FP8 arithmetic or cast.
+            flat = torch.cat(
+                [
+                    flat.view(torch.uint8),
+                    flat[: stored - flat.numel()].view(torch.uint8),
+                ]
+            ).view(values_dtype)
+        else:
+            flat = torch.cat([flat, flat[: stored - flat.numel()]])
     block_shape = blocks if layout in _BLOCKED_LAYOUTS else ()
     values = flat.reshape(nnz, *block_shape).to(flag_gems.device)
     return values, nnz, blocks
@@ -422,6 +509,7 @@ def test_validate_sparse_compressed_tensor_args_special_values(
     # (the format has no infinity) and keeps them for float8_e5m2, so the case list
     # matches each dtype's representable set. The logical size is derived from the
     # helper's element count so the description stays valid for every scenario.
+    required_device = _required_device()
     values, nnz, blocks = _special_values(values_dtype, scenario, layout)
     base = _capacity_base(layout, nnz, blocks)
     compressed, plain, size = _build_indices(
@@ -434,14 +522,14 @@ def test_validate_sparse_compressed_tensor_args_special_values(
     torch.ops.aten._validate_sparse_compressed_tensor_args(
         ref_compressed, ref_plain, ref_values, list(size), layout
     )
-    res_out = flag_gems._validate_sparse_compressed_tensor_args(
-        compressed, plain, values, size, layout
+    res_out = _call_validator(
+        compressed, plain, values, size, layout, required_device=required_device
     )
 
     assert res_out is None
-    _assert_result_equal(compressed, ref_compressed)
-    _assert_result_equal(plain, ref_plain)
-    _assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed, required_device)
+    _assert_result_equal(plain, ref_plain, required_device)
+    _assert_result_equal(values, ref_values, required_device)
 
 
 # Supplementary values-dtype family; selected default-only so that quick keeps the
@@ -480,6 +568,7 @@ def test_validate_sparse_compressed_tensor_args_extra_values_dtypes(
     # The values component only has to be a strided tensor of the right shape, so
     # the required nine dtypes are covered by the grid and float64/bool/complex are
     # covered here for every layout and value range.
+    required_device = _required_device()
     blocks = (2, 2) if layout in _BLOCKED_LAYOUTS else (1, 1)
     compressed, plain, values, size = _description(
         layout, (), (6, 6), (), blocks, 2, torch.int32, values_dtype, value_range
@@ -493,14 +582,14 @@ def test_validate_sparse_compressed_tensor_args_extra_values_dtypes(
     torch.ops.aten._validate_sparse_compressed_tensor_args(
         ref_compressed, ref_plain, ref_values, list(size), layout
     )
-    res_out = flag_gems._validate_sparse_compressed_tensor_args(
-        compressed, plain, values, size, layout
+    res_out = _call_validator(
+        compressed, plain, values, size, layout, required_device=required_device
     )
 
     assert res_out is None
-    _assert_result_equal(compressed, ref_compressed)
-    _assert_result_equal(plain, ref_plain)
-    _assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed, required_device)
+    _assert_result_equal(plain, ref_plain, required_device)
+    _assert_result_equal(values, ref_values, required_device)
 
 
 # Valid descriptions whose operands are non-contiguous or carry a storage offset:
@@ -567,6 +656,7 @@ def _offset_args(case):
 @pytest.mark.underscore_validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("case", _OFFSET_CASES)
 def test_validate_sparse_compressed_tensor_args_offsets_and_strides(case):
+    required_device = _required_device()
     parents, slices, size, layout = _offset_args(case)
     compressed, plain, values = (parent[item] for parent, item in zip(parents, slices))
     # Slicing independent reference parents with the same slices reproduces the exact
@@ -580,8 +670,8 @@ def test_validate_sparse_compressed_tensor_args_offsets_and_strides(case):
     torch.ops.aten._validate_sparse_compressed_tensor_args(
         ref_compressed, ref_plain, ref_values, list(size), layout
     )
-    res_out = flag_gems._validate_sparse_compressed_tensor_args(
-        compressed, plain, values, size, layout
+    res_out = _call_validator(
+        compressed, plain, values, size, layout, required_device=required_device
     )
 
     assert res_out is None
@@ -599,11 +689,11 @@ def test_validate_sparse_compressed_tensor_args_offsets_and_strides(case):
     # checks catch a candidate that re-pointed an operand's storage with set_ (which
     # leaves the parent untouched and the geometry identical), and the parent checks
     # also catch a rewritten hidden index prefix or values stride gap.
-    _assert_result_equal(compressed, ref_compressed)
-    _assert_result_equal(plain, ref_plain)
-    _assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed, required_device)
+    _assert_result_equal(plain, ref_plain, required_device)
+    _assert_result_equal(values, ref_values, required_device)
     for parent, ref_parent in zip(parents, ref_parents):
-        _assert_result_equal(parent, ref_parent)
+        _assert_result_equal(parent, ref_parent, required_device)
 
 
 # Structural violations, one argument family each. Every entry raises a clean
