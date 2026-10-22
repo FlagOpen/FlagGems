@@ -10705,6 +10705,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - beta: '5.3'
+- id: is_non_overlapping_and_dense
+  description: |
+    Return tensor metadata without inspecting or mutating payload values.
+  for:
+    - is_non_overlapping_and_dense
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: is_nonzero
   description: Returns True if the single-element input tensor is not equal to zero.
   for:
