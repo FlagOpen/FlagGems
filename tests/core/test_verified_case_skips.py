@@ -91,3 +91,50 @@ def test_preflight_all_skipped_is_not_success():
     ]:
         config = SimpleNamespace(preflight_records=[{"status": s} for s in states])
         assert eval(expression, {"Config": config}) is expected
+
+
+def test_preflight_single_skip_propagates_but_batch_continues():
+    from contextlib import nullcontext
+
+    tree = ast.parse((ROOT / "benchmark/base.py").read_text())
+    method = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_run_preflight_cases"
+    )
+    config = SimpleNamespace(
+        current_nodeid="test",
+        available_case_ids=set(),
+        executed_case_ids=set(),
+        preflight_records=[],
+    )
+    namespace = {
+        "pytest": pytest,
+        "Config": config,
+        "torch_device_fn": SimpleNamespace(synchronize=lambda: None),
+    }
+    method.args.args[1].annotation = None
+    exec(
+        compile(ast.Module(body=[method], type_ignores=[]), "preflight", "exec"),
+        namespace,
+    )
+
+    def build(case):
+        if case.case_id == "skip":
+            pytest.skip("verified OOM")
+        return ()
+
+    bench = SimpleNamespace(
+        op_name="test",
+        supports_cases=lambda: True,
+        _collect_cases=lambda: [SimpleNamespace(case_id=k) for k in ("skip", "run")],
+        build_inputs=build,
+        unpack_to_args_kwargs=lambda value: (value, {}),
+        _candidate_call=lambda: (lambda: None, nullcontext(), True),
+    )
+    run = namespace["_run_preflight_cases"]
+    with pytest.raises(pytest.skip.Exception, match="verified OOM"):
+        run(bench, {"skip"})
+    config.preflight_records.clear()
+    assert run(bench, None) == ["run"]
+    assert [r["status"] for r in config.preflight_records] == ["skipped", "passed"]
