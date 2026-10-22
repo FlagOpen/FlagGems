@@ -49,6 +49,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 # AT_DISPATCH_INDEX_TYPES admits 32/64-bit integer indices only; every other
@@ -99,6 +100,14 @@ def _range_plan(value_range):
     return _RANGE_PLANS[key]
 
 
+def _descriptor_to_device(tensor):
+    result = tensor.to(flag_gems.device)
+    if flag_gems.vendor_name == "metax":
+        # MetaX transport can turn these row-major CPU fixtures channels-last.
+        result = result.contiguous()
+    return result
+
+
 def _descriptor(counts, first, index_dtype):
     """Build ``(compressed_idx, plain_idx, cdim, nnz)`` from explicit lengths.
 
@@ -123,7 +132,7 @@ def _descriptor(counts, first, index_dtype):
     if cdim == 0 or counts.numel() == 0 or int(counts.max().item()) == 0:
         compressed = torch.zeros(batch + (cdim + 1,), dtype=index_dtype, device=device)
         plain = torch.zeros(batch + (0,), dtype=index_dtype, device=device)
-        return compressed.to(flag_gems.device), plain.to(flag_gems.device), cdim, 0
+        return _descriptor_to_device(compressed), _descriptor_to_device(plain), cdim, 0
 
     flat_counts = counts.reshape(-1, cdim)
     totals = flat_counts.sum(-1, dtype=index_dtype)
@@ -140,7 +149,7 @@ def _descriptor(counts, first, index_dtype):
     compressed[..., 1:] = flat_counts.cumsum(-1, dtype=index_dtype).reshape(
         batch + (cdim,)
     )
-    return compressed.to(flag_gems.device), plain.to(flag_gems.device), cdim, nnz
+    return _descriptor_to_device(compressed), _descriptor_to_device(plain), cdim, nnz
 
 
 def _descriptor_for_range(shape, value_range, index_dtype, dim):
@@ -189,53 +198,114 @@ def _row_profile(pattern, shape, index_dtype):
     return flat.reshape((1,) * len(batch) + (cdim,)).expand(batch + (cdim,))
 
 
-def _input_signature(tensor):
-    """Storage and view identity of an input, not merely its values.
+def _raw_cpu(tensor):
+    storage = tensor.untyped_storage()
+    raw = torch.empty(0, dtype=torch.uint8, device=tensor.device).set_(
+        storage, 0, (storage.nbytes(),), (1,)
+    )
+    return raw.to(device="cpu", copy=True)
 
-    Value comparison alone cannot tell an untouched input from one whose storage
-    was swapped for an equally valued copy, so the storage pointer, offset, size
-    and strides are captured around the candidate call as well.
-    """
+
+def _cpu_copy(tensor):
+    raw = _raw_cpu(tensor)
+    result = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        raw.untyped_storage(), tensor.storage_offset(), tensor.size(), tensor.stride()
+    )
+    if tensor.is_conj():
+        result = result.conj()
+    if tensor.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _input_signature(tensor):
+    """Capture scalar ABI/storage state before a read-only validator call."""
+    storage = tensor.untyped_storage()
     return (
-        tensor.untyped_storage().data_ptr(),
-        tensor.storage_offset(),
-        tuple(tensor.size()),
-        tuple(tensor.stride()),
+        type(tensor),
         tensor.device,
         tensor.dtype,
         tensor.layout,
+        tuple(tensor.size()),
+        tuple(tensor.stride()),
+        tensor.storage_offset(),
+        tensor.is_conj(),
+        tensor.is_neg(),
+        tensor.requires_grad,
+        tensor._version,
+        id(tensor._base),
+        int(storage._cdata),
+        tensor.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
     )
 
 
 def _check_descriptor(is_crow, compressed, plain, cdim, dim, nnz):
-    """Run the reference on private copies, then the candidate on the inputs.
+    """Check the original input ABI and storage before CPU value observation."""
+    required_device = torch.device(flag_gems.device)
+    if required_device.index is None and required_device.type != "cpu":
+        required_device = torch.device(
+            required_device.type, getattr(torch, required_device.type).current_device()
+        )
+    for tensor in (compressed, plain):
+        assert isinstance(tensor, torch.Tensor)
+        assert tensor.device == required_device
+        assert tensor.layout == torch.strided
+        assert tensor.dtype in (torch.int32, torch.int64)
+    assert compressed.dtype == plain.dtype
+    assert tuple(compressed.shape[:-1]) == tuple(plain.shape[:-1])
+    assert compressed.shape[-1] == cdim + 1
+    assert plain.shape[-1] == nnz
 
-    The reference gets its own tensors, so a non-target reference device never
-    runs the native kernel on (or through) the candidate inputs and a native
-    write can never be mistaken for a candidate write; the value comparison
-    against those copies plus the storage signatures taken around the candidate
-    call are the candidate's input-immutability check.
-    """
+    # All fixture storage is initialized. Retain strong objects and independent
+    # bytes: empty pointers can coincide, and live storage metadata can change.
+    before = tuple(
+        (
+            _input_signature(tensor),
+            tensor.untyped_storage(),
+            tensor._base,
+            _raw_cpu(tensor),
+        )
+        for tensor in (compressed, plain)
+    )
     ref_compressed = tu.to_reference(compressed)
     ref_plain = tu.to_reference(plain)
-    before = (_input_signature(compressed), _input_signature(plain))
+    for tensor, reference in ((compressed, ref_compressed), (plain, ref_plain)):
+        assert isinstance(reference, torch.Tensor)
+        assert reference.device == (
+            torch.device("cpu") if utils.TO_CPU else required_device
+        )
+        assert reference.dtype == tensor.dtype
+        assert reference.layout == tensor.layout
+        assert tuple(reference.shape) == tuple(tensor.shape)
+        assert tuple(reference.stride()) == tuple(tensor.stride())
+        assert reference.storage_offset() == tensor.storage_offset()
+        assert reference.is_conj() == tensor.is_conj()
+        assert reference.is_neg() == tensor.is_neg()
+        assert reference.untyped_storage()._cdata != tensor.untyped_storage()._cdata
 
     torch.ops.aten._validate_compressed_sparse_indices(
         is_crow, ref_compressed, ref_plain, cdim, dim, nnz
     )
-    result = flag_gems._validate_compressed_sparse_indices(
-        is_crow, compressed, plain, cdim, dim, nnz
-    )
+    try:
+        result = flag_gems._validate_compressed_sparse_indices(
+            is_crow, compressed, plain, cdim, dim, nnz
+        )
+    finally:
+        for tensor, (signature, storage, base, raw) in zip((compressed, plain), before):
+            assert (
+                _input_signature(tensor) == signature
+            ), "validator changed input ABI/storage"
+            assert tensor.untyped_storage()._cdata == storage._cdata
+            assert tensor._base is base
+            assert torch.equal(
+                _raw_cpu(tensor), raw
+            ), "validator changed initialized input storage"
 
     assert result is None
-    after = (_input_signature(compressed), _input_signature(plain))
-    assert after == before, "the validator must not swap or resize its inputs"
-    if flag_gems.vendor_name == "ascend" and compressed.ndim > 8:
-        # The validator supports high ranks; the NPU comparison kernel does not.
-        compressed, ref_compressed = compressed.cpu(), ref_compressed.cpu()
-        plain, ref_plain = plain.cpu(), ref_plain.cpu()
-    tu.assert_result_equal(compressed, ref_compressed)
-    tu.assert_result_equal(plain, ref_plain)
+    tu.assert_result_equal(_cpu_copy(compressed), _cpu_copy(ref_compressed))
+    tu.assert_result_equal(_cpu_copy(plain), _cpu_copy(ref_plain))
 
 
 @pytest.mark.underscore_validate_compressed_sparse_indices
