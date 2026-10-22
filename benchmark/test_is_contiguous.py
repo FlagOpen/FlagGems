@@ -43,9 +43,9 @@ class MetadataBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_contiguous
-def test_is_contiguous():
+def test_is_contiguous(monkeypatch):
     # There is no GPU work to time; both paths use the existing operator timer.
-    Config.mode = consts.BenchMode.OPERATOR
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MetadataBenchmark(
         op_name="is_contiguous",
         torch_op=torch.ops.aten.is_contiguous.default,
@@ -72,9 +72,10 @@ class MemoryFormatBenchmark(base.Benchmark):
                 yield inp, {"memory_format": fmt}
 
 
+@pytest.mark.is_contiguous
 @pytest.mark.is_contiguous_memory_format
-def test_is_contiguous_memory_format():
-    Config.mode = consts.BenchMode.OPERATOR
+def test_is_contiguous_memory_format(monkeypatch):
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MemoryFormatBenchmark(
         op_name="is_contiguous_memory_format",
         torch_op=torch.ops.aten.is_contiguous.memory_format,

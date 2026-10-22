@@ -64,6 +64,7 @@ def test_is_contiguous(dtype, shape):
         _assert_bool(result, torch.ops.aten.is_contiguous.default(inp))
 
 
+@pytest.mark.is_contiguous
 @pytest.mark.is_contiguous_memory_format
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("shape", _SHAPES)
