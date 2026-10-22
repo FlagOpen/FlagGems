@@ -3973,6 +3973,37 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_from_and_resize
+  description: 'Copies the elements of `self` into `dst` after resizing `dst` in place
+    to `self`''s shape, and returns `dst`. The data movement (including dtype casting)
+    runs in a Triton kernel.
+
+    '
+  for:
+  - _copy_from_and_resize
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: copy_from_and_resize_out
+  description: 'A variant of `_copy_from_and_resize()` that also mirrors the resized
+    result into the `out` tensor and returns `out`.
+
+    '
+  for:
+  - _copy_from_and_resize.out
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: copy_sparse_to_sparse_
   description: |
     Copy COO indices, values, and coalesced metadata into a sparse destination in place.
@@ -8995,6 +9026,19 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: ger
+  description: 'Outer product of two 1-D tensors: out[i, j] = self[i] * vec2[j].
+
+    '
+  for:
+  - ger
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
@@ -10427,6 +10471,18 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: indices
+  description: Returns the coordinate (indices) tensor of a coalesced sparse COO tensor
+    as a zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
+  for:
+  - indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: indices_copy
   description: 'Returns a fresh non-aliasing copy of the coordinate (indices) tensor
     of a sparse COO tensor, shaped (sparse_dim, nnz).
@@ -13221,17 +13277,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: max_pool3d_backward
-  description: The backward version of `max_pool2d_with_indices()`.
-  for:
-  - nn.functional.max_pool3d
-  labels:
-  - aten
-  - nn.functional
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: max_pool3d_with_indices
   description: Applies a 3D max pooling over an input signal composed of several input
     planes.
@@ -14514,6 +14559,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: nested_tensor_from_tensor_list
+  description: Constructs a nested tensor from a list of tensors, each element of
+    which becomes a component of the resulting nested tensor.
+  for:
+  - _nested_tensor_from_tensor_list
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
@@ -18594,6 +18651,22 @@ ops:
     '
   for:
   - _sparse_broadcast_to
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_bsc_tensor
+  description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
+    components (ccol_indices, row_indices, and the block values payload) with an optional
+    explicit size.
+
+    '
+  for:
+  - sparse_bsc_tensor.ccol_row_value
+  - sparse_bsc_tensor.ccol_row_value_size
   labels:
   - aten
   - KernelGen
