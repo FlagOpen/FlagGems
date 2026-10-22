@@ -108,3 +108,6 @@ upsample_bilinear2d_backward_grad_input: test_upsample_bilinear2d_backward
 upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 _flash_attention_forward: test_flash_attention
+
+# The out overload shares correctness tests with the functional overload.
+upsample_nearest_exact2d_out: test_upsample_nearest_exact2d
