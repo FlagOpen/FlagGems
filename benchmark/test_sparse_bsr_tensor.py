@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::sparse_bsr_tensor.crow_col_value_size(Tensor crow_indices,
 #     Tensor col_indices, Tensor values, int[] size, *,
@@ -109,6 +111,14 @@ class SparseBsrTensorBenchmark(OperatorBenchmark):
     """Two-phase GenericBenchmark feeding the raw BSR components to the
     ``sparse_bsr_tensor`` factory call."""
 
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_SHAPES)
 
@@ -120,11 +130,7 @@ def test_sparse_bsr_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_bsr_tensor,
-        # flag_gems has no public ``sparse_bsr_tensor`` direct callable yet; the
-        # candidate is supplied by the KernelGen process-local override keyed on
-        # the public operator name (resolved via
-        # Benchmark._candidate_call inside the benchmark).
-        gems_op=getattr(flag_gems, "sparse_bsr_tensor", None),
+        gems_op=flag_gems.sparse_bsr_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
