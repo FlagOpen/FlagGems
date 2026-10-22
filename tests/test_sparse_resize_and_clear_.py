@@ -94,6 +94,167 @@ _VALUE_RANGE_IDS = [
 ]
 
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
+def _device(value):
+    device = torch.device(value)
+    if device.index is None and device.type not in ("cpu", "meta"):
+        device = torch.device(
+            device.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return device
+
+
+def _to_target(value, dtype=None, shape=None):
+    dtype = value.dtype if dtype is None else dtype
+    shape = tuple(value.shape) if shape is None else tuple(shape)
+    result = value.to(flag_gems.device)
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype in (torch.float64, torch.complex128)
+        and result.dtype != dtype
+    ):
+        pytest.skip(
+            "Kunlunxin target transfer narrows requested float64/complex128 storage"
+        )
+    assert result.dtype == dtype
+    assert result.device == _device(flag_gems.device)
+    assert tuple(result.shape) == shape
+    return result
+
+
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and (
+        dtype in _FP8_DTYPES or dtype == torch.float64
+    ):
+        low, high = (tu.resolve_bound(v, dtype) for v in value_range)
+        value = (
+            torch.full(shape, low, dtype=dtype, device="cpu")
+            if low == high
+            else torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        )
+    else:
+        value = tu.make_input(dtype, shape, value_range)
+    return _to_target(value, dtype, shape)
+
+
+def _make_special_input(dtype, scenario):
+    # Repeat/slice these recipes on CPU too: sparse storage support does not
+    # imply device-side FP8 fill, cast, repeat or slicing kernels exist.
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(dtype)
+
+
+def _cpu_values(value, count=None):
+    # A uint8 storage view avoids unsupported FP8/complex casts and slicing.
+    # For dense growth, copy ONLY the defined original prefix, never its tail.
+    assert value.layout == torch.strided
+    width = value.element_size()
+    storage = value.untyped_storage()
+    if count is not None:
+        assert 0 <= count <= value.numel()
+        if value.is_contiguous():
+            raw = (
+                torch.empty(0, dtype=torch.uint8, device=value.device)
+                .set_(
+                    storage, value.storage_offset() * width, (count, width), (width, 1)
+                )
+                .cpu()
+                .clone()
+            )
+        else:
+            chunks = []
+            for linear in range(count):
+                offset = value.storage_offset()
+                for size, stride in reversed(list(zip(value.shape, value.stride()))):
+                    offset += (linear % size) * stride
+                    linear //= size
+                chunks.append(
+                    torch.empty(0, dtype=torch.uint8, device=value.device)
+                    .set_(storage, offset * width, (width,), (1,))
+                    .cpu()
+                    .clone()
+                )
+            raw = (
+                torch.stack(chunks)
+                if chunks
+                else torch.empty((0, width), dtype=torch.uint8)
+            )
+        result = raw.contiguous().view(value.dtype).reshape(count)
+    else:
+        raw = (
+            torch.empty(0, dtype=torch.uint8, device=value.device)
+            .set_(
+                storage,
+                value.storage_offset() * width,
+                (*value.shape, width),
+                (*(v * width for v in value.stride()), 1),
+            )
+            .cpu()
+            .clone()
+        )
+        result = raw.contiguous().view(value.dtype).reshape(value.shape)
+    if value.is_conj():
+        result = result.conj()
+    if value.is_neg():
+        result = torch._neg_view(result)
+    return result
+
+
+def _reference(value):
+    device = "cpu" if utils.TO_CPU else flag_gems.device
+    if value.layout != torch.sparse_coo:
+        return _cpu_values(value).to(device)
+    result = torch.sparse_coo_tensor(
+        _cpu_values(value._indices()).to(device),
+        _cpu_values(value._values()).to(device),
+        value.shape,
+        device=device,
+        is_coalesced=value.is_coalesced(),
+    )
+    assert result.dtype == value.dtype and result.device == _device(device)
+    return result
+
+
+def _assert_values(result, reference, count=None):
+    assert result.dtype == reference.dtype
+    if count is None:
+        assert result.shape == reference.shape
+    result = _cpu_values(result, count)
+    reference = _cpu_values(reference, count)
+    if result.dtype in _FP8_DTYPES:
+        result, reference = result.float(), reference.float()
+    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+
+
+def _assert_input(value, shape, sparse_dim, nnz, dtype):
+    assert value.layout == torch.sparse_coo and value.dtype == dtype
+    assert value.device == _device(flag_gems.device)
+    assert tuple(value.shape) == tuple(shape)
+    assert value.sparse_dim() == sparse_dim and value._nnz() == nnz
+    assert value._indices().dtype == torch.int64
+    assert value._indices().device == value.device == value._values().device
+    assert value._values().dtype == dtype
+    assert tuple(value._values().shape) == (nnz,) + tuple(shape[sparse_dim:])
+    return value
+
+
+def _assert_devices(result, reference):
+    assert result.device == _device(flag_gems.device)
+    assert reference.device == _device("cpu" if utils.TO_CPU else flag_gems.device)
+    for tensor in (result, reference):
+        assert tensor._indices().device == tensor.device == tensor._values().device
+        assert tensor._indices().dtype == torch.int64
+        assert tensor._values().dtype == tensor.dtype
+
+
 def _default_values(dtype, values_shape, gen):
     # Generate on CPU before transferring; FP8 is cast from float32.
     if dtype.is_floating_point:
@@ -104,6 +265,25 @@ def _default_values(dtype, values_shape, gen):
     if dtype == torch.uint8:
         return torch.randint(0, 6, values_shape, dtype=dtype, generator=gen)
     return torch.randint(-5, 6, values_shape, dtype=dtype, generator=gen)
+
+
+def _candidate_resize(inp, *args):
+    try:
+        required_device, required_dtype, required_type = (
+            inp.device,
+            inp.dtype,
+            type(inp),
+        )
+    except Exception as error:
+        raise AssertionError("Cannot inspect original input ABI") from error
+    try:
+        return flag_gems.sparse_resize_and_clear_(inp, *args)
+    finally:
+        try:
+            assert type(inp) is required_type
+            assert inp.device == required_device and inp.dtype == required_dtype
+        except Exception as error:
+            raise AssertionError("Candidate changed the required input ABI") from error
 
 
 def _make_sparse_input(shape, sparse_dim, nnz, dtype, seed=0, values=None):
@@ -119,12 +299,13 @@ def _make_sparse_input(shape, sparse_dim, nnz, dtype, seed=0, values=None):
         indices = torch.stack(torch.unravel_index(lin, shape[:sparse_dim]), dim=0)
     if values is None:
         values = _default_values(dtype, values_shape, gen)
-    return torch.sparse_coo_tensor(
+    result = torch.sparse_coo_tensor(
         indices.to(flag_gems.device),
-        values.to(flag_gems.device),
+        _to_target(values, dtype, values_shape),
         shape,
         device=flag_gems.device,
     )
+    return _assert_input(result, shape, sparse_dim, nnz, dtype)
 
 
 def _split_for_shape(shape):
@@ -138,6 +319,7 @@ def _split_for_shape(shape):
 
 def _assert_empty_resized(t, shape, sparse_dim, dense_dim, dtype):
     # Check the requested split and empty storage, including its coalesced flag.
+    assert t.device == _device(flag_gems.device)
     assert t.layout == torch.sparse_coo
     assert tuple(t.shape) == tuple(shape)
     assert t.dtype == dtype
@@ -155,18 +337,20 @@ def _assert_empty_resized(t, shape, sparse_dim, dense_dim, dtype):
 def test_sparse_resize_and_clear_(case, dtype):
     src_shape, src_spd, src_dnd, dst_shape, dst_spd, dst_dnd, src_nnz = case
     inp = _make_sparse_input(src_shape, src_spd, src_nnz, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(
         ref_inp, list(dst_shape), dst_spd, dst_dnd
     )
-    res_out = flag_gems.sparse_resize_and_clear_(inp, list(dst_shape), dst_spd, dst_dnd)
+    res_out = _candidate_resize(inp, list(dst_shape), dst_spd, dst_dnd)
 
     # In-place semantics: the op returns self and mutates the input in place.
     assert res_out is inp
     # The mutated input (not only the return value) carries the new structure.
     _assert_empty_resized(inp, dst_shape, dst_spd, dst_dnd, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
@@ -174,16 +358,18 @@ def test_sparse_resize_and_clear_(case, dtype):
 @pytest.mark.parametrize("dtype", _RESIZE_DTYPES)
 def test_sparse_resize_and_clear_empty_source(dst_shape, dst_spd, dst_dnd, dtype):
     inp = _make_sparse_input((4, 5), 2, 0, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(
         ref_inp, list(dst_shape), dst_spd, dst_dnd
     )
-    res_out = flag_gems.sparse_resize_and_clear_(inp, list(dst_shape), dst_spd, dst_dnd)
+    res_out = _candidate_resize(inp, list(dst_shape), dst_spd, dst_dnd)
 
     assert res_out is inp
     _assert_empty_resized(inp, dst_shape, dst_spd, dst_dnd, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
@@ -192,32 +378,36 @@ def test_sparse_resize_and_clear_uncoalesced(dtype):
     indices = torch.tensor(
         [[0, 0, 1, 2], [0, 0, 1, 3]], dtype=torch.long, device=flag_gems.device
     )
-    values = tu.make_input(dtype, (4,), _SELECTED_RANGES[0]).to(flag_gems.device)
+    values = _make_input(dtype, (4,), _SELECTED_RANGES[0]).to(flag_gems.device)
     inp = torch.sparse_coo_tensor(indices, values, (4, 5), device=flag_gems.device)
     assert not inp.is_coalesced()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(ref_inp, [6, 5], 2, 0)
-    res_out = flag_gems.sparse_resize_and_clear_(inp, [6, 5], 2, 0)
+    res_out = _candidate_resize(inp, [6, 5], 2, 0)
 
     assert res_out is inp
     _assert_empty_resized(inp, (6, 5), 2, 0, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
 @pytest.mark.parametrize("dtype,value_range", _VALUE_RANGE_PAIRS, ids=_VALUE_RANGE_IDS)
 def test_sparse_resize_and_clear_value_ranges(dtype, value_range):
-    values = tu.make_input(dtype, (5,), value_range)
+    values = _make_input(dtype, (5,), value_range)
     inp = _make_sparse_input((4, 5), 2, 5, dtype, values=values)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(ref_inp, [6, 5], 2, 0)
-    res_out = flag_gems.sparse_resize_and_clear_(inp, [6, 5], 2, 0)
+    res_out = _candidate_resize(inp, [6, 5], 2, 0)
 
     assert res_out is inp
     _assert_empty_resized(inp, (6, 5), 2, 0, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
@@ -225,21 +415,23 @@ def test_sparse_resize_and_clear_value_ranges(dtype, value_range):
     "dtype,scenario", tu.selected_cases(tu.special_value_cases(_RESIZE_DTYPES))
 )
 def test_sparse_resize_and_clear_nan_inf(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
+    values = _to_target(_make_special_input(dtype, scenario).repeat(2)[:6], dtype)
     indices = torch.tensor(
         [[0, 1, 2, 3, 0, 1], [0, 1, 2, 3, 4, 4]],
         dtype=torch.long,
         device=flag_gems.device,
     )
     inp = torch.sparse_coo_tensor(indices, values, (4, 5), device=flag_gems.device)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(ref_inp, [6, 5], 2, 0)
-    res_out = flag_gems.sparse_resize_and_clear_(inp, [6, 5], 2, 0)
+    res_out = _candidate_resize(inp, [6, 5], 2, 0)
 
     assert res_out is inp
     _assert_empty_resized(inp, (6, 5), 2, 0, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
@@ -248,18 +440,18 @@ def test_sparse_resize_and_clear_nan_inf(dtype, scenario):
 def test_sparse_resize_and_clear_shape_levels(shape, dtype):
     sparse_dim, dense_dim = _split_for_shape(shape)
     inp = _make_sparse_input((4, 5), 2, 3, dtype)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference(inp)
 
     ref_out = torch.ops.aten.sparse_resize_and_clear_(
         ref_inp, list(shape), sparse_dim, dense_dim
     )
-    res_out = flag_gems.sparse_resize_and_clear_(
-        inp, list(shape), sparse_dim, dense_dim
-    )
+    res_out = _candidate_resize(inp, list(shape), sparse_dim, dense_dim)
 
     assert res_out is inp
     _assert_empty_resized(inp, shape, sparse_dim, dense_dim, dtype)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_devices(res_out, ref_out)
+    _assert_values(res_out._indices(), ref_out._indices())
+    _assert_values(res_out._values(), ref_out._values())
 
 
 @pytest.mark.sparse_resize_and_clear_
@@ -269,19 +461,19 @@ def test_sparse_resize_and_clear_invalid_params(size, sparse_dim, dense_dim, dty
     inp = _make_sparse_input((4, 5), 2, 3, dtype)
     with pytest.raises(RuntimeError):
         torch.ops.aten.sparse_resize_and_clear_(
-            tu.to_reference(inp),
+            _reference(inp),
             size,
             sparse_dim,
             dense_dim,
         )
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems.sparse_resize_and_clear_(inp, size, sparse_dim, dense_dim)
+        _candidate_resize(inp, size, sparse_dim, dense_dim)
 
 
 @pytest.mark.sparse_resize_and_clear_
 def test_sparse_resize_and_clear_non_sparse_input():
     inp = torch.randn((4, 5), dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        torch.ops.aten.sparse_resize_and_clear_(tu.to_reference(inp), [4, 5], 2, 0)
+        torch.ops.aten.sparse_resize_and_clear_(_reference(inp), [4, 5], 2, 0)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
-        flag_gems.sparse_resize_and_clear_(inp, [4, 5], 2, 0)
+        _candidate_resize(inp, [4, 5], 2, 0)
