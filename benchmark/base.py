@@ -635,6 +635,10 @@ class Benchmark:
                     torch_device_fn.synchronize()
             except pytest.skip.Exception as exc:
                 record.update(status="skipped", reason=str(exc))
+                # An exact one-case replay must expose its pytest skip to
+                # callers (including the external injection probe plugin).
+                if selected is not None and len(selected) == 1:
+                    raise
                 continue
             except Exception as exc:
                 record["error"] = str(exc)
