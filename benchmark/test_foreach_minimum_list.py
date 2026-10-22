@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -52,6 +54,7 @@ def _build_inputs_fn(plan, dtype, device):
 def test_foreach_minimum_list_benchmark():
     bench = OperatorBenchmark(
         op_name="foreach_minimum_list",
+        gems_op=flag_gems.foreach_minimum_list,
         torch_op=_ATEN_OP,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
