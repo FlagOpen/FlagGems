@@ -471,9 +471,8 @@ def _special_values(payload, shape):
     here, and in particular none that would rebuild the pattern through fp32 or move it
     back to the host. Only the positions repeat: the cycle is a device-side index select
     of the payload itself, so the pattern is kept without a host round-trip and without
-    resolving the bounds again as fp32. Every dtype these rows run, float8_e4m3fn and
-    float8_e5m2 included, has a native index_select kernel on this target (probed), so no
-    dtype-specific path is needed.
+    resolving the bounds again as fp32. Hygon lacks the FP8 index_select kernel, so
+    that path repeats the one-byte encodings on the device instead.
     """
     count = 1
     for size in shape:
@@ -482,6 +481,16 @@ def _special_values(payload, shape):
     if flat.numel() == 0:
         raise ValueError("empty special payload")
     index = torch.arange(count, device=flat.device) % flat.numel()
+    if flag_gems.vendor_name == "hygon" and payload.dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return (
+            flat.view(torch.uint8)
+            .index_select(0, index)
+            .view(payload.dtype)
+            .reshape(shape)
+        )
     return flat.index_select(0, index).reshape(shape)
 
 
