@@ -55,6 +55,10 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend randn does not support complex input construction")
+    if dtype.is_complex and flag_gems.vendor_name == "mthreads":
+        pytest.skip("MUSA replication_pad1d input preparation does not support complex")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
