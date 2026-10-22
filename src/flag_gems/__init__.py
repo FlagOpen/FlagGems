@@ -1446,6 +1446,8 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
+    ("moveaxis.int", moveaxis),
+    ("moveaxis.intlist", moveaxis),
     ("mse_loss", mse_loss),
     ("mse_loss_backward", mse_loss_backward),
     ("msort", msort),
