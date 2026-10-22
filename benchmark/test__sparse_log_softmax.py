@@ -983,6 +983,9 @@ class SparseLogSoftmaxBenchmark(OperatorBenchmark):
 
     """Timing driver whose shapes come from the generated plans."""
 
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=SPARSE_SHAPES)
+
 
 @pytest.mark.underscore_sparse_log_softmax
 def test__sparse_log_softmax():
