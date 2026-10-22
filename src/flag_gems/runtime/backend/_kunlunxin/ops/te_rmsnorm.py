@@ -201,7 +201,7 @@ def _te_rmsnorm_fwd_tile2d_kernel(
     x = tl.load(X + offs).to(tl.float32)
 
     var = tl.sum(x * x, axis=1) / N
-    rrms = 1.0 / tl.sqrt(var + eps)
+    rrms = tl.rsqrt(var + eps)
 
     y = (x * rrms[:, None] * w[None, :]).to(Y.dtype.element_ty)
     tl.store(Y + offs, y)
@@ -229,7 +229,7 @@ def _te_rmsnorm_fwd_flat_kernel(
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < M
     x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
-    rrms = 1.0 / tl.sqrt(x * x + eps)
+    rrms = tl.rsqrt(x * x + eps)
     w = tl.load(W)
     y = (x * rrms).to(Y.dtype.element_ty) * w
     tl.store(Y + offs, y, mask=mask)
@@ -261,7 +261,7 @@ def _te_rmsnorm_fwd_row_kernel(
             x = tl.load(X + cols).to(tl.float32)
         sum_sq += x * x
     var = tl.sum(sum_sq, axis=0) / N
-    rrms = 1.0 / tl.sqrt(var + eps)
+    rrms = tl.rsqrt(var + eps)
     tl.store(INV_RMS + pid, rrms)
 
     for off in range(0, N, BLOCK):
