@@ -360,7 +360,7 @@ def test_capability_failure_does_not_invent_latency_or_call_count(
     )
 
 
-def test_source_skip_preserves_node_semantics_and_unexecuted_records(runner):
+def test_source_case_skip_continues_and_node_skip_remains_distinct(runner):
     bench, config, _ = runner
 
     def skip(value):
@@ -368,13 +368,13 @@ def test_source_skip_preserves_node_semantics_and_unexecuted_records(runner):
             pytest.skip("source condition")
 
     bench.torch_op = skip
-    with pytest.raises(pytest.skip.Exception):
-        bench.run()
+    bench.run()
     assert [r["status"] for r in config.reference_records] == [
         "PASSED",
         "SKIP",
-        "NOT_RUN",
+        "PASSED",
     ]
+    assert reference_report(config.reference_records)["status"] == "PASSED"
     config.reference_records.append(
         {"nodeid": config.current_nodeid, "status": "SKIP", "pytest_phase": "call"}
     )
