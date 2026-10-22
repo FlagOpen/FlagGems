@@ -429,6 +429,34 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _values_copy
+  description: 'Returns a fresh non-aliasing copy of the values tensor of a
+sparse COO tensor, shaped (nnz,) + dense_shape.
+
+    '
+  for:
+  - _values_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _values_copy_out
+  description: 'A variant of `_values_copy()` that writes the copied COO values
+tensor into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _values_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
@@ -3806,6 +3834,31 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: convert_indices_from_csr_to_coo
+  description: Decodes COO coordinates from CSR row pointers and stored column indices,
+    returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and
+    column positions.
+  for:
+  - _convert_indices_from_csr_to_coo
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: convert_indices_from_csr_to_coo_out
+  description: A variant of `_convert_indices_from_csr_to_coo()` that writes the decoded
+    COO coordinate table into the `out` tensor.
+  for:
+  - _convert_indices_from_csr_to_coo.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: convert_weight_to_int4pack
   description: Converts a weight tensor to int4 packed format.
   for:
@@ -8791,6 +8844,34 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fw_primal_copy
+  description: 'Returns a fresh copy of the primal value saved by `fw_primal`,
+the copy companion of `_fw_primal`.
+
+    '
+  for:
+  - _fw_primal_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: fw_primal_copy_out
+  description: 'A variant of `fw_primal_copy()` that writes the fresh copy of the
+primal value saved by `fw_primal` into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _fw_primal_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:
@@ -14560,6 +14641,20 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_storage_offsets
+  description: 'Returns a zero-copy view of the per-tensor storage-offset metadata
+    of a nested tensor.
+
+    '
+  for:
+  - _nested_tensor_storage_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_to_padded_tensor
   description: Converts a nested (ragged) tensor into a padded dense tensor, filling
     unoccupied positions with a scalar padding value.
@@ -17906,6 +18001,21 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: shape_as_tensor
+  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the
+    CPU device (native resolves the result device from the factory default,
+    not from the input), mirroring `aten::_shape_as_tensor`.
+
+    '
+  for:
+  - _shape_as_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sigmoid
   description: Computes the expit (also known as the logistic sigmoid function) of
     the elements of `input`.
