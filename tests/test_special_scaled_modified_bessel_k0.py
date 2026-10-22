@@ -126,6 +126,14 @@ if flag_gems.vendor_name == "nvidia":
         REJECTED_DTYPES.append(torch.complex128)
 
 
+def _assert_output_contract(result, expected):
+    # Check the original output before shared comparison can move it to CPU.
+    shape, dtype, layout, device = expected
+    assert isinstance(result, torch.Tensor)
+    assert result.shape == shape and result.dtype == dtype
+    assert result.layout == layout and result.device == device
+
+
 def _strided_input(dtype, shape, kind):
     """Build a non-contiguous view over a larger parent tensor.
 
@@ -203,7 +211,9 @@ def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_close(res_out, ref_out)
 
@@ -218,7 +228,9 @@ def test_special_scaled_modified_bessel_k0_out(shape, value_range, dtype, out_dt
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0.out(ref_inp, out=ref_buf)
 
     buf = torch.empty(shape, dtype=out_dtype, device=flag_gems.device)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, buf.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp, out=buf)
+    _assert_output_contract(res_out, _expected_output)
 
     # The out= overload must write into, and return, the caller's buffer;
     # comparing pointers would also pass for a distinct alias of one storage.
@@ -234,7 +246,9 @@ def test_special_scaled_modified_bessel_k0_strided(kind, shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_close(res_out, ref_out)
 
@@ -246,7 +260,9 @@ def test_special_scaled_modified_bessel_k0_special_values(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_close(res_out, ref_out)
 
@@ -259,7 +275,9 @@ def test_special_scaled_modified_bessel_k0_edge_values(kind, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+    _assert_output_contract(res_out, _expected_output)
 
     # atol=0: the +max endpoint is a small nonzero limit value (6.79e-20 in
     # float32, 9.35e-155 in float64), so the default absolute tolerance would
@@ -276,7 +294,9 @@ def test_special_scaled_modified_bessel_k0_empty(shape, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_scaled_modified_bessel_k0(ref_inp)
+    _expected_output = (ref_out.shape, ref_out.dtype, ref_out.layout, inp.device)
     res_out = flag_gems.special_scaled_modified_bessel_k0(inp)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_close(res_out, ref_out)
 

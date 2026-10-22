@@ -55,6 +55,14 @@ _CAST_PAIRS_ALL = [
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
+def _assert_output_contract(result, expected):
+    # Check the original output before shared comparison can move it to CPU.
+    shape, dtype, layout, device = expected
+    assert isinstance(result, torch.Tensor)
+    assert result.shape == shape and result.dtype == dtype
+    assert result.layout == layout and result.device == device
+
+
 def _dtype_supported(dtype):
     """Keep optional dtypes only where a static runtime flag reports them.
 
@@ -318,7 +326,9 @@ def test_type_as_value_ranges(shape, value_range, source_dtype, target_dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # A cast is a deterministic elementwise map, so the candidate output has to
     # match the native result exactly (no tolerance, matching NaNs allowed).
@@ -335,7 +345,9 @@ def test_type_as_float_to_int_truncates_toward_zero(source_dtype, target_dtype, 
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_operands_unchanged(inp, ref_inp, other, ref_other)
@@ -366,7 +378,9 @@ def test_type_as_float_to_fp8_rounds_and_overflows(source_dtype, target_dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     tu.assert_result_equal(res_out, ref_out)
     _assert_operands_unchanged(inp, ref_inp, other, ref_other)
@@ -395,7 +409,9 @@ def test_type_as_same_dtype_returns_self(base_shape, slices, transpose, dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # Native returns ``self`` itself for an equal dtype and device, so the
     # candidate has to hand back the very same tensor, view metadata included.
@@ -424,7 +440,9 @@ def test_type_as_same_dtype_empty_returns_self(dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     assert res_out is inp
     tu.assert_result_equal(res_out, ref_out)
@@ -440,7 +458,9 @@ def test_type_as_ignores_other_shape(other_shape, target_dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     assert res_out.shape == inp.shape
     tu.assert_result_equal(res_out, ref_out)
@@ -457,7 +477,9 @@ def test_type_as_ignores_other_view(target_dtype, base_shape, slices):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # Neither ``other``'s values nor its offset, non-contiguous storage may
     # reach the result; only its dtype and device do.
@@ -479,7 +501,9 @@ def test_type_as_strided_input(
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # The cast reads the view's elements, so the values are the asserted
     # property; the result may be compacted into a contiguous tensor.
@@ -510,7 +534,9 @@ def test_type_as_special_values(dtype, scenario):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # NaN/Inf survive a widening float cast; matching NaNs are part of the
     # reference semantics.
@@ -542,7 +568,9 @@ def test_type_as_special_values_into_fp8(source_dtype, target_dtype, scenario):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # float8_e4m3fn has no infinity, so an overflowing input becomes NaN there
     # while float8_e5m2 yields +-inf; both are the native result, matched at
@@ -560,7 +588,10 @@ def test_type_as_backward(shape, source_dtype, target_dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_gradient = (inp.shape, inp.dtype, inp.layout, inp.device)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
     tu.assert_result_equal(res_out, ref_out)
 
     # One independent upstream tensor feeds both graphs.
@@ -569,6 +600,7 @@ def test_type_as_backward(shape, source_dtype, target_dtype):
         ref_out, ref_inp, grad_outputs=tu.to_reference(upstream)
     )[0]
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
+    _assert_output_contract(res_grad, _expected_gradient)
 
     # The cast is linear, so the gradient is exactly the upstream gradient cast
     # back to the input dtype: an exact comparison, no tolerance.
@@ -586,7 +618,9 @@ def test_type_as_empty_input(shape, source_dtype, target_dtype):
     ref_other = tu.to_reference(other)
 
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     assert res_out.shape == shape
     tu.assert_result_equal(res_out, ref_out)
@@ -614,7 +648,9 @@ def test_type_as_follows_other_device(case):
     ref_inp = inp.detach().clone()
     ref_other = other.detach().clone()
     ref_out = torch.ops.aten.type_as(ref_inp, ref_other)
+    _expected_output = (inp.shape, other.dtype, torch.strided, other.device)
     res_out = flag_gems.type_as(inp, other)
+    _assert_output_contract(res_out, _expected_output)
 
     # The result follows ``other``'s dtype and device in every case, so the
     # placement is asserted against ``other`` itself and never against the
