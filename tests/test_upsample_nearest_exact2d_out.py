@@ -17,7 +17,7 @@ def test_upsample_nearest_exact2d_out(shape, dtype, factor):
     ref_x = utils.to_reference(x, True)
     out_size = [shape[2] * factor, shape[3] * factor]
     out_shape = (shape[0], shape[1], out_size[0], out_size[1])
-    ref_out = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
+    ref_out = torch.empty(out_shape, dtype=ref_x.dtype, device=ref_x.device)
     torch.ops.aten._upsample_nearest_exact2d.out(
         ref_x, out_size, None, None, out=ref_out
     )
