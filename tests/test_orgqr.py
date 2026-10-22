@@ -15,6 +15,8 @@ ORGQR_DTYPES = [torch.float32, torch.float64]
 
 
 def make_reflectors(shape, dtype):
+    if flag_gems.vendor_name == "mthreads" and shape[-1] == 0:
+        pytest.skip("MUSA geqrf input preparation does not support zero columns")
     matrix = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     return torch.geqrf(matrix)
 
