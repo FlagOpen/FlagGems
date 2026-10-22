@@ -1,8 +1,8 @@
 {
   "api_version": "v6.0",
-  "name": "true_divide_tensor",
+  "name": "true_divide_",
   "requires_triton_kernel": true,
-  "description": "Representative ATen schema: aten::true_divide.Tensor(Tensor self, Tensor other) -> Tensor. Computes elementwise true division; the shared suite also covers scalar, in-place, and out behavior. Effects below describe only the representative signature.",
+  "description": "Representative ATen schema: aten::true_divide_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). Performs elementwise true division in place, mutating self and returning the same tensor and storage.",
   "parameters": [
     {
       "name": "self",
@@ -18,10 +18,14 @@
     }
   ],
   "outputs": [
-    "out"
+    "self"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "self": "self"
+    }
   }
 }

@@ -41,7 +41,7 @@ def _build_inputs_fn(plan, cur_dtype, device):
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 def test_fake_quantize_learnable_per_tensor_affine():
     bench = base.GenericBenchmark(
-        op_name="_fake_quantize_learnable_per_tensor_affine",
+        op_name="fake_quantize_learnable_per_tensor_affine",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_tensor_affine,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

@@ -43,7 +43,7 @@ class CholeskySolveHelperBenchmark(base.Benchmark):
 @pytest.mark.cholesky_solve_helper
 def test_cholesky_solve_helper():
     bench = CholeskySolveHelperBenchmark(
-        op_name="_cholesky_solve_helper",
+        op_name="cholesky_solve_helper",
         torch_op=torch.ops.aten._cholesky_solve_helper,
         dtypes=[torch.float32],
     )

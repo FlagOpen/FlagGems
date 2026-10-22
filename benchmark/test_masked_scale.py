@@ -59,7 +59,7 @@ class MaskedScaleBenchmark(base.Benchmark):
 @pytest.mark.masked_scale
 def test_masked_scale():
     bench = MaskedScaleBenchmark(
-        op_name="_masked_scale",
+        op_name="masked_scale",
         torch_op=torch.ops.aten._masked_scale,
         dtypes=[torch.float32],
     )

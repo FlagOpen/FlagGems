@@ -58,7 +58,7 @@ def _build_inputs_fn(plan, dtype, device):
 @pytest.mark.compute_linear_combination_out
 def test_compute_linear_combination_out():
     ComputeLinearCombinationOutBenchmark(
-        op_name="_compute_linear_combination_out",
+        op_name="compute_linear_combination_out",
         torch_op=torch.ops.aten._compute_linear_combination.out,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
