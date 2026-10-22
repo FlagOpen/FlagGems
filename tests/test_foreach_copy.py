@@ -23,8 +23,7 @@ _ATEN_OP = torch.ops.aten._foreach_copy
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_copy(*args, **kwargs)
 
 
 @pytest.mark.foreach_copy
