@@ -514,8 +514,18 @@ def _sparse_self(
     if order is not None:
         # The permutation is applied inside every copy, so the row order of each copy
         # matches the (already sorted) index columns it is stored with.
-        parts = [values[i * nnz : (i + 1) * nnz][order] for i in range(copies)]
+        # Hygon's FP8 copy-form native operator exists, but its fixture's advanced
+        # indexing kernel does not. Permute the one-byte encodings without casting
+        # the values, preserving FP8 payloads (including NaNs and signed zero).
+        byte_permutation = flag_gems.vendor_name == "hygon" and dtype in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        )
+        stored = values.view(torch.uint8) if byte_permutation else values
+        parts = [stored[i * nnz : (i + 1) * nnz][order] for i in range(copies)]
         values = torch.cat(parts, dim=0)
+        if byte_permutation:
+            values = values.view(dtype)
     if duplicate:
         indices = torch.cat([indices] * 2, dim=1)
     if storage_offset:
