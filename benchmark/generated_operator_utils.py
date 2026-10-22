@@ -47,7 +47,10 @@ class OperatorBenchmark(base.GenericBenchmark):
         for case in cases:
             if case.case_id not in selected:
                 continue
-            args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+            try:
+                args, kwargs = self.unpack_to_args_kwargs(self.build_inputs(case))
+            except base.pytest.skip.Exception:
+                continue
             op, dispatch, _ = self._candidate_call()
             with dispatch:
                 for _ in range(base.Config.profile_warmup):

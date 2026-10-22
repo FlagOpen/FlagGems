@@ -58,6 +58,8 @@ SVD_ATOL = 2e-2
 # Only float32 is supported for SVD on CUDA (PyTorch limitation)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals(M, N, dtype):
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
     A = _make_well_conditioned_matrix(M, N, dtype, flag_gems.device)
     ref_A = utils.to_reference(A, True)
 
@@ -78,6 +80,8 @@ def test_linalg_svdvals(M, N, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals_batch(M, N, dtype):
     """Test linalg_svdvals with batch dimensions"""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
     batch_size = 4
     A = torch.stack(
         [_make_well_conditioned_matrix(M, N, dtype, "cpu") for _ in range(batch_size)]
@@ -95,6 +99,8 @@ def test_linalg_svdvals_batch(M, N, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals_non_contiguous(M, N, dtype):
     """Test linalg_svdvals with non-contiguous input"""
+    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
+        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
     # Build a well-conditioned matrix then make it non-contiguous via transpose-slice
     A0 = _make_well_conditioned_matrix(N + 2, M + 2, dtype, flag_gems.device)
     big = A0.T

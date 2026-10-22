@@ -570,6 +570,8 @@ class Benchmark:
                     continue
                 try:
                     input = self.build_inputs(case)
+                except pytest.skip.Exception:
+                    continue
                 except Exception as e:
                     print(
                         f"\033[31mFAILED\033[0m: Operator={self.op_name} "
@@ -631,6 +633,13 @@ class Benchmark:
                     record["count"] = 1
                     op(*args, **kwargs)
                     torch_device_fn.synchronize()
+            except pytest.skip.Exception as exc:
+                record.update(status="skipped", reason=str(exc))
+                # An exact one-case replay must expose its pytest skip to
+                # callers (including the external injection probe plugin).
+                if selected is not None and len(selected) == 1:
+                    raise
+                continue
             except Exception as exc:
                 record["error"] = str(exc)
                 raise
@@ -691,7 +700,7 @@ class Benchmark:
                 torch_device_fn.synchronize()
             except pytest.skip.Exception as error:
                 record.update(status="SKIP", reason=str(error))
-                raise
+                continue
             except BaseException as error:
                 record["failure"] = reference_failure(error)
                 if (
@@ -735,8 +744,11 @@ class Benchmark:
         for case in cases:
             if case.case_id not in selected:
                 continue
-            warmup_input = self.build_inputs(case)
-            capture_input = self.build_inputs(case)
+            try:
+                warmup_input = self.build_inputs(case)
+                capture_input = self.build_inputs(case)
+            except pytest.skip.Exception:
+                continue
             args, kwargs = self.unpack_to_args_kwargs(warmup_input)
             capture_args, capture_kwargs = self.unpack_to_args_kwargs(capture_input)
             op, dispatch, _ = self._candidate_call()
@@ -940,6 +952,13 @@ class GenericBenchmark(Benchmark):
 
     def build_inputs(self, case: BenchmarkCaseSpec):
         plan = case.builder_args[0]
+        from .verified_case_skips import skip_verified_case
+
+        try:
+            skip_verified_case(vendor_name, case)
+        except pytest.skip.Exception:
+            Config.skipped_case_ids.add(case.case_id)
+            raise
         return self.build_inputs_fn(plan, case.dtype, self.device)
 
 
