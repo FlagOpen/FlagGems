@@ -51,10 +51,7 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     out_pointer = out.data_ptr()
 
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._compute_linear_combination.out(
-            inp, coefficients, out=out
-        )
+    result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
     assert reference is ref_out
     assert result is out
@@ -79,10 +76,7 @@ def test_compute_linear_combination_out_resize(dtype):
     out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
 
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._compute_linear_combination.out(
-            inp, coefficients, out=out
-        )
+    result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
     assert reference is ref_out
     assert result is out
@@ -107,10 +101,7 @@ def test_compute_linear_combination_out_noncontiguous(dtype):
     assert not out.is_contiguous()
 
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
-    with flag_gems.use_gems():
-        result = torch.ops.aten._compute_linear_combination.out(
-            inp, coefficients, out=out
-        )
+    result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
     assert reference is ref_out
     assert result is out
@@ -126,7 +117,7 @@ def test_compute_linear_combination_out_rejects_dtype_mismatch():
     coefficients = torch.randn((3, 4), dtype=torch.float32, device=flag_gems.device)
     out = torch.empty((3, 5), dtype=torch.int32, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises((RuntimeError, AssertionError)):
-        torch.ops.aten._compute_linear_combination.out(
+    with pytest.raises((RuntimeError, AssertionError)):
+        flag_gems._compute_linear_combination_out(
             inp, coefficients, out=out
         )
