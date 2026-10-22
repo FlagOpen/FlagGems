@@ -103,8 +103,7 @@ def test_thnn_differentiable_gru_cell_backward(
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
@@ -123,8 +122,7 @@ def test_thnn_differentiable_gru_cell_backward_noncontiguous(dtype):
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
@@ -143,8 +141,7 @@ def test_thnn_differentiable_gru_cell_backward_empty(shape):
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
