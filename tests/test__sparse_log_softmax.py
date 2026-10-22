@@ -484,6 +484,19 @@ def _value_shape(shape, sparse_dim, nnz):
 
 
 def _make_coo(indices, values, shape, dtype, is_coalesced=True):
+    if flag_gems.vendor_name == "kunlunxin":
+        # The device invariant checker fails before candidate execution. Validate
+        # the same coordinates/bytes strictly on CPU before target transport.
+        checked = torch.sparse_coo_tensor(
+            _copy_dense_physical(indices, "cpu"),
+            _copy_dense_physical(values, "cpu"),
+            shape,
+            device="cpu",
+            dtype=dtype,
+            is_coalesced=is_coalesced,
+            check_invariants=True,
+        )
+        return _copy_tensor(checked, flag_gems.device)
     return torch.sparse_coo_tensor(
         indices,
         values,
@@ -504,11 +517,7 @@ def _sparse_input(
     dim=0,
     requires_grad=False,
 ):
-    """Valid COO fixture built on the configured device.
-
-    ``tu.make_input`` already returns a tensor on ``flag_gems.device``, so no
-    host roundtrip is involved.
-    """
+    """Build a target COO fixture, with strict CPU validation on Kunlunxin."""
     stored = _nnz(shape, sparse_dim) if nnz is None else nnz
     indices = _coo_indices(
         shape, sparse_dim, stored, _reduced_axis(shape, sparse_dim, dim)
