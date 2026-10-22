@@ -28,6 +28,8 @@ from . import accuracy_utils as utils
 def test_linalg_ldl_factor(shape, dtype, hermitian):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     # Create a symmetric positive definite matrix
     # A = A @ A.T + I ensures positive definiteness
     n = shape[-1]

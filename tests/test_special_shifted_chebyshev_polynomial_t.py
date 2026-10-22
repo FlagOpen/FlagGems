@@ -50,7 +50,9 @@ def test_special_shifted_chebyshev_polynomial_t(shape, dtype, caplog):
     ref_n = n.to(ref_x.device).to(ref_x.dtype)
 
     ref_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(ref_x, ref_n)
-    logger_name = "flag_gems.ops.special_shifted_chebyshev_polynomial_t"
+    logger_name = utils.gems_log_logger(
+        flag_gems.special_shifted_chebyshev_polynomial_t
+    )
     with caplog.at_level("DEBUG", logger=logger_name):
         res_out = flag_gems.special_shifted_chebyshev_polynomial_t(x, n)
     assert (
@@ -76,7 +78,9 @@ def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype, caplog):
     ref_x = utils.to_reference(x, True)
 
     ref_out = torch.ops.aten.special_shifted_chebyshev_polynomial_t(ref_x, n)
-    logger_name = "flag_gems.ops.special_shifted_chebyshev_polynomial_t"
+    logger_name = utils.gems_log_logger(
+        flag_gems.special_shifted_chebyshev_polynomial_t
+    )
     with caplog.at_level("DEBUG", logger=logger_name):
         res_out = flag_gems.special_shifted_chebyshev_polynomial_t(x, n)
     assert (
