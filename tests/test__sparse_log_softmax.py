@@ -496,7 +496,7 @@ def _make_coo(indices, values, shape, dtype, is_coalesced=True):
             is_coalesced=is_coalesced,
             check_invariants=True,
         )
-        return _copy_tensor(checked, flag_gems.device)
+        return _copy_tensor(checked, values.device)
     return torch.sparse_coo_tensor(
         indices,
         values,
