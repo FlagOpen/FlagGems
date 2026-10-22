@@ -119,14 +119,69 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class EmptyStridedBenchmark(base.GenericBenchmark):
+    # These backends execute one original plan per pytest item, allowing a real
+    # resource skip to finish only that plan. Keep the original catalog IDs.
+    canonical_nodeid = None
+    selected_case = None
+
+    def _case_id(self, dtype, ordinal):
+        if self.canonical_nodeid is None:
+            return super()._case_id(dtype, ordinal)
+        return (
+            f"{self.canonical_nodeid}::{base.Config.bench_level.value}::"
+            f"{str(dtype).removeprefix('torch.')}::{ordinal}"
+        )
+
+    def get_case_iter(self, dtype):
+        if self.selected_case is None:
+            yield from super().get_case_iter(dtype)
+        elif self.selected_case.dtype == dtype:
+            yield self.selected_case
+
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "kunlunxin" and case.dtype in (
+            torch.float64,
+            torch.complex128,
+        ):
+            pytest.skip(
+                "Kunlunxin empty_strided narrows requested float64/complex128 "
+                "to float32/complex64 on the target device"
+            )
+        size, stride = case.builder_args[0].builder_args
+        # Only these two original core plans require 32 GiB minus 16 bytes.
+        # Native context memory prevents them fitting the measured 32 GiB
+        # Iluvatar cards. Do not turn unrelated transient load into more skips.
+        capacity_cases = (
+            ((1073741824,), (2,)),
+            ((1024, 1024, 1024), (2097152, 2048, 2)),
+        )
+        if (
+            flag_gems.vendor_name == "iluvatar"
+            and case.dtype == torch.complex128
+            and (tuple(size), tuple(stride)) in capacity_cases
+            and torch.cuda.get_device_properties(self.device).total_memory <= 2**35
+        ):
+            elements = 1 + sum((dim - 1) * step for dim, step in zip(size, stride))
+            required = elements * case.dtype.itemsize
+            # Driver-free memory excludes reusable allocator reservations.
+            # Release this process's unused cache before the capacity check.
+            torch.cuda.empty_cache()
+            free, _ = torch.cuda.mem_get_info()
+            if required > free:
+                pytest.skip(
+                    f"Iluvatar empty_strided allocation needs {required} bytes "
+                    f"but only {free} device bytes are free after cache release; "
+                    f"size={tuple(size)}, stride={tuple(stride)}, dtype={case.dtype}"
+                )
+        return super().build_inputs(case)
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = list(self.shapes) + EMPTY_STRIDED_LAYOUTS
 
 
-@pytest.mark.empty_strided
-def test_empty_strided():
-    bench = EmptyStridedBenchmark(
+def _make_benchmark():
+    return EmptyStridedBenchmark(
         op_name="empty_strided",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
@@ -134,4 +189,38 @@ def test_empty_strided():
         gems_op=getattr(flag_gems, "empty_strided", None),
         dtypes=_ALLOCATOR_DTYPES,
     )
+
+
+@pytest.fixture
+def _empty_strided_case():
+    return None
+
+
+def pytest_generate_tests(metafunc):
+    if (
+        metafunc.function.__name__ != "test_empty_strided"
+        or flag_gems.vendor_name not in ("iluvatar", "kunlunxin")
+    ):
+        return
+    canonical_nodeid = metafunc.definition.nodeid
+    if base.Config.list_cases or base.Config.query:
+        selected = [(canonical_nodeid, None)]
+        labels = ["catalog"]
+    else:
+        planner = _make_benchmark()
+        planner.canonical_nodeid = canonical_nodeid
+        cases = planner.list_cases().cases
+        selected = [(canonical_nodeid, case) for case in cases]
+        labels = [
+            f"{str(case.dtype).removeprefix('torch.')}::{case.ordinal}"
+            for case in cases
+        ]
+    metafunc.parametrize("_empty_strided_case", selected, ids=labels)
+
+
+@pytest.mark.empty_strided
+def test_empty_strided(_empty_strided_case):
+    bench = _make_benchmark()
+    if _empty_strided_case is not None:
+        bench.canonical_nodeid, bench.selected_case = _empty_strided_case
     bench.run()

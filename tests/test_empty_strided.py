@@ -100,7 +100,35 @@ _GRID_ROWS = _layout_rows(tu.selected_shapes())
 _ZERO_SIZES = ((0,), (0, 3), (3, 0, 2))
 
 
-def _assert_allocation(result, reference, size, stride, device):
+def _require_target_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        pytest.skip(
+            "Kunlunxin empty_strided narrows requested float64/complex128 "
+            "to float32/complex64 on the target device"
+        )
+
+
+def _require_deterministic_fill(dtype):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        pytest.skip(
+            f"{flag_gems.vendor_name} empty_strided does not implement "
+            "deterministic uninitialized-memory filling"
+        )
+    if flag_gems.vendor_name == "hygon" and dtype in (
+        torch.complex32,
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip(
+            "Hygon empty_strided deterministic filling is not implemented "
+            "for complex32 or float8"
+        )
+
+
+def _assert_allocation(result, reference, size, stride, device, dtype):
     """Compare the allocated storage with the native allocation.
 
     ``empty_strided`` yields no defined element values, so the observable
@@ -109,12 +137,14 @@ def _assert_allocation(result, reference, size, stride, device):
     """
     assert result.shape == reference.shape == torch.Size(size)
     assert result.stride() == reference.stride() == tuple(stride)
-    assert result.dtype == reference.dtype
+    assert result.dtype == reference.dtype == dtype
     assert result.numel() == reference.numel()
     assert result.storage_offset() == reference.storage_offset() == 0
     assert result.device == reference.device
     assert result.device.type == torch.device(device).type
     assert result._is_view() is False
+    assert not result.is_conj() and not reference.is_conj()
+    assert not result.is_neg() and not reference.is_neg()
     assert result.requires_grad is False
     # Native sizes the storage from the requested strides, so it may be smaller
     # than numel (overlapping layout) or larger (padded layout).
@@ -124,10 +154,40 @@ def _assert_allocation(result, reference, size, stride, device):
     ) == torch.ops.aten.is_non_overlapping_and_dense(reference)
 
 
+def _assert_defined_values_equal(result, reference):
+    # These side checks compare two allocations explicitly requested on the
+    # same device, even with --ref cpu. Check their original ABI before CPU
+    # observation; only initialized or deterministic-fill contents reach here.
+    assert result.device == reference.device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    assert result.is_conj() == reference.is_conj()
+    assert result.is_neg() == reference.is_neg()
+
+    def observe(tensor):
+        values = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+            tensor.untyped_storage().cpu(),
+            tensor.storage_offset(),
+            tensor.size(),
+            tensor.stride(),
+        )
+        if tensor.is_conj():
+            values = values.conj()
+        if tensor.is_neg():
+            values = torch._neg_view(values)
+        return values
+
+    result_values, reference_values = observe(result), observe(reference)
+    tu.assert_result_equal(result_values, reference_values)
+    return result_values, reference_values
+
+
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("dtype", _ALLOCATOR_DTYPES)
 @pytest.mark.parametrize("size,layout", _GRID_ROWS)
 def test_empty_strided_metadata(size, layout, dtype):
+    _require_target_dtype(dtype)
     stride = list(_strides_for(size, layout))
 
     ref_out = torch.ops.aten.empty_strided(
@@ -137,13 +197,14 @@ def test_empty_strided_metadata(size, layout, dtype):
         list(size), stride, dtype=dtype, device=flag_gems.device
     )
 
-    _assert_allocation(res_out, ref_out, size, stride, flag_gems.device)
+    _assert_allocation(res_out, ref_out, size, stride, flag_gems.device, dtype)
 
 
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("dtype", _ALLOCATOR_DTYPES)
 @pytest.mark.parametrize("size,layout", _layout_rows(_ZERO_SIZES))
 def test_empty_strided_zero_element(size, layout, dtype):
+    _require_target_dtype(dtype)
     stride = list(_strides_for(size, layout))
 
     ref_out = torch.ops.aten.empty_strided(
@@ -153,7 +214,7 @@ def test_empty_strided_zero_element(size, layout, dtype):
         list(size), stride, dtype=dtype, device=flag_gems.device
     )
 
-    _assert_allocation(res_out, ref_out, size, stride, flag_gems.device)
+    _assert_allocation(res_out, ref_out, size, stride, flag_gems.device, dtype)
     assert res_out.numel() == 0
     assert res_out.untyped_storage().nbytes() == 0
 
@@ -165,6 +226,7 @@ _FRESH_STRIDE = (21, 3, 1)
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("dtype", _ALLOCATOR_DTYPES)
 def test_empty_strided_allocates_fresh_storage(dtype):
+    _require_target_dtype(dtype)
     stride = list(_FRESH_STRIDE)
 
     ref_out = torch.ops.aten.empty_strided(
@@ -177,13 +239,20 @@ def test_empty_strided_allocates_fresh_storage(dtype):
         list(_FRESH_SIZE), stride, dtype=dtype, device=flag_gems.device
     )
 
-    _assert_allocation(res_out, ref_out, _FRESH_SIZE, _FRESH_STRIDE, flag_gems.device)
+    _assert_allocation(
+        res_out, ref_out, _FRESH_SIZE, _FRESH_STRIDE, flag_gems.device, dtype
+    )
     # Each call hands back its own storage instead of a cached buffer.
     assert res_out is not other
     assert res_out.data_ptr() != other.data_ptr()
-    filled = torch.ones(_FRESH_SIZE, dtype=dtype, device=flag_gems.device)
-    res_out.copy_(filled)
-    tu.assert_result_equal(res_out, filled)
+    encoded = torch.ones(_FRESH_SIZE, dtype=torch.float32, device="cpu").to(dtype)
+    filled = torch.empty(_FRESH_SIZE, dtype=dtype, device=flag_gems.device)
+    assert filled.dtype == dtype and filled.device == res_out.device
+    # Auxiliary writes must not depend on backend ones/copy kernels for FP8
+    # or complex values; the allocator's original storage is written directly.
+    filled.untyped_storage().copy_(encoded.untyped_storage())
+    res_out.untyped_storage().copy_(filled.untyped_storage())
+    _assert_defined_values_equal(res_out, filled)
 
 
 # The out overload resizes the provided buffer to `size` and returns that same
@@ -206,6 +275,8 @@ _OUT_ROWS = (
 @pytest.mark.parametrize("size,stride,buffer_shape,buffer_stride", _OUT_ROWS)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_empty_strided_out(size, stride, buffer_shape, buffer_stride, dtype):
+    _require_target_dtype(dtype)
+
     def make_buffer():
         if buffer_stride is None:
             return torch.empty(buffer_shape, dtype=dtype, device=flag_gems.device)
@@ -215,6 +286,8 @@ def test_empty_strided_out(size, stride, buffer_shape, buffer_stride, dtype):
 
     ref_buffer = make_buffer()
     res_buffer = make_buffer()
+    ref_device = ref_buffer.device
+    res_device = res_buffer.device
     ref_pointer = ref_buffer.untyped_storage().data_ptr()
     res_pointer = res_buffer.untyped_storage().data_ptr()
 
@@ -223,6 +296,10 @@ def test_empty_strided_out(size, stride, buffer_shape, buffer_stride, dtype):
 
     # The out overload mutates the supplied tensor in place and returns it.
     assert res_out is res_buffer
+    assert res_out.device == res_buffer.device == res_device
+    assert ref_buffer.device == ref_device
+    assert res_buffer.is_conj() == ref_buffer.is_conj()
+    assert res_buffer.is_neg() == ref_buffer.is_neg()
     assert res_buffer.shape == ref_buffer.shape == torch.Size(size)
     assert res_buffer.stride() == ref_buffer.stride()
     assert res_buffer.dtype == ref_buffer.dtype == dtype
@@ -265,7 +342,14 @@ def test_empty_strided_optional_argument_default(omitted, expected_device):
     ref_out = torch.ops.aten.empty_strided(list(size), list(stride), **kwargs)
     res_out = flag_gems.empty_strided(list(size), list(stride), **kwargs)
 
-    _assert_allocation(res_out, ref_out, size, stride, expected_device)
+    _assert_allocation(
+        res_out,
+        ref_out,
+        size,
+        stride,
+        expected_device,
+        kwargs.get("dtype", torch.get_default_dtype()),
+    )
     assert res_out.layout == ref_out.layout == torch.strided
 
 
@@ -287,7 +371,7 @@ def test_empty_strided_pin_memory(pin_memory, dtype):
         list(size), list(stride), dtype=dtype, device="cpu", pin_memory=pin_memory
     )
 
-    _assert_allocation(res_out, ref_out, size, stride, "cpu")
+    _assert_allocation(res_out, ref_out, size, stride, "cpu", dtype)
     assert res_out.is_pinned() == ref_out.is_pinned() == pin_memory
 
 
@@ -300,6 +384,11 @@ _PIN_NEGATIVE_DEVICES = [] if flag_gems.device == "cpu" else [flag_gems.device]
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("device", _PIN_NEGATIVE_DEVICES)
 def test_empty_strided_pin_memory_rejected_on_accelerator(device):
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip(
+            "Kunlunxin native empty_strided accepts target pin_memory=True "
+            "without pinning rather than rejecting this invalid request"
+        )
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.empty_strided(
             [2, 3], [3, 1], dtype=torch.float32, device=device, pin_memory=True
@@ -320,6 +409,15 @@ _INVALID_CALLS = (
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("size,stride,extra", _INVALID_CALLS)
 def test_empty_strided_invalid_arguments(size, stride, extra):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and isinstance(stride, (tuple, list))
+        and any(step < 0 for step in stride)
+    ):
+        pytest.skip(
+            "Ascend native empty_strided does not reject negative strides "
+            "and returns a zero-byte allocation instead"
+        )
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.empty_strided(
             size, stride, dtype=torch.float32, device=flag_gems.device, **extra
@@ -337,6 +435,9 @@ _FILL_CASES = [(dtype, fill) for fill in _FILL_FLAGS for dtype in _ALLOCATOR_DTY
 @pytest.mark.empty_strided
 @pytest.mark.parametrize("dtype,fill_uninitialized_memory", _FILL_CASES)
 def test_empty_strided_deterministic_fill(dtype, fill_uninitialized_memory):
+    _require_target_dtype(dtype)
+    if fill_uninitialized_memory:
+        _require_deterministic_fill(dtype)
     algorithms_enabled = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     previous_fill = torch.utils.deterministic.fill_uninitialized_memory
@@ -353,8 +454,19 @@ def test_empty_strided_deterministic_fill(dtype, fill_uninitialized_memory):
         torch.use_deterministic_algorithms(algorithms_enabled, warn_only=warn_only)
         torch.utils.deterministic.fill_uninitialized_memory = previous_fill
 
-    _assert_allocation(res_out, ref_out, _FILL_SIZE, _FILL_STRIDE, flag_gems.device)
+    _assert_allocation(
+        res_out, ref_out, _FILL_SIZE, _FILL_STRIDE, flag_gems.device, dtype
+    )
     if fill_uninitialized_memory:
         # With the fill enabled the contents are defined, so the candidate must
         # reproduce them exactly (NaN values compare with equal_nan).
-        tu.assert_result_equal(res_out, ref_out)
+        observed = _assert_defined_values_equal(res_out, ref_out)
+        for values in observed:
+            if dtype.is_complex:
+                assert bool(torch.isnan(values.to(torch.complex128)).all())
+            elif dtype.is_floating_point:
+                assert bool(torch.isnan(values.float()).all())
+            elif dtype == torch.bool:
+                assert bool(values.all())
+            else:
+                assert bool((values == torch.iinfo(dtype).max).all())
