@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::sparse_coo_tensor (the explicit ``indices_size`` overload) builds a
 # sparse COO tensor from raw (indices, values, size) components. Construction
@@ -74,6 +76,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class SparseCooTensorBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     # sparse_coo_tensor is a sparse construction op; there are no meaningful
     # dense shapes in core_shapes.yaml, so benchmark dedicated
     # (tensor_shape, nnz) pairs instead.
@@ -91,10 +101,7 @@ def test_sparse_coo_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_coo_tensor,
-        # KernelGen injects the candidate via --override; the
-        # direct module callable may not exist until the op is merged, in which
-        # case the benchmark falls back to the dispatcher reference.
-        gems_op=getattr(flag_gems, "sparse_coo_tensor", None),
+        gems_op=flag_gems.sparse_coo_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

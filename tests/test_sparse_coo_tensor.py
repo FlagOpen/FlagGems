@@ -23,14 +23,10 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 from . import test_utils as tu
 
-# Select every overload and contract case with the operator marker.
 pytestmark = pytest.mark.sparse_coo_tensor
 
-# Exercise explicit/inferred size, size-only and size_out COO construction.
-# Preserve the stored entries and coalesced flag; pass dtype/device explicitly.
 _COO_DTYPES = tu.REQUIRED_DTYPES + [torch.float64, torch.int16, torch.bool]
 
-# (size, indices) with explicit 2-D sizes.
 _COO_2D_CASES = [
     ((2, 3), [[0, 1, 1], [2, 0, 2]]),
     ((4, 5), [[0, 1, 3, 0], [1, 2, 4, 0]]),
@@ -39,7 +35,6 @@ _COO_2D_CASES = [
     ((3, 3), [[0, 2, 1, 2], [0, 1, 2, 0]]),
 ]
 
-# Trailing dimensions beyond len(indices) are dense.
 _COO_ND_CASES = [
     ((5,), [[0, 2, 4]]),
     ((3, 4, 5), [[0, 1, 2, 1], [1, 3, 0, 2]]),
@@ -49,7 +44,6 @@ _COO_ND_CASES = [
     ((3, 3, 3), [[0, 2, 1], [1, 0, 2], [2, 1, 0]]),
 ]
 
-# (inferred_size, indices, dense_shape).
 _COO_INFERRED_CASES = [
     ((2, 3), [[0, 1, 1], [2, 0, 2]], ()),
     ((4, 5), [[0, 1, 3, 0], [1, 2, 4, 0]], ()),
@@ -57,29 +51,16 @@ _COO_INFERRED_CASES = [
     ((2, 3, 4), [[0, 1, 1], [2, 0, 2]], (4,)),
 ]
 
-# Size-only construction creates empty storage.
-_COO_SIZE_ONLY_CASES = [
-    ((5,),),
-    ((2, 3),),
-    ((4, 5, 6),),
-]
+_COO_SIZE_ONLY_CASES = [((5,),), ((2, 3),), ((4, 5, 6),)]
 
-# (size, sparse_dim), with no stored entries.
-_COO_EMPTY_CASES = [
-    ((2, 3), 2),
-    ((4, 5, 6), 2),
-    ((2, 3, 4, 5), 2),
-    ((3, 4, 5), 3),
-]
+_COO_EMPTY_CASES = [((2, 3), 2), ((4, 5, 6), 2), ((2, 3, 4, 5), 2), ((3, 4, 5), 3)]
 
-# (variant, size, indices, dense_shape); inferred cases use the expected size.
 _COO_VALUE_CASES = [
     ("indices_size", (2, 3), [[0, 1, 1], [2, 0, 2]], ()),
     ("indices_size", (2, 3, 4, 5), [[0, 1, 1], [2, 0, 2]], (4, 5)),
     ("indices", (2, 3, 4), [[0, 1, 1], [2, 0, 2]], (4,)),
 ]
 
-# (size, indices) for special-value scenarios.
 _NAN_INF_CASES = [
     ((5,), [[0, 2, 4]]),
     ((2, 3), [[0, 1, 1], [2, 0, 2]]),
@@ -87,81 +68,251 @@ _NAN_INF_CASES = [
 ]
 
 _VALUE_RANGE_CASES = [
-    pytest.param(
-        value_range,
-        case,
-        dtype,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
-    )
+    pytest.param(value_range, case, dtype)
     for case in _COO_VALUE_CASES
     for dtype in _COO_DTYPES
     for value_range in tu.selected_ranges()
 ]
 
-
-def _reference_device():
-    # Use CPU only when --ref cpu was requested.
-    return "cpu" if cfg.TO_CPU else flag_gems.device
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
-def _make_values(nnz, dense_shape, dtype, value_range=None):
+def _required_devices():
+    target = torch.empty(0, dtype=torch.uint8, device=flag_gems.device).device
+    return target, torch.device("cpu") if cfg.TO_CPU else target
+
+
+def _storage_bytes(inp):
+    storage = inp.untyped_storage()
+    return torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        storage, 0, (storage.nbytes(),), (1,)
+    )
+
+
+def _copy_tensor(inp, device):
+    # Reinterpret on the original device before transport: typed Double copies
+    # can narrow on KU, and device FP8 casts/slices are auxiliary gaps.
+    raw = _storage_bytes(inp).to(device=device).clone()
+    result = raw.view(inp.dtype).as_strided(
+        inp.shape, inp.stride(), inp.storage_offset()
+    )
+    if inp.is_conj():
+        result = result.conj()
+    if inp.is_neg():
+        result = torch._neg_view(result)
+    result.requires_grad_(inp.requires_grad)
+    return result
+
+
+def _check_dense(inp, dtype, shape, device):
+    assert isinstance(inp, torch.Tensor)
+    assert inp.layout == torch.strided and inp.dtype == dtype
+    assert tuple(inp.shape) == tuple(shape) and inp.device == device
+    return inp
+
+
+def _cpu_encode(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        *_FP8_DTYPES,
+        torch.float64,
+    )
+
+
+def _make_values(nnz, dense_shape, dtype, value_range=None, *, required_device):
     if value_range is None:
         value_range = ["-1", "1"]
     shape = (nnz,) + tuple(dense_shape)
-    return tu.make_input(dtype, shape, value_range).to(flag_gems.device)
+    if _cpu_encode(dtype):
+        # Preserve the original TU make_tensor bounds and dtype clamp semantics.
+        low = tu.resolve_bound(value_range[0], dtype)
+        high = tu.resolve_bound(value_range[1], dtype)
+        if low == high:
+            host = torch.full(shape, low, dtype=dtype, device="cpu")
+        else:
+            host = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+        values = _copy_tensor(host, required_device)
+    else:
+        values = tu.make_input(dtype, shape, value_range).to(required_device)
+    return _check_dense(values, dtype, shape, required_device)
 
 
-def _make_special_values(shape, dtype, scenario):
-    # Prepare repetitions in the requested dtype on CPU before the device transfer.
-    base = tu.make_special_input(dtype, scenario).cpu().to(dtype)
+def _make_special_values(shape, dtype, scenario, *, required_device):
+    # Original FP32 five-payload encoding, then requested dtype and byte repeats
+    # entirely on CPU; no device special factory, typed repeat or narrowing cast.
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    base = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(dtype)
     numel = math.prod(int(extent) for extent in shape)
     repeats = (numel + base.numel() - 1) // base.numel()
-    return base.repeat(repeats)[:numel].reshape(shape).to(flag_gems.device)
+    raw = base.view(torch.uint8).repeat(repeats)[: numel * base.element_size()]
+    host = raw.view(dtype).reshape(shape)
+    return _check_dense(
+        _copy_tensor(host, required_device), dtype, shape, required_device
+    )
+
+
+def _to_reference(inp, *, required_device, reference_device):
+    try:
+        assert isinstance(inp, torch.Tensor) and inp.device == required_device
+        result = _copy_tensor(inp, reference_device)
+        _check_dense(result, inp.dtype, inp.shape, reference_device)
+        assert result.stride() == inp.stride()
+        assert result.storage_offset() == inp.storage_offset()
+        assert result.is_conj() == inp.is_conj() and result.is_neg() == inp.is_neg()
+        assert result.untyped_storage()._cdata != inp.untyped_storage()._cdata
+    except Exception as error:
+        raise AssertionError("Invalid COO reference transport") from error
+    return result
+
+
+def _assert_values(actual, expected, *, required_device, reference_device):
+    assert isinstance(actual, torch.Tensor) and isinstance(expected, torch.Tensor)
+    _check_dense(actual, expected.dtype, expected.shape, required_device)
+    _check_dense(expected, actual.dtype, actual.shape, reference_device)
+    # Original comparison/tolerances/NaN policy remain in TU, after ABI checks.
+    tu.assert_result_equal(_copy_tensor(actual, "cpu"), _copy_tensor(expected, "cpu"))
+
+
+def _assert_indices(actual, expected, *, required_device, reference_device):
+    assert isinstance(actual, torch.Tensor) and isinstance(expected, torch.Tensor)
+    _check_dense(actual, expected.dtype, expected.shape, required_device)
+    _check_dense(expected, actual.dtype, actual.shape, reference_device)
+    utils.gems_assert_equal(_copy_tensor(actual, "cpu"), _copy_tensor(expected, "cpu"))
+
+
+def _input_state(inp):
+    assert isinstance(inp, torch.Tensor) and inp.layout == torch.strided
+    storage = inp.untyped_storage()
+    signature = (
+        type(inp),
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        tuple(inp.shape),
+        tuple(inp.stride()),
+        inp.storage_offset(),
+        inp.requires_grad,
+        inp._version,
+        inp.is_conj(),
+        inp.is_neg(),
+        id(inp._base),
+        storage._cdata,
+        inp.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+    return signature, storage, inp._base
+
+
+def _invoke_candidate(*args, required_device, **kwargs):
+    # Native errors propagate naturally; guard faults cannot satisfy raises.
+    # Writable out is held but intentionally excluded from readonly snapshots.
+    out = kwargs.get("out")
+    inputs = [x for x in args if isinstance(x, torch.Tensor)]
+    try:
+        candidate = flag_gems.sparse_coo_tensor
+        assert callable(candidate), "COO candidate binding is not callable"
+        states = [_input_state(x) for x in inputs]
+        assert all(x.device == required_device for x in inputs)
+        snapshots = [_storage_bytes(x).cpu().clone() for x in inputs]
+        out_dtype = out.dtype if out is not None else None
+        if out is not None:
+            assert isinstance(out, torch.Tensor) and out.device == required_device
+            assert out.layout == torch.sparse_coo
+        expected_dtype = kwargs.get("dtype", out_dtype)
+        explicit_size = kwargs.get("size")
+        if explicit_size is None:
+            if len(args) == 1:
+                explicit_size = args[0]
+            elif len(args) == 3:
+                explicit_size = args[2]
+        expected_shape = tuple(explicit_size) if explicit_size is not None else None
+    except Exception as error:
+        raise AssertionError("Invalid COO input ABI before candidate") from error
+    try:
+        result = candidate(*args, **kwargs)
+    finally:
+        try:
+            for inp, state, snapshot in zip(inputs, states, snapshots):
+                assert _input_state(inp)[0] == state[0]
+                assert torch.equal(_storage_bytes(inp).cpu(), snapshot)
+        except Exception as error:
+            raise AssertionError("COO constructor mutated an input") from error
+    try:
+        assert isinstance(result, torch.Tensor)
+        assert result.device == required_device and result.layout == torch.sparse_coo
+        if expected_dtype is not None:
+            assert result.dtype == expected_dtype
+        if expected_shape is not None:
+            assert tuple(result.shape) == expected_shape
+        if out is not None:
+            assert result is out
+    except Exception as error:
+        raise AssertionError("Invalid COO candidate output ABI") from error
+    return result
 
 
 def _make_out_buffer(size, dtype, device, nnz):
-    # Non-empty buffers make size_out clear existing entries.
+    # Non-empty original buffers make size_out clear existing entries.
     if nnz == 0:
         return torch.ops.aten.sparse_coo_tensor(list(size), dtype=dtype, device=device)
     indices = torch.zeros((len(size), nnz), dtype=torch.long, device=device)
-    values = tu.make_input(dtype, (nnz,), ["0", "1"]).to(device)
+    values = _make_values(
+        nnz, (), dtype, ["0", "1"], required_device=torch.device(device)
+    )
     return torch.ops.aten.sparse_coo_tensor(
         indices, values, list(size), dtype=dtype, device=device
     )
 
 
 def _assert_coo_structure(
-    res_out, ref_out, size, nnz, dtype, sparse_dim, dense_dim, is_coalesced=None
+    res_out,
+    ref_out,
+    size,
+    nnz,
+    dtype,
+    sparse_dim,
+    dense_dim,
+    is_coalesced=None,
+    *,
+    required_device,
+    reference_device,
 ):
-    assert res_out.layout == torch.sparse_coo
-    assert tuple(res_out.shape) == tuple(size)
-    assert res_out.dtype == dtype
-    assert res_out.device.type == torch.device(flag_gems.device).type
-    assert res_out.sparse_dim() == sparse_dim
-    assert res_out.dense_dim() == dense_dim
-    assert torch.ops.aten._nnz(res_out) == nnz
+    assert isinstance(res_out, torch.Tensor) and isinstance(ref_out, torch.Tensor)
+    assert res_out.layout == ref_out.layout == torch.sparse_coo
+    assert tuple(res_out.shape) == tuple(ref_out.shape) == tuple(size)
+    assert res_out.dtype == ref_out.dtype == dtype
+    assert res_out.device == required_device and ref_out.device == reference_device
+    assert res_out.sparse_dim() == ref_out.sparse_dim() == sparse_dim
+    assert res_out.dense_dim() == ref_out.dense_dim() == dense_dim
+    assert torch.ops.aten._nnz(res_out) == torch.ops.aten._nnz(ref_out) == nnz
     assert tuple(torch.ops.aten._indices(res_out).shape) == (sparse_dim, nnz)
     assert tuple(torch.ops.aten._values(res_out).shape) == (nnz,) + tuple(
         size[sparse_dim:]
     )
-    # Preserve the constructor's coalesced flag.
     assert res_out.is_coalesced() == ref_out.is_coalesced()
     if is_coalesced is not None:
         assert res_out.is_coalesced() == is_coalesced
-    # The index tensors are exact integer data stored verbatim.
-    utils.gems_assert_equal(
-        torch.ops.aten._indices(res_out), torch.ops.aten._indices(ref_out)
+    _assert_indices(
+        res_out._indices(),
+        ref_out._indices(),
+        required_device=required_device,
+        reference_device=reference_device,
     )
 
 
-def _call_reference(indices, values, size, dtype):
-    # Clone components; size=None selects the size-inferred overload.
-    ref_indices = tu.to_reference(indices)
-    ref_values = tu.to_reference(values)
+def _call_reference(indices, values, size, dtype, *, required_device, reference_device):
+    ref_indices = _to_reference(
+        indices, required_device=required_device, reference_device=reference_device
+    )
+    ref_values = _to_reference(
+        values, required_device=required_device, reference_device=reference_device
+    )
     if size is None:
         return torch.ops.aten.sparse_coo_tensor(
             ref_indices, ref_values, dtype=dtype, device=ref_indices.device
@@ -171,14 +322,24 @@ def _call_reference(indices, values, size, dtype):
     )
 
 
-def _call_candidate(indices, values, size, dtype, **extra):
-    # Match the reference overload: size=None selects size inference.
+def _call_candidate(indices, values, size, dtype, *, required_device, **extra):
     if size is None:
-        return flag_gems.sparse_coo_tensor(
-            indices, values, dtype=dtype, device=indices.device, **extra
+        return _invoke_candidate(
+            indices,
+            values,
+            dtype=dtype,
+            device=required_device,
+            required_device=required_device,
+            **extra,
         )
-    return flag_gems.sparse_coo_tensor(
-        indices, values, list(size), dtype=dtype, device=indices.device, **extra
+    return _invoke_candidate(
+        indices,
+        values,
+        list(size),
+        dtype=dtype,
+        device=required_device,
+        required_device=required_device,
+        **extra,
     )
 
 
@@ -189,53 +350,79 @@ def _assert_rejected(ref_call, candidate_call):
         candidate_call()
 
 
-_COO_INPUT_DTYPE_CASES = [
-    pytest.param(
-        dtype,
-        marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend"
-            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-        ),
-    )
-    for dtype in _COO_DTYPES
-]
+def _skip_ku_double_allocator(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip(
+            "Kunlunxin native COO Float64 size-only/size_out allocation is unavailable"
+        )
+
+
+_COO_INPUT_DTYPE_CASES = [pytest.param(dtype) for dtype in _COO_DTYPES]
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_SIZE_ONLY_CASES)
 @pytest.mark.parametrize("dtype", _COO_DTYPES)
 def test_sparse_coo_tensor_size(case, dtype):
+    required_device, reference_device = _required_devices()
+    _skip_ku_double_allocator(dtype)
     (size,) = case
-    ref_device = _reference_device()
+    ref_device = reference_device
     ref_out = torch.ops.aten.sparse_coo_tensor(
         list(size), dtype=dtype, device=ref_device
     )
-    res_out = flag_gems.sparse_coo_tensor(
-        list(size), dtype=dtype, device=flag_gems.device
+    res_out = _invoke_candidate(
+        list(size), dtype=dtype, device=required_device, required_device=required_device
     )
-
-    _assert_coo_structure(res_out, ref_out, size, 0, dtype, len(size), 0)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        0,
+        dtype,
+        len(size),
+        0,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor_size_out
 @pytest.mark.parametrize("case", _COO_SIZE_ONLY_CASES)
 @pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_size_out(case, dtype):
+    required_device, reference_device = _required_devices()
+    _skip_ku_double_allocator(dtype)
     (size,) = case
-    ref_device = _reference_device()
+    ref_device = reference_device
     ref_out = _make_out_buffer(size, dtype, ref_device, nnz=2)
-    out = _make_out_buffer(size, dtype, flag_gems.device, nnz=2)
-
+    out = _make_out_buffer(size, dtype, required_device, nnz=2)
     ref_ret = torch.ops.aten.sparse_coo_tensor.size_out(list(size), out=ref_out)
-    res_ret = flag_gems.sparse_coo_tensor(list(size), out=out)
-
+    res_ret = _invoke_candidate(list(size), out=out, required_device=required_device)
     assert res_ret is out
-    _assert_coo_structure(res_ret, ref_ret, size, 0, dtype, len(size), 0)
-    tu.assert_result_equal(res_ret._values(), ref_ret._values())
-    # The returned tensor aliases the caller buffer (asserted above), so the
-    # buffer itself already carries the reference structure.
+    _assert_coo_structure(
+        res_ret,
+        ref_ret,
+        size,
+        0,
+        dtype,
+        len(size),
+        0,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_ret._values(),
+        ref_ret._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
     assert tuple(out.shape) == tuple(size)
     assert torch.ops.aten._nnz(out) == 0
 
@@ -244,83 +431,179 @@ def test_sparse_coo_tensor_size_out(case, dtype):
 @pytest.mark.parametrize("case", _COO_2D_CASES)
 @pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size(case, dtype):
+    required_device, reference_device = _required_devices()
     size, indices = case
     nnz = len(indices[0])
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, (), dtype)
-
-    ref_out = _call_reference(indices_t, values, size, dtype)
-    res_out = _call_candidate(indices_t, values, size, dtype)
-
-    _assert_coo_structure(res_out, ref_out, size, nnz, dtype, 2, 0)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(nnz, (), dtype, required_device=required_device)
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        size,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    res_out = _call_candidate(
+        indices_t, values, size, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        2,
+        0,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_ND_CASES)
 @pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size_nd(case, dtype):
+    required_device, reference_device = _required_devices()
     size, indices = case
     sparse_dim = len(indices)
     dense_dim = len(size) - sparse_dim
     nnz = len(indices[0])
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, tuple(size[sparse_dim:]), dtype)
-
-    ref_out = _call_reference(indices_t, values, size, dtype)
-    res_out = _call_candidate(indices_t, values, size, dtype)
-
-    _assert_coo_structure(res_out, ref_out, size, nnz, dtype, sparse_dim, dense_dim)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(
+        nnz, tuple(size[sparse_dim:]), dtype, required_device=required_device
+    )
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        size,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    res_out = _call_candidate(
+        indices_t, values, size, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        sparse_dim,
+        dense_dim,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_INFERRED_CASES)
 @pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices(case, dtype):
+    required_device, reference_device = _required_devices()
     size, indices, dense_shape = case
     sparse_dim = len(indices)
     dense_dim = len(dense_shape)
     nnz = len(indices[0])
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, dense_shape, dtype)
-
-    ref_out = _call_reference(indices_t, values, None, dtype)
-    res_out = _call_candidate(indices_t, values, None, dtype)
-
-    _assert_coo_structure(res_out, ref_out, size, nnz, dtype, sparse_dim, dense_dim)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(nnz, dense_shape, dtype, required_device=required_device)
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        None,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    res_out = _call_candidate(
+        indices_t, values, None, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        sparse_dim,
+        dense_dim,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_EMPTY_CASES)
 @pytest.mark.parametrize("dtype", _COO_DTYPES)
 def test_sparse_coo_tensor_indices_size_empty(case, dtype):
+    required_device, reference_device = _required_devices()
     size, sparse_dim = case
     dense_shape = tuple(size[sparse_dim:])
-    indices_t = torch.empty(sparse_dim, 0, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(0, dense_shape, dtype)
-
-    ref_out = _call_reference(indices_t, values, size, dtype)
-    res_out = _call_candidate(indices_t, values, size, dtype)
-
-    _assert_coo_structure(
-        res_out, ref_out, size, 0, dtype, sparse_dim, len(dense_shape)
+    indices_t = torch.empty(sparse_dim, 0, dtype=torch.long, device=required_device)
+    values = _make_values(0, dense_shape, dtype, required_device=required_device)
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        size,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
     )
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    res_out = _call_candidate(
+        indices_t, values, size, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        0,
+        dtype,
+        sparse_dim,
+        len(dense_shape),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size_is_coalesced(dtype):
+    required_device, reference_device = _required_devices()
     size = (2, 3)
     indices = [[0, 1, 1], [2, 0, 2]]
     nnz = 3
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, (), dtype)
-    ref_indices = tu.to_reference(indices_t)
-    ref_values = tu.to_reference(values)
-
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(nnz, (), dtype, required_device=required_device)
+    ref_indices = _to_reference(
+        indices_t, required_device=required_device, reference_device=reference_device
+    )
+    ref_values = _to_reference(
+        values, required_device=required_device, reference_device=reference_device
+    )
     ref_out = torch.ops.aten.sparse_coo_tensor(
         ref_indices,
         ref_values,
@@ -329,34 +612,78 @@ def test_sparse_coo_tensor_indices_size_is_coalesced(dtype):
         device=ref_indices.device,
         is_coalesced=True,
     )
-    res_out = _call_candidate(indices_t, values, size, dtype, is_coalesced=True)
-
-    _assert_coo_structure(res_out, ref_out, size, nnz, dtype, 2, 0, is_coalesced=True)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    res_out = _call_candidate(
+        indices_t,
+        values,
+        size,
+        dtype,
+        is_coalesced=True,
+        required_device=required_device,
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        2,
+        0,
+        is_coalesced=True,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
-@pytest.mark.parametrize(
-    "value_range,case,dtype",
-    _VALUE_RANGE_CASES,
-)
+@pytest.mark.parametrize("value_range,case,dtype", _VALUE_RANGE_CASES)
 def test_sparse_coo_tensor_value_ranges(value_range, case, dtype):
+    required_device, reference_device = _required_devices()
     variant, size, indices, dense_shape = case
     sparse_dim = len(indices)
     dense_dim = len(dense_shape)
     nnz = len(indices[0])
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, dense_shape, dtype, value_range)
-
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(
+        nnz, dense_shape, dtype, value_range, required_device=required_device
+    )
     ref_out = _call_reference(
-        indices_t, values, size if variant == "indices_size" else None, dtype
+        indices_t,
+        values,
+        size if variant == "indices_size" else None,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
     )
     res_out = _call_candidate(
-        indices_t, values, size if variant == "indices_size" else None, dtype
+        indices_t,
+        values,
+        size if variant == "indices_size" else None,
+        dtype,
+        required_device=required_device,
     )
-
-    _assert_coo_structure(res_out, ref_out, size, nnz, dtype, sparse_dim, dense_dim)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        sparse_dim,
+        dense_dim,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
@@ -364,207 +691,332 @@ def test_sparse_coo_tensor_value_ranges(value_range, case, dtype):
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
-        pytest.param(
-            dtype,
-            scenario,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
-                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
-            ),
-        )
-        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_COO_DTYPES))
+        pytest.param(dtype, scenario)
+        for (dtype, scenario) in tu.selected_cases(tu.special_value_cases(_COO_DTYPES))
     ],
 )
 def test_sparse_coo_tensor_nan_inf(case, dtype, scenario):
+    required_device, reference_device = _required_devices()
     size, indices = case
     sparse_dim = len(indices)
     dense_shape = tuple(size[sparse_dim:])
     nnz = len(indices[0])
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_special_values((nnz,) + dense_shape, dtype, scenario)
-
-    ref_out = _call_reference(indices_t, values, size, dtype)
-    res_out = _call_candidate(indices_t, values, size, dtype)
-
-    _assert_coo_structure(
-        res_out, ref_out, size, nnz, dtype, sparse_dim, len(dense_shape)
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_special_values(
+        (nnz,) + dense_shape, dtype, scenario, required_device=required_device
     )
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        size,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    res_out = _call_candidate(
+        indices_t, values, size, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        nnz,
+        dtype,
+        sparse_dim,
+        len(dense_shape),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("dtype", _COO_DTYPES)
 def test_sparse_coo_tensor_zero_extent(dtype):
+    required_device, reference_device = _required_devices()
     size = (0, 4)
-    indices_t = torch.empty(2, 0, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(0, (), dtype)
-
-    ref_out = _call_reference(indices_t, values, size, dtype)
-    res_out = _call_candidate(indices_t, values, size, dtype)
-
-    _assert_coo_structure(res_out, ref_out, size, 0, dtype, 2, 0)
-    tu.assert_result_equal(res_out._values(), ref_out._values())
+    indices_t = torch.empty(2, 0, dtype=torch.long, device=required_device)
+    values = _make_values(0, (), dtype, required_device=required_device)
+    ref_out = _call_reference(
+        indices_t,
+        values,
+        size,
+        dtype,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    res_out = _call_candidate(
+        indices_t, values, size, dtype, required_device=required_device
+    )
+    _assert_coo_structure(
+        res_out,
+        ref_out,
+        size,
+        0,
+        dtype,
+        2,
+        0,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        res_out._values(),
+        ref_out._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_VALUE_CASES)
 def test_sparse_coo_tensor_inputs_not_mutated(case):
+    required_device, reference_device = _required_devices()
     variant, size, indices, dense_shape = case
     nnz = len(indices[0])
     dtype = torch.float32
-    indices_t = torch.tensor(indices, dtype=torch.long, device=flag_gems.device)
-    values = _make_values(nnz, dense_shape, dtype)
-    # Snapshot through the reference-device helper: under ``--ref cpu`` the
-    # snapshots live on the CPU, which is the convention the accuracy helpers
-    # expect for the reference operand.
-    indices_before = tu.to_reference(indices_t)
-    values_before = tu.to_reference(values)
-
-    out = _call_candidate(
-        indices_t, values, size if variant == "indices_size" else None, dtype
+    indices_t = torch.tensor(indices, dtype=torch.long, device=required_device)
+    values = _make_values(nnz, dense_shape, dtype, required_device=required_device)
+    indices_before = _to_reference(
+        indices_t, required_device=required_device, reference_device=reference_device
     )
-
+    values_before = _to_reference(
+        values, required_device=required_device, reference_device=reference_device
+    )
+    out = _call_candidate(
+        indices_t,
+        values,
+        size if variant == "indices_size" else None,
+        dtype,
+        required_device=required_device,
+    )
     assert out is not indices_t
-    utils.gems_assert_equal(indices_t, indices_before)
-    tu.assert_result_equal(values, values_before)
+    _assert_indices(
+        indices_t,
+        indices_before,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        values,
+        values_before,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_indices_ndim():
-    indices_t = torch.tensor([0, 1, 2], dtype=torch.long, device=flag_gems.device)
-    values = _make_values(3, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([0, 1, 2], dtype=torch.long, device=required_device)
+    values = _make_values(3, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [3], torch.float32),
-        lambda: _call_candidate(indices_t, values, [3], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [3],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [3], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_size():
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
-    )
-    values = _make_values(2, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[0, 1], [2, 0]], dtype=torch.long, device=required_device)
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [-2, 3], torch.float32),
-        lambda: _call_candidate(indices_t, values, [-2, 3], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [-2, 3],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [-2, 3], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_size_only_size():
-    ref_device = _reference_device()
-
+    required_device, reference_device = _required_devices()
+    ref_device = reference_device
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor(
             [-2, 3], dtype=torch.float32, device=ref_device
         ),
-        lambda: flag_gems.sparse_coo_tensor(
-            [-2, 3], dtype=torch.float32, device=flag_gems.device
+        lambda: _invoke_candidate(
+            [-2, 3],
+            dtype=torch.float32,
+            device=required_device,
+            required_device=required_device,
         ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_non_integer_size():
+    required_device, reference_device = _required_devices()
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor(
-            [2.5, 3], dtype=torch.float32, device=_reference_device()
+            [2.5, 3], dtype=torch.float32, device=reference_device
         ),
-        lambda: flag_gems.sparse_coo_tensor(
-            [2.5, 3], dtype=torch.float32, device=flag_gems.device
+        lambda: _invoke_candidate(
+            [2.5, 3],
+            dtype=torch.float32,
+            device=required_device,
+            required_device=required_device,
         ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_indices_dtype():
+    required_device, reference_device = _required_devices()
     indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.int32, device=flag_gems.device
+        [[0, 1], [2, 0]], dtype=torch.int32, device=required_device
     )
-    values = _make_values(2, (), torch.float32)
-
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [2, 3], torch.float32),
-        lambda: _call_candidate(indices_t, values, [2, 3], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [2, 3],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [2, 3], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_indices_float():
+    required_device, reference_device = _required_devices()
     indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
+        [[0, 1], [2, 0]], dtype=torch.long, device=required_device
     ).float()
-    values = _make_values(2, (), torch.float32)
-
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [2, 3], torch.float32),
-        lambda: _call_candidate(indices_t, values, [2, 3], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [2, 3],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [2, 3], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_nnz_mismatch():
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
-    )
-    values = _make_values(3, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[0, 1], [2, 0]], dtype=torch.long, device=required_device)
+    values = _make_values(3, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [2, 3], torch.float32),
-        lambda: _call_candidate(indices_t, values, [2, 3], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [2, 3],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [2, 3], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_values_dense_dims():
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
-    )
-    values = _make_values(2, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[0, 1], [2, 0]], dtype=torch.long, device=required_device)
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [2, 3, 4], torch.float32),
-        lambda: _call_candidate(indices_t, values, [2, 3, 4], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [2, 3, 4],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [2, 3, 4], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_indices_size_rank():
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
-    )
-    values = _make_values(2, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[0, 1], [2, 0]], dtype=torch.long, device=required_device)
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, [2], torch.float32),
-        lambda: _call_candidate(indices_t, values, [2], torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            [2],
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, [2], torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_inferred_negative_index():
-    indices_t = torch.tensor([[-1, 1]], dtype=torch.long, device=flag_gems.device)
-    values = _make_values(2, (), torch.float32)
-
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[-1, 1]], dtype=torch.long, device=required_device)
+    values = _make_values(2, (), torch.float32, required_device=required_device)
     _assert_rejected(
-        lambda: _call_reference(indices_t, values, None, torch.float32),
-        lambda: _call_candidate(indices_t, values, None, torch.float32),
+        lambda: _call_reference(
+            indices_t,
+            values,
+            None,
+            torch.float32,
+            required_device=required_device,
+            reference_device=reference_device,
+        ),
+        lambda: _call_candidate(
+            indices_t, values, None, torch.float32, required_device=required_device
+        ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_negative
 def test_sparse_coo_tensor_negative_layout():
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=flag_gems.device
+    required_device, reference_device = _required_devices()
+    indices_t = torch.tensor([[0, 1], [2, 0]], dtype=torch.long, device=required_device)
+    values = _make_values(2, (), torch.float32, required_device=required_device)
+    ref_indices = _to_reference(
+        indices_t, required_device=required_device, reference_device=reference_device
     )
-    values = _make_values(2, (), torch.float32)
-    ref_indices = tu.to_reference(indices_t)
-    ref_values = tu.to_reference(values)
-
+    ref_values = _to_reference(
+        values, required_device=required_device, reference_device=reference_device
+    )
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor(
             ref_indices,
@@ -575,21 +1027,26 @@ def test_sparse_coo_tensor_negative_layout():
             layout=torch.sparse_csr,
         ),
         lambda: _call_candidate(
-            indices_t, values, [2, 3], torch.float32, layout=torch.sparse_csr
+            indices_t,
+            values,
+            [2, 3],
+            torch.float32,
+            layout=torch.sparse_csr,
+            required_device=required_device,
         ),
     )
 
 
 @pytest.mark.sparse_coo_tensor_size_out
 def test_sparse_coo_tensor_size_out_negative_shape():
+    required_device, reference_device = _required_devices()
     ref_out = torch.ops.aten.sparse_coo_tensor(
-        [4, 5], dtype=torch.float32, device=_reference_device()
+        [4, 5], dtype=torch.float32, device=reference_device
     )
     out = torch.ops.aten.sparse_coo_tensor(
-        [4, 5], dtype=torch.float32, device=flag_gems.device
+        [4, 5], dtype=torch.float32, device=required_device
     )
-
     _assert_rejected(
         lambda: torch.ops.aten.sparse_coo_tensor.size_out([2, 3], out=ref_out),
-        lambda: flag_gems.sparse_coo_tensor([2, 3], out=out),
+        lambda: _invoke_candidate([2, 3], out=out, required_device=required_device),
     )
