@@ -110,6 +110,7 @@ class BenchConfig:
         self.current_nodeid = None
         self.available_case_ids = set()
         self.executed_case_ids = set()
+        self.skipped_case_ids = set()
         self.parallel = 0
         self.mm_layout = None
         self.profile_only = False
@@ -676,8 +677,11 @@ def pytest_sessionfinish(session, exitstatus):
             if session.exitstatus == pytest.ExitCode.OK:
                 session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.preflight_only:
-        incomplete = not Config.preflight_records or any(
-            record["status"] != "passed" for record in Config.preflight_records
+        incomplete = not any(
+            record["status"] == "passed" for record in Config.preflight_records
+        ) or any(
+            record["status"] not in {"passed", "skipped"}
+            for record in Config.preflight_records
         )
         if incomplete and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
@@ -690,7 +694,9 @@ def pytest_sessionfinish(session, exitstatus):
         if Config.reference_only
         else set()
     )
-    not_executed = sorted(requested - Config.executed_case_ids - skipped)
+    not_executed = sorted(
+        requested - Config.executed_case_ids - skipped - Config.skipped_case_ids
+    )
     if unknown or not_executed:
         reporter = session.config.pluginmanager.get_plugin("terminalreporter")
         if reporter:

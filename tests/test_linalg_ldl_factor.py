@@ -49,6 +49,8 @@ def _assert_factorization_equal(result, reference, dtype):
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 @pytest.mark.parametrize("hermitian", [False, True])
 def test_linalg_ldl_factor(shape, dtype, hermitian):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)
     inp_before = inp.clone()
     ref_inp = utils.to_reference(inp, True)
@@ -64,6 +66,8 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 def test_linalg_ldl_factor_batched(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
