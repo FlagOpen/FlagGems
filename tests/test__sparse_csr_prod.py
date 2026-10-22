@@ -19,6 +19,95 @@ import flag_gems
 
 from . import test_utils as tu
 
+# Both target native CSR reduction entrypoints are unavailable on these stacks.
+# Use the existing CPU ATen implementation, preserving stored-zero/support
+# semantics; dense.prod would incorrectly include implicit zeros.
+_CPU_REFERENCE_BACKENDS = {"ascend", "kunlunxin"}
+
+
+def _move_reference(value, device):
+    if value.layout == torch.sparse_csr:
+        result = torch.sparse_csr_tensor(
+            value.crow_indices().to(device).clone(),
+            value.col_indices().to(device).clone(),
+            value.values().to(device).clone(),
+            size=value.shape,
+            device=device,
+        )
+    else:
+        result = value.to(device).clone()
+    assert result.dtype == value.dtype
+    assert result.shape == value.shape
+    assert result.layout == value.layout
+    return result
+
+
+def _cpu_oracle(inp, dim, keepdim=False, *, dtype=None, out=None):
+    native = torch.ops.aten._sparse_csr_prod
+    cpu = _move_reference(inp, "cpu")
+    if out is None:
+        expected = native.dim_dtype(cpu, dim, keepdim, dtype=dtype)
+        result = _move_reference(expected, inp.device)
+    else:
+        if out.device != inp.device:
+            raise RuntimeError("Input and out devices must match")
+        cpu_out = _move_reference(out, "cpu")
+        expected = native.dim_dtype_out(cpu, dim, keepdim, dtype=dtype, out=cpu_out)
+        target = _move_reference(expected, out.device)
+        if out.shape == target.shape and all(
+            a.shape == b.shape
+            for a, b in zip(
+                (out.crow_indices(), out.col_indices(), out.values()),
+                (target.crow_indices(), target.col_indices(), target.values()),
+            )
+        ):
+            out.crow_indices().copy_(target.crow_indices())
+            out.col_indices().copy_(target.col_indices())
+            out.values().copy_(target.values())
+        else:
+            # CPU ATen decides whether this out geometry may be resized.
+            out.data = target
+        result = out
+    assert result.device == inp.device
+    assert result.dtype == expected.dtype
+    assert result.shape == expected.shape
+    assert result.layout == expected.layout
+    return result
+
+
+def _reference(inp, dim, keepdim=False, *, dtype=None, out=None):
+    if flag_gems.vendor_name in _CPU_REFERENCE_BACKENDS:
+        return _cpu_oracle(inp, dim, keepdim, dtype=dtype, out=out)
+    native = torch.ops.aten._sparse_csr_prod
+    if out is None:
+        return native.dim_dtype(inp, dim, keepdim, dtype=dtype)
+    return native.dim_dtype_out(inp, dim, keepdim, dtype=dtype, out=out)
+
+
+def _assert_result_close(result, reference, required_device):
+    # Observe target results only after checking their original target ABI.
+    assert result.device == required_device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout
+    if flag_gems.vendor_name not in _CPU_REFERENCE_BACKENDS:
+        tu.assert_result_close(result, reference)
+        return
+    result = _move_reference(result, "cpu")
+    reference = _move_reference(reference, "cpu")
+    dtype = result.dtype
+    if dtype.is_floating_point or dtype.is_complex:
+        torch.testing.assert_close(
+            result,
+            reference,
+            rtol=flag_gems.testing.RESOLUTION[dtype],
+            atol=1e-4,
+            equal_nan=True,
+        )
+    else:
+        torch.testing.assert_close(result, reference, rtol=0, atol=0)
+
+
 _DTYPE_CAPS = {
     torch.bfloat16: flag_gems.runtime.device.support_bf16,
     torch.float64: flag_gems.runtime.device.support_fp64,
@@ -109,10 +198,11 @@ def test__sparse_csr_prod(shape, dtype, value_range, dim):
     inp = tu.make_input(dtype, shape, value_range).to_sparse_csr()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, dim, True)
+    ref_out = _reference(ref_inp, dim, True)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
 
 
 # Dense -> CSR drops explicit zeros, so stored zeros, empty rows/columns (an
@@ -164,10 +254,11 @@ def test__sparse_csr_prod_sparse_pattern(pattern, dim, dtype, index_dtype):
     )
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, dim, True)
+    ref_out = _reference(ref_inp, dim, True)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
 
 
 # The optional dtype argument is omitted by the grid above and covered here,
@@ -198,12 +289,11 @@ def test__sparse_csr_prod_result_dtype(shape, in_dtype, out_dtype, dim):
     inp = tu.make_input(in_dtype, shape, ["-1", "1"]).to_sparse_csr()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype(
-        ref_inp, dim, True, dtype=out_dtype
-    )
+    ref_out = _reference(ref_inp, dim, True, dtype=out_dtype)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True, dtype=out_dtype)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
 
 
 # Dense -> CSR keeps the special values while dropping explicit zeros, so nan,
@@ -234,10 +324,11 @@ def test__sparse_csr_prod_special_values(dtype, scenario, dim):
     inp = tu.make_special_input(dtype, scenario).reshape(1, 5).to_sparse_csr()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, dim, True)
+    ref_out = _reference(ref_inp, dim, True)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
 
 
 def _stale_csr_like(structure):
@@ -298,16 +389,15 @@ def test__sparse_csr_prod_out(shape, dtype, dim):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).to_sparse_csr()
     ref_inp = tu.to_reference(inp)
 
-    ref_structure = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, dim, True)
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype_out(
-        ref_inp, dim, True, out=_stale_csr_like(ref_structure)
-    )
+    ref_structure = _reference(ref_inp, dim, True)
+    ref_out = _reference(ref_inp, dim, True, out=_stale_csr_like(ref_structure))
 
     res_buf = _stale_csr_like(ref_structure).to(inp.device)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True, out=res_buf)
 
     assert res_out is res_buf
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
 
 
 # The bool/float8 kernels are missing on the measured nvidia backend; other
@@ -379,9 +469,7 @@ def test__sparse_csr_prod_rejects_mismatched_out_dtype():
     inp = tu.make_input(torch.float32, (4, 5), ["-1", "1"]).to_sparse_csr()
     # Placed on the input device so the tested rejection is the dtype, not a
     # reference-device placement.
-    structure = torch.ops.aten._sparse_csr_prod.dim_dtype(
-        tu.to_reference(inp), [0], True
-    )
+    structure = _reference(tu.to_reference(inp), [0], True)
     out = structure.clone().to(inp.device).to(torch.float16)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._sparse_csr_prod(inp, [0], True, out=out)
@@ -394,7 +482,7 @@ def test__sparse_csr_prod_rejects_out_buffer_with_other_nnz():
     # requires.
     inp = tu.make_input(torch.float32, (4, 5), ["1", "1"]).to_sparse_csr()
     ref_inp = tu.to_reference(inp)
-    out = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, [1], True).to(inp.device)
+    out = _reference(ref_inp, [1], True).to(inp.device)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._sparse_csr_prod(inp, [0], True, out=out)
 
@@ -418,13 +506,12 @@ def test__sparse_csr_prod_out_overwrites_other_valid_support(dim):
     )
     ref_inp = tu.to_reference(inp)
 
-    ref_structure = torch.ops.aten._sparse_csr_prod.dim_dtype(ref_inp, dim, True)
-    ref_out = torch.ops.aten._sparse_csr_prod.dim_dtype_out(
-        ref_inp, dim, True, out=_stale_csr_like(ref_structure)
-    )
+    ref_structure = _reference(ref_inp, dim, True)
+    ref_out = _reference(ref_inp, dim, True, out=_stale_csr_like(ref_structure))
 
     res_buf = _stale_csr_like(ref_structure).to(inp.device)
+    required_device = inp.device
     res_out = flag_gems._sparse_csr_prod(inp, dim, True, out=res_buf)
 
     assert res_out is res_buf
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, required_device)
