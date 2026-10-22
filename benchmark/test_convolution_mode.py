@@ -39,4 +39,4 @@ def _build_inputs_fn(plan,dtype,device):
 
 @pytest.mark.convolution_mode
 def test_convolution_mode():
-    ConvolutionModeBenchmark(op_name="convolution_mode",torch_op=torch.ops.aten._convolution_mode.default,gems_op=flag_gems._convolution_mode,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=consts.FLOAT_DTYPES).run()
+    ConvolutionModeBenchmark(op_name="_convolution_mode",torch_op=torch.ops.aten._convolution_mode.default,gems_op=flag_gems._convolution_mode,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=consts.FLOAT_DTYPES).run()

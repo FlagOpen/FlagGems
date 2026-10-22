@@ -39,13 +39,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.true_divide_
+@pytest.mark.true_divide_tensor_
 def test_true_divide_():
     OperatorBenchmark(
-        op_name="true_divide_",
+        op_name="true_divide_tensor_",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.true_divide_.Tensor,
-        gems_op=getattr(flag_gems, "true_divide_", None),
+        gems_op=getattr(flag_gems, "true_divide_tensor_", None),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,

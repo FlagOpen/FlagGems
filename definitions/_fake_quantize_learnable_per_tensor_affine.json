@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "fake_quantize_learnable_per_tensor_affine",
+  "name": "_fake_quantize_learnable_per_tensor_affine",
   "requires_triton_kernel": true,
   "description": "Fake-quantizes the input tensor per-tensor with learnable scale and zero_point.",
   "parameters": [

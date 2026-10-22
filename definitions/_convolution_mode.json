@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "convolution_mode",
+  "name": "_convolution_mode",
   "requires_triton_kernel": true,
   "description": "Representative ATen schema: aten::_convolution_mode(Tensor input, Tensor weight, Tensor? bias, SymInt[] stride, str padding, SymInt[] dilation, SymInt groups) -> Tensor. Tests 1D/2D/3D valid and same string padding, groups, bias, dilation, and invalid padding/stride combinations.",
   "parameters": [
