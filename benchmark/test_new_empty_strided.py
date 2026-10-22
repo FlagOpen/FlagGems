@@ -142,6 +142,14 @@ def _build_inputs_fn(plan, dtype, device):
 class NewEmptyStridedBenchmark(OperatorBenchmark):
     """Two-phase benchmark that keeps the shared shape grid."""
 
+    def _measure_input(self, input, case_id=None):
+        # Iluvatar's allocator can retain the previous case's large, unused
+        # blocks. Release them before timing so the original allocation grid
+        # fits on 32 GiB cards; neither callable nor its measured region changes.
+        if flag_gems.vendor_name == "iluvatar":
+            torch.cuda.empty_cache()
+        return super()._measure_input(input, case_id=case_id)
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         # Append the explicit allocation sizes instead of replacing the shared grid or a
