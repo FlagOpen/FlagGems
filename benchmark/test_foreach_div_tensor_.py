@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -48,6 +50,7 @@ def _build_inputs_fn(plan, dtype, device):
 def test_foreach_div_tensor__benchmark():
     bench = OperatorBenchmark(
         op_name="foreach_div_tensor_",
+        gems_op=flag_gems.foreach_div_tensor_,
         torch_op=_ATEN_OP,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

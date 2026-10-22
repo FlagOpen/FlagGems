@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_clamp_max.ScalarList
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_clamp_max_scalar_list(*args, **kwargs)
 
 
 _SHAPES = ((4, 7), (3, 5))
