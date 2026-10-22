@@ -41,9 +41,9 @@ class MetadataBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_non_overlapping_and_dense
-def test_is_non_overlapping_and_dense():
+def test_is_non_overlapping_and_dense(monkeypatch):
     # There is no GPU work to time; both paths use the existing operator timer.
-    Config.mode = consts.BenchMode.OPERATOR
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MetadataBenchmark(
         op_name="is_non_overlapping_and_dense",
         torch_op=torch.ops.aten.is_non_overlapping_and_dense.default,
