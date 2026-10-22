@@ -20,24 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.fixture(autouse=True)
-def _candidate_aliases(request, monkeypatch):
-    """Route the public operator override through this suite's native entrypoint."""
-    registry = getattr(request.config, "_override_registry", None)
-    overridden = set()
-    if registry is None:
-        return overridden
-    for op_name, symbol in (
-        ("true_divide", "true_divide_tensor"),
-        ("true_divide_", "true_divide_tensor_"),
-    ):
-        candidate = registry.get_override(op_name)
-        if candidate is not None:
-            monkeypatch.setattr(flag_gems, symbol, candidate)
-            overridden.add(op_name)
-    return overridden
-
-
 @pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -140,7 +122,7 @@ def test_true_divide_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_true_divide_tensor_dispatch(shape, dtype, caplog, _candidate_aliases):
+def test_true_divide_tensor_dispatch(shape, dtype, caplog):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1, True)
@@ -151,15 +133,14 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog, _candidate_aliases):
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
 
-    if "true_divide" not in _candidate_aliases:
-        assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+    assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog, _candidate_aliases):
+def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), True)
@@ -170,9 +151,8 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog, _candidate_al
         with flag_gems.use_gems():
             res_out = torch.ops.aten.true_divide_.Tensor(inp1, inp2)
 
-    if "true_divide_" not in _candidate_aliases:
-        assert (
-            f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
-        )
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
+    )
     assert res_out is inp1
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)

@@ -19,26 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-@pytest.fixture(autouse=True)
-def _candidate_aliases(request, monkeypatch):
-    """Route the public operator override through this suite's native entrypoint."""
-    registry = getattr(request.config, "_override_registry", None)
-    overridden = set()
-    if registry is None:
-        return overridden
-    for op_name, symbol in (
-        (
-            "fake_quantize_learnable_per_tensor_affine",
-            "_fake_quantize_learnable_per_tensor_affine",
-        ),
-    ):
-        candidate = registry.get_override(op_name)
-        if candidate is not None:
-            monkeypatch.setattr(flag_gems, symbol, candidate)
-            overridden.add(op_name)
-    return overridden
-
 # Common quantization parameter sets: (quant_min, quant_max)
 QUANT_RANGES = [
     (0, 255),  # uint8 affine

@@ -19,23 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-@pytest.fixture(autouse=True)
-def _candidate_aliases(request, monkeypatch):
-    """Route the public operator override through this suite's native entrypoint."""
-    registry = getattr(request.config, "_override_registry", None)
-    overridden = set()
-    if registry is None:
-        return overridden
-    for op_name, symbol in (
-        ("convolution_double_backward", "_convolution_double_backward"),
-    ):
-        candidate = registry.get_override(op_name)
-        if candidate is not None:
-            monkeypatch.setattr(flag_gems, symbol, candidate)
-            overridden.add(op_name)
-    return overridden
-
 CONV_CASES = [
     # non-transposed
     ((1, 2, 5, 5), (1, 2, 3, 3), 1, 1, 1, 1, False, (0, 0)),
