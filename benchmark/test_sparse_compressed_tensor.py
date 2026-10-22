@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::sparse_compressed_tensor.comp_plain_value_size(Tensor compressed_indices,
 #     Tensor plain_indices, Tensor values, SymInt[] size, *, ScalarType? dtype=None,
@@ -113,6 +115,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class SparseCompressedTensorBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     # Sparse constructor; there are no meaningful dense shapes in
     # core_shapes.yaml, so benchmark dedicated (layout, shape, nnz) triples.
     def set_shapes(self, shape_file_path=None):
@@ -126,7 +136,7 @@ def test_sparse_compressed_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_compressed_tensor,
-        gems_op=getattr(flag_gems, "sparse_compressed_tensor", None),
+        gems_op=flag_gems.sparse_compressed_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
