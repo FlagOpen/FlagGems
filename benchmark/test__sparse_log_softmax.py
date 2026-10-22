@@ -468,10 +468,77 @@ def _cpu_oracle(*args, **kwargs):
 
 
 # Fail closed until the new 40-record native H800 collection is reviewed.
-_NV_ARTIFACT_SHA256 = None
-_NV_PUBLISHED_REVISION = None
-_NV_COLLECTION_SOURCE = None
-_NV_COLLECTION_ENVIRONMENT = None
+_NV_ARTIFACT_SHA256 = "462befac7ca68148638169bc4df56c65a00adc3d5e9c85dd3b89736805f5b5c2"
+_NV_PUBLISHED_REVISION = "2d308ec4a2c455a10accb340aee0e84ac916f2a0"
+_NV_COLLECTION_SOURCE = "0f73cb27eb44781aa75cc2519482701c06f03e1e"
+_NV_COLLECTION_ENVIRONMENT = {
+    "schema_version": 1,
+    "collected_at_utc": "2026-10-22T15:53:54.707995+00:00",
+    "hardware": {
+        "gpu": {
+            "name": "NVIDIA H800",
+            "uuid": "555633f8-c39c-bb8a-d549-791cb8451f44",
+            "total_memory_bytes": 85017624576,
+            "total_memory_gib": 79.18,
+            "compute_capability": "9.0",
+            "multiprocessor_count": 132,
+            "cuda_device_index": 0,
+            "driver_version": "580.105.08",
+        },
+        "cpu_model": "Intel(R) Xeon(R) Platinum 8468V",
+        "cpu_architecture": "x86_64",
+        "cpu_socket_count": 2,
+        "physical_cpu_core_count": 96,
+        "logical_cpu_count": 192,
+        "cpu_threads_per_core": 2,
+        "numa_node_count": 2,
+        "process_cpu_affinity_count": 192,
+        "hypervisor_vendor": None,
+    },
+    "software": {
+        "os": "Linux",
+        "os_release": "5.15.0-78-generic",
+        "machine": "x86_64",
+        "python": "3.12.3",
+        "packages": {
+            "torch": "2.8.0a0+5228986c39.nv25.5",
+            "triton": "3.6.0",
+            "vllm": None,
+            "sglang": None,
+        },
+        "torch_cuda_version": "12.9",
+        "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\n"
+        "Copyright (c) 2005-2025 NVIDIA Corporation\n"
+        "Built on Wed_Apr__9_19:24:57_PDT_2025\n"
+        "Cuda compilation tools, release 12.9, V12.9.41\n"
+        "Build cuda_12.9.r12.9/compiler.35813241_0",
+        "ncu_version": "NVIDIA (R) Nsight Compute Command Line Profiler\n"
+        "Copyright (c) 2018-2025 NVIDIA Corporation\n"
+        "Version 2025.2.0.0 (build 35613519) (public-release)",
+    },
+    "source": {
+        "git_commit": "0f73cb27eb44781aa75cc2519482701c06f03e1e",
+        "git_branch": "HEAD",
+        "git_dirty": False,
+    },
+    "run": {
+        "repo": "pytorch",
+        "device": None,
+        "ncu_enabled": False,
+        "report_dir": "/data/tj/workspace/ops-baseline-log-softmax-run-v1-20261022/h800.json.work/_sparse_log_softmax/a9e23bfa62d3407f9792d65dfd023a9e/ncu_reports",
+        "output_path": "/data/tj/workspace/ops-baseline-log-softmax-run-v1-20261022/h800.json.work/_sparse_log_softmax/a9e23bfa62d3407f9792d65dfd023a9e/result.json",
+        "op_timeout_seconds": 1800.0,
+        "reference_chip": "H800",
+        "only": ["_sparse_log_softmax"],
+        "whitelist": None,
+        "blacklist": None,
+        "selected_ops": ["_sparse_log_softmax"],
+        "latency_warmup_ms": 25,
+        "latency_rep_ms": 100,
+        "ncu_warmup_calls": 3,
+    },
+    "environment_variables": {"CUDA_VISIBLE_DEVICES": "7", "CUDA_DEVICE_ORDER": None},
+}
 
 
 def _sparse_extent(shape, sparse_dim):
