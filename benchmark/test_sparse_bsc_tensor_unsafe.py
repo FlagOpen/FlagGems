@@ -38,10 +38,21 @@ class SparseBscTensorUnsafeBenchmark(base.Benchmark):
 
 @pytest.mark.sparse_bsc_tensor_unsafe
 def test_sparse_bsc_tensor_unsafe():
-    """Benchmark against the native unsafe BSC constructor."""
+    """Benchmark against the native unsafe BSC constructor.
+
+    The native unsafe constructor requires an explicit device kwarg (it fails
+    its internal values/instance device check when omitted), so the baseline is
+    wrapped to pass one.
+    """
+
+    def native_bsc(ccol, row, values, size):
+        return torch.ops.aten._sparse_bsc_tensor_unsafe(
+            ccol, row, values, size, device=values.device
+        )
+
     bench = SparseBscTensorUnsafeBenchmark(
         op_name="sparse_bsc_tensor_unsafe",
-        torch_op=torch.ops.aten._sparse_bsc_tensor_unsafe,
+        torch_op=native_bsc,
         gems_op=flag_gems.sparse_bsc_tensor_unsafe,
         dtypes=[torch.float32],
     )
