@@ -1316,6 +1316,7 @@ from flag_gems.ops.set_ import (
 )
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
+from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.sign import sign, sign_, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
@@ -2936,6 +2937,7 @@ __all__ = [
     "sgn",
     "sgn_",
     "sgn_out",
+    "shape_as_tensor",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",

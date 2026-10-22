@@ -18001,6 +18001,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: shape_as_tensor
+  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the
+    CPU device (native resolves the result device from the factory default,
+    not from the input), mirroring `aten::_shape_as_tensor`.
+
+    '
+  for:
+  - _shape_as_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sigmoid
   description: Computes the expit (also known as the logistic sigmoid function) of
     the elements of `input`.
