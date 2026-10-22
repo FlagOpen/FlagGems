@@ -423,6 +423,7 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
+from flag_gems.ops._values_copy import _values_copy, _values_copy_out
 from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
     _weight_int4pack_mm_with_scales_and_zeros,
 )
@@ -615,6 +616,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convert_indices_from_csr_to_coo import (
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from flag_gems.ops.convolution import convolution
 from flag_gems.ops.convolution_backward_overrideable import (
     convolution_backward_overrideable,
@@ -788,6 +793,7 @@ from flag_gems.ops.functional_assert_async import _functional_assert_async
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
+from flag_gems.ops.fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
@@ -1120,6 +1126,7 @@ from flag_gems.ops.ne_ import ne_, ne_scalar_
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.negative_ import negative_
+from flag_gems.ops.nested_tensor_storage_offsets import nested_tensor_storage_offsets
 from flag_gems.ops.nested_to_padded_tensor import nested_to_padded_tensor
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
@@ -1311,6 +1318,7 @@ from flag_gems.ops.set_ import (
 )
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
+from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.sign import sign, sign_, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
@@ -1644,6 +1652,8 @@ __all__ = [
     "_conj_physical",
     "_conj_physical_out",
     "_conv_depthwise2d",
+    "_convert_indices_from_csr_to_coo",
+    "_convert_indices_from_csr_to_coo_out",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
@@ -1830,6 +1840,8 @@ __all__ = [
     "_fused_rms_norm_forward",
     "_fused_sgd_",
     "_fused_sgd__tensor_lr",
+    "_fw_primal_copy",
+    "_fw_primal_copy_out",
     "_gather_sparse_backward",
     "_has_compatible_shallow_copy_type",
     "_histogramdd_from_bin_cts",
@@ -1944,6 +1956,8 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
+    "_values_copy",
+    "_values_copy_out",
     "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
     "_wrapped_linear_prepack",
@@ -2724,6 +2738,7 @@ __all__ = [
     "neg_",
     "negative",
     "negative_",
+    "nested_tensor_storage_offsets",
     "nested_to_padded_tensor",
     "new_full",
     "new_ones",
@@ -2928,6 +2943,7 @@ __all__ = [
     "sgn",
     "sgn_",
     "sgn_out",
+    "shape_as_tensor",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
