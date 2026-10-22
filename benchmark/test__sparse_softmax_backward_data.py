@@ -474,12 +474,79 @@ def _build_inputs_fn(plan, dtype, device):
     return moved["grad"], moved["output"], binding["dim"], moved["self"], {}
 
 
-# Pending formal native H800 collection: deliberately fail closed until all
-# four pins are reviewed. No synthetic hash/source/environment is accepted.
-_NV_ARTIFACT_SHA256 = None
-_NV_PUBLISHED_REVISION = None
-_NV_COLLECTION_SOURCE = None
-_NV_COLLECTION_ENVIRONMENT = None  # exact original per-op worker environment
+# Bind the official native H800 snapshot to its exact source and ORIGINAL
+# per-operator worker environment; do not reuse the last-task environment.
+_NV_ARTIFACT_SHA256 = "8c81710abb79d4ac591b514e3efde080aadfa544ad3899d7ca3fa641886e51f5"
+_NV_PUBLISHED_REVISION = "277cdd636bbe2cfcf7b54fd45e8116e4eb23f113"
+_NV_COLLECTION_SOURCE = "0567cbffdb05aa7987650c55e47738c8183444a7"
+_NV_COLLECTION_ENVIRONMENT = {
+    "schema_version": 1,
+    "collected_at_utc": "2026-10-22T14:07:22.931041+00:00",
+    "hardware": {
+        "gpu": {
+            "name": "NVIDIA H800",
+            "uuid": "555633f8-c39c-bb8a-d549-791cb8451f44",
+            "total_memory_bytes": 85017624576,
+            "total_memory_gib": 79.18,
+            "compute_capability": "9.0",
+            "multiprocessor_count": 132,
+            "cuda_device_index": 0,
+            "driver_version": "580.105.08",
+        },
+        "cpu_model": "Intel(R) Xeon(R) Platinum 8468V",
+        "cpu_architecture": "x86_64",
+        "cpu_socket_count": 2,
+        "physical_cpu_core_count": 96,
+        "logical_cpu_count": 192,
+        "cpu_threads_per_core": 2,
+        "numa_node_count": 2,
+        "process_cpu_affinity_count": 192,
+        "hypervisor_vendor": None,
+    },
+    "software": {
+        "os": "Linux",
+        "os_release": "5.15.0-78-generic",
+        "machine": "x86_64",
+        "python": "3.12.3",
+        "packages": {
+            "torch": "2.8.0a0+5228986c39.nv25.5",
+            "triton": "3.6.0",
+            "vllm": None,
+            "sglang": None,
+        },
+        "torch_cuda_version": "12.9",
+        "nvcc_version": "nvcc: NVIDIA (R) Cuda compiler driver\n"
+        "Copyright (c) 2005-2025 NVIDIA Corporation\n"
+        "Built on Wed_Apr__9_19:24:57_PDT_2025\n"
+        "Cuda compilation tools, release 12.9, V12.9.41\n"
+        "Build cuda_12.9.r12.9/compiler.35813241_0",
+        "ncu_version": "NVIDIA (R) Nsight Compute Command Line Profiler\n"
+        "Copyright (c) 2018-2025 NVIDIA Corporation\n"
+        "Version 2025.2.0.0 (build 35613519) (public-release)",
+    },
+    "source": {
+        "git_commit": "0567cbffdb05aa7987650c55e47738c8183444a7",
+        "git_branch": "HEAD",
+        "git_dirty": False,
+    },
+    "run": {
+        "repo": "pytorch",
+        "device": None,
+        "ncu_enabled": False,
+        "report_dir": "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softmax_backward_data/ea18805d11ce4f6fa35910e59cd9b236/ncu_reports",
+        "output_path": "/data/tj/workspace/ops-baseline-softmax-run-v4-20261022/h800.json.work/_sparse_softmax_backward_data/ea18805d11ce4f6fa35910e59cd9b236/result.json",
+        "op_timeout_seconds": 1800.0,
+        "reference_chip": "H800",
+        "only": ["_sparse_softmax_backward_data"],
+        "whitelist": None,
+        "blacklist": None,
+        "selected_ops": ["_sparse_softmax_backward_data"],
+        "latency_warmup_ms": 25,
+        "latency_rep_ms": 100,
+        "ncu_warmup_calls": 3,
+    },
+    "environment_variables": {"CUDA_VISIBLE_DEVICES": "7", "CUDA_DEVICE_ORDER": None},
+}
 
 
 @dataclass
@@ -661,7 +728,7 @@ class SparseSoftmaxBackwardDataBenchmark(OperatorBenchmark):
         ]
         if len(matches) != 1:
             raise ValueError(
-                "Expected exactly one H800 record matching the actual CSR input"
+                "Expected exactly one H800 record matching the actual COO input"
             )
         record = matches[0]
         latency_us = record.get("T_us")
