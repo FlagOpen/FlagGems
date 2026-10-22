@@ -55,13 +55,12 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
-    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp)
 
     padded_out = torch.ops.aten.replication_pad1d(inp, padding)
     grad_output = torch.ones_like(padded_out)
-    ref_grad = utils.to_reference(grad_output, True)
+    ref_grad = utils.to_reference(grad_output)
 
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)
     res_out = flag_gems.replication_pad1d_backward(grad_output, inp, padding)
@@ -77,7 +76,6 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
     promoting, and its output takes the *input's* options, so silently following
     grad_output would hand back a differently-typed gradient.
     """
-    torch.manual_seed(0)
     inp = torch.randn(2, 3, 8, dtype=torch.float64, device=flag_gems.device)
     padded = torch.ops.aten.replication_pad1d(inp, (1, 1))
     bad_grad = torch.ones_like(padded, dtype=torch.float32)
@@ -89,7 +87,6 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_replication_pad1d_backward_grad_input_takes_input_options(dtype):
     """grad_input has the input's dtype and device, matching at::empty_like(self)."""
-    torch.manual_seed(0)
     inp = torch.randn(2, 3, 8, dtype=dtype, device=flag_gems.device)
     padded = torch.ops.aten.replication_pad1d(inp, (2, 1))
     grad = torch.ones_like(padded)
