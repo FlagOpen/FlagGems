@@ -39,9 +39,9 @@ class MetadataBenchmark(base.Benchmark):
 
 
 @pytest.mark.is_leaf
-def test_is_leaf():
+def test_is_leaf(monkeypatch):
     # There is no GPU work to time; both paths use the existing operator timer.
-    Config.mode = consts.BenchMode.OPERATOR
+    monkeypatch.setattr(Config, "mode", consts.BenchMode.OPERATOR)
     bench = MetadataBenchmark(
         op_name="is_leaf",
         torch_op=torch.ops.aten.is_leaf.default,
