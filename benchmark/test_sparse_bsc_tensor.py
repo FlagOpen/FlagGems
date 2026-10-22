@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 # aten::sparse_bsc_tensor.ccol_row_value_size(Tensor ccol_indices,
 #     Tensor row_indices, Tensor values, int[] size, *, ScalarType? dtype=None,
@@ -90,6 +92,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class SparseBscTensorBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        registry = base.Config.override_registry
+        override = registry.get_override(self.op_name) if registry is not None else None
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise RuntimeError(f"No callable candidate for {self.op_name}")
+        return candidate, nullcontext(), override is not None
+
     # sparse_bsc_tensor is a sparse construction op; there are no meaningful
     # dense shapes in core_shapes.yaml, so benchmark dedicated
     # (matrix shape, block, nnz) triples instead.
@@ -104,7 +114,7 @@ def test_sparse_bsc_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sparse_bsc_tensor.ccol_row_value_size,
-        gems_op=getattr(flag_gems, "sparse_bsc_tensor", None),
+        gems_op=flag_gems.sparse_bsc_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
