@@ -21,6 +21,10 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+
+# CI probe (do not merge): softmax.py is untouched (master), this only makes
+# the kunlunxin CI run tests/test_softmax.py to show whether the fp16 / -inf /
+# dim=0 failure is pre-existing.
 from . import conftest as cfg
 
 if cfg.QUICK_MODE:
