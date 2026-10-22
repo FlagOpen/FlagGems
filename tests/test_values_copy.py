@@ -31,6 +31,139 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _tensor_metadata(inp):
+    return (
+        type(inp),
+        inp.dtype,
+        inp.device,
+        inp.shape,
+        inp.layout,
+        inp.requires_grad,
+        inp._version,
+    )
+
+
+def _input_parts(inp):
+    names = (
+        ("crow_indices", "col_indices")
+        if inp.layout
+        in (
+            torch.sparse_csr,
+            torch.sparse_bsr,
+        )
+        else ("ccol_indices", "row_indices")
+    )
+    return tuple(getattr(inp, name)() for name in names) + (inp.values(),)
+
+
+def _part_metadata(inp):
+    storage = inp.untyped_storage()
+    return (
+        _tensor_metadata(inp),
+        inp.stride(),
+        inp.storage_offset(),
+        inp.is_conj(),
+        inp.is_neg(),
+        storage._cdata,
+        inp.data_ptr(),
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+
+
+def _capture_input(inp):
+    parts = _input_parts(inp)
+    # Hold each original storage and capture its addresses as independent ints:
+    # a live Storage object alone follows a later resize/rebind.
+    return (
+        _tensor_metadata(inp),
+        inp.sparse_dim(),
+        inp.dense_dim(),
+        tuple(_part_metadata(part) for part in parts),
+        tuple(part.untyped_storage() for part in parts),
+    )
+
+
+def _assert_input_unchanged(inp, expected):
+    metadata, sparse_dim, dense_dim, parts, storages = expected
+    assert _tensor_metadata(inp) == metadata
+    assert (inp.sparse_dim(), inp.dense_dim()) == (sparse_dim, dense_dim)
+    assert tuple(_part_metadata(part) for part in _input_parts(inp)) == parts
+    # Strong original references stay alive throughout these comparisons.
+    assert len(storages) == len(parts)
+
+
+def _device(device):
+    expected = torch.device(device)
+    if expected.index is None and expected.type not in ("cpu", "meta"):
+        expected = torch.device(
+            expected.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return expected
+
+
+def _view_from_storage(inp, storage, device):
+    out = torch.empty(0, dtype=inp.dtype, device=device).set_(
+        storage, inp.storage_offset(), inp.size(), inp.stride()
+    )
+    if inp.is_conj():
+        out = out.conj()
+    if inp.is_neg():
+        out = torch._neg_view(out)
+    assert out.dtype == inp.dtype and out.device == _device(device)
+    assert out.shape == inp.shape and out.stride() == inp.stride()
+    assert out.storage_offset() == inp.storage_offset()
+    assert (out.is_conj(), out.is_neg()) == (inp.is_conj(), inp.is_neg())
+    return out.requires_grad_(inp.requires_grad)
+
+
+def _copy_to(inp, device):
+    # Copy physical bytes before restoring the view and lazy flags. A typed
+    # cross-device copy can resolve conjugation or require unavailable kernels.
+    nbytes = inp.untyped_storage().nbytes()
+    raw = torch.empty(0, dtype=torch.uint8, device=inp.device).set_(
+        inp.untyped_storage(), 0, (nbytes,), (1,)
+    )
+    raw = raw.to(device).clone()
+    return _view_from_storage(inp, raw.untyped_storage(), raw.device)
+
+
+def _assert_equal(actual, expected, expected_device):
+    # Validate the target ABI before moving only numeric observations to CPU.
+    assert actual.dtype == expected.dtype and actual.shape == expected.shape
+    assert actual.layout == expected.layout
+    assert actual.device == expected_device
+    assert expected.device == (torch.device("cpu") if utils.TO_CPU else actual.device)
+    if flag_gems.vendor_name == "kunlunxin" and actual.dtype.is_complex:
+        if actual.layout != torch.strided:
+            assert actual.layout in (
+                torch.sparse_csr,
+                torch.sparse_csc,
+                torch.sparse_bsr,
+                torch.sparse_bsc,
+            )
+            assert actual.sparse_dim() == expected.sparse_dim()
+            assert actual.dense_dim() == expected.dense_dim()
+            names = (
+                ("crow_indices", "col_indices")
+                if actual.layout
+                in (
+                    torch.sparse_csr,
+                    torch.sparse_bsr,
+                )
+                else ("ccol_indices", "row_indices")
+            )
+            for name in names:
+                _assert_equal(
+                    getattr(actual, name)(), getattr(expected, name)(), expected_device
+                )
+            _assert_equal(actual.values(), expected.values(), expected_device)
+            return
+        actual, expected = _copy_to(actual, "cpu"), _copy_to(expected, "cpu")
+    tu.assert_result_equal(actual, expected)
+
+
 _ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend cannot generate nonempty FP8 test payloads",
@@ -216,14 +349,16 @@ def _make_sparse(*case, dtype, value_range=("-1", "1"), values=None):
     )
 
 
-def _assert_copy_result(res_out, ref_out, inp):
+def _assert_copy_result(res_out, ref_out, inp, expected_device):
     """A fresh contiguous copy, never a view sharing the input values' storage."""
+    # A zero-length alias has no distinct data pointer but still shares storage.
+    assert res_out.untyped_storage()._cdata != inp.values().untyped_storage()._cdata
     if res_out.numel():
         assert res_out.untyped_storage().data_ptr() != (
             inp.values().untyped_storage().data_ptr()
         )
     assert res_out.is_contiguous()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_equal(res_out, ref_out, expected_device)
 
 
 def _rejection_input(kind, dtype):
@@ -401,10 +536,13 @@ def test_values_copy(case, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.values_copy(ref_inp)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_out = flag_gems.values_copy(inp)
+    _assert_input_unchanged(inp, _input_state)
 
-    _assert_copy_result(res_out, ref_out, inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_copy_result(res_out, ref_out, inp, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -425,11 +563,14 @@ def test_values_copy_out(case, dtype, value_range):
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_out = torch.empty(shape, dtype=dtype, device=ref_inp.device)
     torch.ops.aten.values_copy.out(ref_inp, out=ref_out)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_ret = flag_gems.values_copy(inp, out=out)
+    _assert_input_unchanged(inp, _input_state)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(out, ref_out, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -449,10 +590,13 @@ def test_values_copy_values_view(kind, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.values_copy(ref_inp)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_out = flag_gems.values_copy(inp)
+    _assert_input_unchanged(inp, _input_state)
 
-    _assert_copy_result(res_out, ref_out, inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_copy_result(res_out, ref_out, inp, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -477,14 +621,17 @@ def test_values_copy_out_into_offset_buffer(case, dtype):
     out = buffer[3 : 3 + numel].reshape(values_shape)
     ref_out = ref_buffer[3 : 3 + numel].reshape(values_shape)
     torch.ops.aten.values_copy.out(ref_inp, out=ref_out)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_ret = flag_gems.values_copy(inp, out=out)
+    _assert_input_unchanged(inp, _input_state)
 
     assert res_ret is out
     assert out.storage_offset() == 3 and out.is_contiguous()
     assert out.shape == values_shape
     # The whole buffer, so the sentinel neighbours must survive the write.
-    tu.assert_result_equal(buffer, ref_buffer)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(buffer, ref_buffer, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -509,7 +656,10 @@ def test_values_copy_out_into_strided_view(case, dtype):
     ref_parent = torch.full_like(parent, sentinel, device=ref_inp.device)
     out, ref_out = parent[1::2], ref_parent[1::2]
     torch.ops.aten.values_copy.out(ref_inp, out=ref_out)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_ret = flag_gems.values_copy(inp, out=out)
+    _assert_input_unchanged(inp, _input_state)
 
     assert res_ret is out
     # Same parent storage and the native stored-values shape: identical data alone
@@ -517,8 +667,8 @@ def test_values_copy_out_into_strided_view(case, dtype):
     assert tuple(res_ret.shape) == tuple(ref_out.shape) == tuple(inp.values().shape)
     assert out.stride() == ref_out.stride()
     # Exact whole-parent comparison: written slice and sentinel neighbours.
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(parent, ref_parent, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -537,10 +687,13 @@ def test_values_copy_special_values(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.values_copy(ref_inp)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_out = flag_gems.values_copy(inp)
+    _assert_input_unchanged(inp, _input_state)
 
-    _assert_copy_result(res_out, ref_out, inp)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_copy_result(res_out, ref_out, inp, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -561,11 +714,14 @@ def test_values_copy_out_special_values(dtype, scenario):
     out = torch.empty_like(values)
     ref_out = torch.empty_like(out, device=ref_inp.device)
     torch.ops.aten.values_copy.out(ref_inp, out=ref_out)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_ret = flag_gems.values_copy(inp, out=out)
+    _assert_input_unchanged(inp, _input_state)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_equal(out, ref_out, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
 
 @pytest.mark.values_copy
@@ -576,6 +732,18 @@ def test_values_copy_out_special_values(dtype, scenario):
 )
 def test_values_copy_backward(case, dtype):
     """The copy is the identity, so the stored values receive the exact upstream."""
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and case
+        in (
+            ("csr", (8, 8), 16, None, 0, False),
+            ("bsr", (4, 6), 4, (2, 2), 0, False),
+        )
+    ):
+        pytest.skip(
+            "Kunlunxin native compressed values_copy backward requires unsupported index_add"
+        )
     values = tu.make_input(dtype, _stored_shape(*case), ["-1", "1"])
     values = values.requires_grad_(True)
     inp = _make_sparse(*case, dtype=dtype, values=values)
@@ -584,9 +752,13 @@ def test_values_copy_backward(case, dtype):
     ref_inp = _make_sparse(*case, dtype=dtype, values=ref_values)
 
     ref_out = torch.ops.aten.values_copy(ref_inp)
+    _input_state = _capture_input(inp)
+    _expected_device = inp.device
     res_out = flag_gems.values_copy(inp)
+    _assert_input_unchanged(inp, _input_state)
 
-    _assert_copy_result(res_out, ref_out, inp)
+    _assert_copy_result(res_out, ref_out, inp, _expected_device)
+    _assert_equal(inp, ref_inp, _expected_device)
 
     # Nonuniform upstream, so a swapped or partially reduced gradient cannot pass.
     upstream = tu.make_input(dtype, res_out.shape, ["-1", "1"]) * 3.0 + 1.0
@@ -594,7 +766,7 @@ def test_values_copy_backward(case, dtype):
     ref_grad = torch.autograd.grad(ref_out, ref_values, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, values, grad_outputs=upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_equal(res_grad, ref_grad, _expected_device)
 
 
 @pytest.mark.values_copy
