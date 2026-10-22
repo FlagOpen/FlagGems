@@ -45,15 +45,11 @@ def test_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
-    # No upcast: trunc is discontinuous at integer quotients, so an fp64
-    # reference disagrees with the fp32 semantics of both the kernel and ATen
-    # CUDA whenever the exact quotient falls just below an integer (e.g.
-    # 59.99999865 truncates to 59 in fp64 but rounds to 60.0 in fp32 before
-    # the trunc). Both sides must share the input dtype.
-    upcast = False
-
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
     res_out = flag_gems.div_mode(inp1, inp2, rounding_mode="trunc")
@@ -85,11 +81,11 @@ def test_trunc_divide_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    # No upcast: see test_trunc_div — trunc is discontinuous, so an fp64
-    # reference disagrees with fp32 semantics at integer-adjacent quotients.
-    upcast = False
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
     res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode="trunc")
