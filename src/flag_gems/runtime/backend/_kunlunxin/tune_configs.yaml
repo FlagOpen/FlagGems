@@ -123,19 +123,20 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
-# Without an entry here baddbmm falls back to the generic 12-config space,
-# whose smallest tiles overrun the launch watchdog on this backend: a 32x32
-# tile puts [4, 495, 71] x [4, 71, 5333] at 10688 programs and the shape
-# aborted with "the launch timed out and was terminated". 64x64 keeps every
-# tested shape under 2s.
+# Single config on purpose: libentry only autotunes when len(configs) > 1, so a
+# one-entry list keeps the tuner from probing a config that wedges the card.
+# 64x64x32 was the previous pick; it overruns the launch watchdog on the core
+# shape [2, 4096, 4096, 4096] and aborts with "the launch timed out and was
+# terminated". 256x256x128 clears all five BlasBenchmark core shapes across
+# fp16/fp32/bf16, worst case 16, 4096, 4096, 4096 at ~16ms (fp16).
 baddbmm:
 - META:
-    TILE_M: 64
-    TILE_N: 64
-    TILE_K: 32
+    TILE_M: 256
+    TILE_N: 256
+    TILE_K: 128
     GROUP_M: 2
-  num_warps: 4
-  num_stages: 1
+  num_warps: 8
+  num_stages: 2
 argmax:
 - META:
     BLOCK_M: 8
