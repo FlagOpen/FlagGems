@@ -1209,6 +1209,7 @@ _FULL_CONFIG = (
     ),
     ("inner", inner),
     ("inverse", inverse),
+    ("is_leaf", is_leaf),
     ("is_nonzero", is_nonzero),
     ("is_same_size", is_same_size),
     ("isclose", isclose),
