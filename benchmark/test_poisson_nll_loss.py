@@ -16,48 +16,36 @@ import pytest
 import torch
 
 from . import base, consts
-from .generated_operator_utils import OperatorBenchmark
 
 
-class PoissonNllLossBenchmark(OperatorBenchmark):
-    DEFAULT_SHAPES = [
-        (64, 64),
-        (256, 256),
-        (1024, 1024),
-        (2048, 2048),
-        (4096, 4096),
-        (8192, 8192),
-    ]
-
-    def set_shapes(self, shape_file_path=None):
-        base.Benchmark.set_shapes(self, shape_file_path)
-
-
-def _case_fn(shape, dtype):
-    del dtype
-    dims = tuple(shape)
-    yield base.BenchmarkCasePlan(
-        shape={"input": list(dims), "target": list(dims)},
-        params={"log_input": True, "full": False, "eps": 1e-8, "reduction": 1},
-        builder_args=(dims,),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    (shape,) = plan.builder_args
-    torch.manual_seed(0)
-    inp = torch.randn(shape, dtype=dtype, device=device)
+def _input_fn(shape, dtype, device):
+    input = torch.randn(shape, dtype=dtype, device=device)
     target = torch.randint(0, 5, shape, device=device).to(dtype)
-    return inp, target, True, False, 1e-8, 1
+    yield input, target
+
+
+def _torch_poisson_nll_loss(input, target):
+    return torch.ops.aten.poisson_nll_loss(input, target, True, False, 1e-8, 1)
+
+
+class PoissonNllLossBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (64, 64),
+            (256, 256),
+            (1024, 1024),
+            (2048, 2048),
+            (4096, 4096),
+            (8192, 8192),
+        ]
 
 
 @pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss():
     bench = PoissonNllLossBenchmark(
+        input_fn=_input_fn,
         op_name="poisson_nll_loss",
-        torch_op=torch.ops.aten.poisson_nll_loss,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        torch_op=_torch_poisson_nll_loss,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

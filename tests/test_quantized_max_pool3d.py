@@ -1,4 +1,4 @@
-# Copyright 2026 FlagOS Contributors
+# Copyright 2026 FlagOS Contributors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,27 +13,34 @@
 # limitations under the License.
 
 import pytest
-
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
+# Per-tensor quantized max-pool operates on the integer representation of a
+# quantized tensor. The result is exact (no floating-point arithmetic), so the
+# tests compare integer representations with exact equality.
+#
+# PyTorch ships no native QuantizedCUDA kernel for ``quantized_max_pool3d``, so
+# the reference is always evaluated on the CPU (QuantizedCPU backend), while the
+# FlagGems kernel runs on the GPU.
 QDTYPE = torch.quint8
-
 SCALE = 0.05
-
 ZERO_POINT = 100
 
+# The three quantized dtypes ``aten::quantized_max_pool3d`` dispatches over
+# (its kernel body is wrapped in ``AT_DISPATCH_QINT_TYPES``), with a zero_point
+# that is representable in each.
 QINT_DTYPES = [torch.quint8, torch.qint8, torch.qint32]
-
 QINT_ZERO_POINTS = {torch.quint8: 100, torch.qint8: -8, torch.qint32: 0}
 
+
 def _make_qinput(shape, device, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE):
-    torch.manual_seed(0)
     x = torch.randn(shape, device=device)
     return torch.quantize_per_tensor(x, scale=scale, zero_point=zero_point, dtype=dtype)
+
 
 def _make_qout(shape, device, scale, zero_point, dtype):
     return torch.quantize_per_tensor(
@@ -42,6 +49,7 @@ def _make_qout(shape, device, scale, zero_point, dtype):
         zero_point,
         dtype,
     )
+
 
 def _aten_out(qx_cpu, out_cpu, kernel_size, stride, padding, dilation, ceil_mode):
     """Call the native ``quantized_max_pool3d.out`` overload.
@@ -59,11 +67,14 @@ def _aten_out(qx_cpu, out_cpu, kernel_size, stride, padding, dilation, ceil_mode
         out=out_cpu,
     )
 
+
 def _as3(v):
     if isinstance(v, int):
         return [v, v, v]
     return list(v)
 
+
+# (shape, kernel_size, stride, padding, dilation, ceil_mode)
 QUANTIZED_MAXPOOL3D_CONFIGS = [
     # Classic cubic kernel, stride 2, padding 1
     ((4, 3, 16, 16, 16), 3, 2, 1, 1, False),
@@ -85,6 +96,7 @@ QUANTIZED_MAXPOOL3D_CONFIGS = [
     ((4, 16, 8, 8, 8), 3, 1, 1, 1, False),
 ]
 
+
 def _assert_qpool_equal(res_out, ref_out, dtype=QDTYPE):
     """Compare two quantized max-pool results for exact equality."""
     assert (
@@ -105,6 +117,7 @@ def _assert_qpool_equal(res_out, ref_out, dtype=QDTYPE):
     ref_int = ref_out.int_repr()
     utils.gems_assert_equal(res_int, ref_int)
 
+
 def _pool_args(kernel_size, stride, padding, dilation, ceil_mode):
     return dict(
         kernel_size=kernel_size,
@@ -113,6 +126,7 @@ def _pool_args(kernel_size, stride, padding, dilation, ceil_mode):
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
+
 
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize(
@@ -132,6 +146,7 @@ def test_quantized_max_pool3d(shape, kernel_size, stride, padding, dilation, cei
     )
 
     _assert_qpool_equal(res_out, ref_out)
+
 
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize("scale_zp", [(0.1, 128), (0.02, 50), (0.5, 30)])
@@ -163,6 +178,7 @@ def test_quantized_max_pool3d_quant_params(
 
     _assert_qpool_equal(res_out, ref_out)
 
+
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize("dtype", QINT_DTYPES)
 @pytest.mark.parametrize(
@@ -182,6 +198,8 @@ def test_quantized_max_pool3d_qint_dtypes(
     ``qint32`` in particular has a 4-byte integer representation, so a kernel
     that assumed a 1-byte ``uint8`` storage would silently corrupt it.
     """
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.qint32:
+        pytest.skip("MUSA quantize_per_tensor supports only qint8 and quint8 inputs")
     zero_point = QINT_ZERO_POINTS[dtype]
     qx = _make_qinput(
         shape, device=flag_gems.device, zero_point=zero_point, dtype=dtype
@@ -193,6 +211,30 @@ def test_quantized_max_pool3d_qint_dtypes(
     res_out = flag_gems.quantized_max_pool3d(qx, **args)
 
     _assert_qpool_equal(res_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize("dtype", QINT_DTYPES)
+def test_quantized_max_pool3d_out_qint_dtypes(dtype):
+    """The ``out=`` path must round-trip every supported dtype, not just quint8."""
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.qint32:
+        pytest.skip("MUSA quantize_per_tensor supports only qint8 and quint8 inputs")
+    shape = (2, 3, 8, 8, 8)
+    zero_point = QINT_ZERO_POINTS[dtype]
+    qx = _make_qinput(
+        shape, device=flag_gems.device, zero_point=zero_point, dtype=dtype
+    )
+    ref_inp = qx.to("cpu")
+    args = _pool_args(2, 2, 0, 1, False)
+
+    ref_out = torch.quantized_max_pool3d(ref_inp, **args)
+    out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, zero_point, dtype)
+
+    res_out = flag_gems.quantized_max_pool3d_out(qx, out=out_q, **args)
+
+    assert res_out is out_q
+    _assert_qpool_equal(res_out, ref_out, dtype=dtype)
+
 
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize("stride", [None, [], ()])
@@ -222,6 +264,31 @@ def test_quantized_max_pool3d_default_stride(kernel_size, stride):
     explicit = flag_gems.quantized_max_pool3d(qx, kernel_size, _as3(kernel_size))
     _assert_qpool_equal(explicit, ref_out)
 
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize("stride", [None, []])
+def test_quantized_max_pool3d_out_default_stride(stride):
+    """The ``out=`` variant shares the empty-stride default."""
+    shape = (1, 2, 8, 8, 8)
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+
+    if stride is None:
+        ref_out = torch.ops.aten.quantized_max_pool3d(ref_inp, [2, 2, 2])
+        out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, ZERO_POINT, QDTYPE)
+        res_out = flag_gems.quantized_max_pool3d_out(qx, 2, out=out_q)
+    else:
+        ref_out = torch.ops.aten.quantized_max_pool3d(ref_inp, [2, 2, 2], [])
+        out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, ZERO_POINT, QDTYPE)
+        res_out = flag_gems.quantized_max_pool3d_out(qx, 2, stride, out=out_q)
+
+    assert res_out is out_q
+    _assert_qpool_equal(res_out, ref_out)
+
+
+# (name, kwargs) pairs that ``aten::quantized_max_pool3d`` rejects. Each must be
+# rejected by the FlagGems kernel with the same error type and message, so that a
+# caller cannot get a silently wrong result out of an invalid configuration.
 INVALID_PARAM_CASES = [
     ("kernel_size len 1", dict(kernel_size=[2])),
     ("kernel_size len 2", dict(kernel_size=[2, 2])),
@@ -248,6 +315,7 @@ INVALID_PARAM_CASES = [
     ("output size negative dilated", dict(kernel_size=4, stride=1, dilation=3)),
 ]
 
+
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize(
     "name, kwargs", INVALID_PARAM_CASES, ids=[c[0] for c in INVALID_PARAM_CASES]
@@ -268,6 +336,24 @@ def test_quantized_max_pool3d_invalid_params(name, kwargs):
         f"  aten: {ref_exc.value}\n  gems: {res_exc.value}"
     )
 
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize(
+    "name, kwargs",
+    INVALID_PARAM_CASES[:8],
+    ids=[c[0] for c in INVALID_PARAM_CASES[:8]],
+)
+def test_quantized_max_pool3d_out_invalid_params(name, kwargs):
+    """The ``out=`` variant validates before it touches ``out``."""
+    qx = _make_qinput((1, 2, 6, 6, 6), device=flag_gems.device)
+    out_q = _make_qout((1, 1, 1, 1, 1), flag_gems.device, SCALE, ZERO_POINT, QDTYPE)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.quantized_max_pool3d_out(qx, out=out_q, **kwargs)
+    # out must be left untouched when the arguments are rejected
+    assert tuple(out_q.shape) == (1, 1, 1, 1, 1)
+
+
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize(
     "shape",
@@ -285,6 +371,7 @@ def test_quantized_max_pool3d_invalid_rank(shape):
         flag_gems.quantized_max_pool3d(qx, kernel_size=2)
 
     assert str(res_exc.value) == str(ref_exc.value)
+
 
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize(
@@ -304,6 +391,7 @@ def test_quantized_max_pool3d_zero_sized_dims(shape):
 
     assert str(res_exc.value) == str(ref_exc.value)
 
+
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d_empty_batch():
     """N == 0 is legal and yields an empty result (ATen allows it)."""
@@ -316,19 +404,19 @@ def test_quantized_max_pool3d_empty_batch():
     assert res_out.numel() == 0
     _assert_qpool_equal(res_out, ref_out)
 
+
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d_rejects_non_quantized():
     """A plain float tensor is not a valid input."""
-    torch.manual_seed(0)
     with pytest.raises(RuntimeError):
         flag_gems.quantized_max_pool3d(
             torch.randn(1, 2, 6, 6, 6, device=flag_gems.device), kernel_size=2
         )
 
+
 @pytest.mark.quantized_max_pool3d
 def test_quantized_max_pool3d_rejects_per_channel():
     """Only per-tensor affine quantization is supported, as in ATen."""
-    torch.manual_seed(0)
     qx = torch.quantize_per_channel(
         torch.randn(1, 2, 6, 6, 6, device=flag_gems.device),
         torch.tensor([SCALE, 0.1], device=flag_gems.device),
@@ -338,6 +426,179 @@ def test_quantized_max_pool3d_rejects_per_channel():
     )
     with pytest.raises(RuntimeError):
         flag_gems.quantized_max_pool3d(qx, kernel_size=2)
+
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode",
+    QUANTIZED_MAXPOOL3D_CONFIGS,
+)
+def test_quantized_max_pool3d_out(
+    shape, kernel_size, stride, padding, dilation, ceil_mode
+):
+    """``.out`` variant writes into a pre-allocated quantized tensor."""
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+
+    ref_out = torch.quantized_max_pool3d(
+        ref_inp, **_pool_args(kernel_size, stride, padding, dilation, ceil_mode)
+    )
+
+    # Pre-allocate an out tensor with the expected (ref) shape and matching
+    # quantization parameters.
+    out_shape = ref_out.shape
+    out_q = _make_qout(
+        out_shape, flag_gems.device, ref_out.q_scale(), ref_out.q_zero_point(), QDTYPE
+    )
+
+    res_out = flag_gems.quantized_max_pool3d_out(
+        qx,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        out=out_q,
+    )
+
+    # The out variant must alias and return the provided tensor.
+    assert res_out is out_q
+    _assert_qpool_equal(res_out, ref_out)
+
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize(
+    "out_shape", [(1, 1, 1, 1, 1), (4, 4, 4, 4, 4), (1, 2, 3, 3, 4)]
+)
+def test_quantized_max_pool3d_out_resizes(out_shape):
+    """A mis-sized ``out`` is resized to the pooled shape, as ATen does."""
+    shape = (1, 2, 6, 6, 6)
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+    args = _pool_args(2, 2, 0, 1, False)
+
+    ref_out = torch.quantized_max_pool3d(ref_inp, **args)
+    ref_o = _make_qout(out_shape, "cpu", 0.9, 7, QDTYPE)
+    _aten_out(ref_inp, ref_o, 2, 2, 0, 1, False)
+
+    out_q = _make_qout(out_shape, flag_gems.device, 0.9, 7, QDTYPE)
+    res_out = flag_gems.quantized_max_pool3d_out(qx, out=out_q, **args)
+
+    assert res_out is out_q
+    assert tuple(out_q.shape) == tuple(ref_o.shape) == tuple(ref_out.shape)
+    _assert_qpool_equal(out_q, ref_out)
+
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize("out_qparams", [(0.9, 7), (1.0, 0), (0.02, 200)])
+def test_quantized_max_pool3d_out_adopts_input_qparams(out_qparams):
+    """``out`` ends up carrying the *input*'s scale/zero_point.
+
+    ATen allocates the result with the input's quantization parameters and the
+    generated ``out`` wrapper copies them onto ``out``, so a pre-existing
+    scale/zero_point on ``out`` is overwritten rather than respected.
+    """
+    shape = (1, 2, 6, 6, 6)
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+    args = _pool_args(2, 2, 0, 1, False)
+
+    ref_out = torch.quantized_max_pool3d(ref_inp, **args)
+    ref_o = _make_qout(ref_out.shape, "cpu", *out_qparams, QDTYPE)
+    _aten_out(ref_inp, ref_o, 2, 2, 0, 1, False)
+
+    out_q = _make_qout(ref_out.shape, flag_gems.device, *out_qparams, QDTYPE)
+    res_out = flag_gems.quantized_max_pool3d_out(qx, out=out_q, **args)
+
+    assert abs(res_out.q_scale() - ref_o.q_scale()) < 1e-9
+    assert res_out.q_zero_point() == ref_o.q_zero_point()
+    _assert_qpool_equal(res_out, ref_out)
+
+
+@pytest.mark.quantized_max_pool3d_out
+@pytest.mark.parametrize("dtype", [torch.qint8, torch.qint32, torch.float32])
+def test_quantized_max_pool3d_out_dtype_mismatch(dtype):
+    """An ``out`` whose dtype differs from the input is rejected."""
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.qint32:
+        pytest.skip("MUSA quantize_per_tensor supports only qint8 and quint8 inputs")
+    qx = _make_qinput((1, 2, 6, 6, 6), device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+    ref_out = torch.quantized_max_pool3d(ref_inp, kernel_size=2, stride=2)
+
+    if dtype == torch.float32:
+        # A non-quantized out is rejected too.
+        out_float = torch.zeros(ref_out.shape, device=flag_gems.device)
+        with pytest.raises(RuntimeError):
+            flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_float)
+        return
+
+    zero_point = 0
+    ref_o = _make_qout(ref_out.shape, "cpu", SCALE, zero_point, dtype)
+    with pytest.raises(RuntimeError) as ref_exc:
+        _aten_out(ref_inp, ref_o, 2, 2, 0, 1, False)
+
+    out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, zero_point, dtype)
+    with pytest.raises(RuntimeError) as res_exc:
+        flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_q)
+
+    assert str(res_exc.value) == str(ref_exc.value)
+
+
+@pytest.mark.quantized_max_pool3d_out
+def test_quantized_max_pool3d_out_preserves_storage_offset():
+    """Writing into a view must not clobber the rest of its storage.
+
+    ATen's ``resize_output`` keeps ``out``'s storage offset, so pooling into
+    ``big[1]`` leaves ``big[0]`` untouched.
+    """
+    shape = (1, 2, 6, 6, 6)
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+    args = _pool_args(2, 2, 0, 1, False)
+    ref_out = torch.quantized_max_pool3d(ref_inp, **args)
+
+    # (2, *pooled_shape[1:]) so that big[1] already has the right shape.
+    big_shape = (2,) + tuple(ref_out.shape)[1:]
+    big = _make_qout(big_shape, flag_gems.device, SCALE, ZERO_POINT, QDTYPE)
+    sub = big[1]
+    assert sub.storage_offset() != 0
+
+    res_out = flag_gems.quantized_max_pool3d_out(qx, out=sub, **args)
+
+    assert res_out is sub
+    utils.gems_assert_equal(sub.int_repr().to("cpu"), ref_out.int_repr())
+    # The sibling slice keeps its original (zero-point) contents.
+    assert bool((big[0].int_repr() == ZERO_POINT).all())
+
+
+@pytest.mark.quantized_max_pool3d_out
+def test_quantized_max_pool3d_out_non_contiguous():
+    """A non-contiguous ``out`` of the right shape keeps its strides.
+
+    ATen only restrides ``out`` when a resize actually happens, so a strided
+    ``out`` that already has the pooled shape is written through its own strides.
+    """
+    shape = (1, 2, 6, 8, 10)
+    qx = _make_qinput(shape, device=flag_gems.device)
+    ref_inp = qx.to("cpu")
+    args = _pool_args(2, 2, 0, 1, False)
+    ref_out = torch.quantized_max_pool3d(ref_inp, **args)
+
+    # Every other element along W gives a non-contiguous view of the right shape.
+    holder_shape = tuple(ref_out.shape)[:-1] + (ref_out.shape[-1] * 2,)
+    holder = _make_qout(holder_shape, flag_gems.device, 0.9, 7, QDTYPE)
+    view = holder[..., ::2]
+    assert not view.is_contiguous()
+    strides_before = view.stride()
+
+    res_out = flag_gems.quantized_max_pool3d_out(qx, out=view, **args)
+
+    assert res_out is view
+    assert view.stride() == strides_before, "out was silently restrided"
+    _assert_qpool_equal(view, ref_out)
+    # The interleaved elements are untouched.
+    assert bool((holder[..., 1::2].int_repr() == 7).all())
+
 
 @pytest.mark.quantized_max_pool3d
 @pytest.mark.parametrize("layout", ["channels_last_3d", "permuted", "strided_slice"])

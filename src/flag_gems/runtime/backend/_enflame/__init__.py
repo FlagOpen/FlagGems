@@ -34,6 +34,9 @@ driver = _GCUDriver()
 arch = driver.get_arch()
 arch_version = int(re.search(r"gcu(\d+)", arch).group(1))
 
+# Complex tensors abort the process on gcu300 rather than raising an exception.
+complex_enabled = arch_version != 300
+
 vendor_info = VendorDescriptor(
     vendor_name="enflame",
     device_name="gcu",
@@ -41,6 +44,7 @@ vendor_info = VendorDescriptor(
     dispatch_key="PrivateUse1",
     fp64_enabled=False,
     int64_enabled=False,
+    complex_enabled=complex_enabled,
     tle_enabled=True,
 )
 

@@ -5,7 +5,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-COMPLEX_DTYPES = [torch.complex64, torch.complex128]
+COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
 
 # linalg_vander tests
 VANDER_SHAPES = [
@@ -89,6 +91,10 @@ def test_linalg_vander_with_N(shape, N, dtype):
 @pytest.mark.linalg_vander
 @pytest.mark.parametrize("shape", VANDER_SHAPES)
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend torch.randn does not support complex input dtypes",
+)
 def test_linalg_vander_complex(shape, dtype):
     # Complex dtype coverage: torch.linalg.vander supports complex inputs.
     # No upcast is needed because the reference supports complex natively.
@@ -106,6 +112,10 @@ def test_linalg_vander_complex(shape, dtype):
 @pytest.mark.parametrize("shape", VANDER_SHAPES)
 @pytest.mark.parametrize("N", [2, 3, 4, 8])
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend torch.randn does not support complex input dtypes",
+)
 def test_linalg_vander_with_N_complex(shape, N, dtype):
     # Test complex dtype with explicit N parameter.
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)

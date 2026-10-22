@@ -1151,6 +1151,10 @@ from flag_gems.ops.special_modified_bessel_i0 import (
     special_modified_bessel_i0,
     special_modified_bessel_i0_out,
 )
+from flag_gems.ops.special_modified_bessel_i1 import (
+    special_modified_bessel_i1,
+    special_modified_bessel_i1_out,
+)
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
@@ -1182,6 +1186,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_softmax import special_softmax
+from flag_gems.ops.special_spherical_bessel_j0 import special_spherical_bessel_j0
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.special_xlogy import special_xlogy, special_xlogy_
 from flag_gems.ops.special_zeta import (
@@ -2523,6 +2528,8 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_i0",
     "special_modified_bessel_i0_out",
+    "special_modified_bessel_i1",
+    "special_modified_bessel_i1_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
@@ -2541,6 +2548,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
     "special_softmax",
+    "special_spherical_bessel_j0",
     "special_xlog1py",
     "special_xlogy",
     "special_xlogy_",

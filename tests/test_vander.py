@@ -105,6 +105,10 @@ def test_vander_negative_values(dtype):
 
 
 @pytest.mark.vander
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads" and not utils.TO_CPU,
+    reason="MUSA torch.vander reference does not support float64",
+)
 def test_vander_fp64():
     # FP64 precision must be preserved end-to-end (no fp32 downcast in the kernel).
     res_inp = torch.randn(32, dtype=torch.float64, device=flag_gems.device)
@@ -117,6 +121,10 @@ def test_vander_fp64():
 
 
 @pytest.mark.vander
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend torch.randn input construction does not support complex dtypes",
+)
 @pytest.mark.parametrize("increasing", [False, True])
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_vander_complex(dtype, increasing):
