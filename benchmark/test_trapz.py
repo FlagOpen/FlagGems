@@ -1,52 +1,24 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import pytest
 import torch
 
 import flag_gems
 
-from . import base, consts, utils
-from .generated_operator_utils import OperatorBenchmark
+from . import base, consts
 
 
-def _case_fn(shape, dtype):
-    del dtype
-    dims = tuple(shape)
-    dim = len(dims) - 1
-    yield base.BenchmarkCasePlan(
-        shape={"y": list(dims)},
-        params={"dx": 1.0, "dim": dim},
-        builder_args=(dims, dim),
-    )
-
-
-def _build_inputs_fn(plan, dtype, device):
-    shape, dim = plan.builder_args
-    torch.manual_seed(0)
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    return inp, {"dx": 1.0, "dim": dim}
+def trapz_input_fn(shape, dtype, device):
+    inp = base.generate_tensor_input(shape, dtype, device)
+    dim = len(shape) - 1
+    yield inp, {"dx": 1.0, "dim": dim}
 
 
 @pytest.mark.trapz
 def test_trapz():
-    bench = OperatorBenchmark(
+    bench = base.GenericBenchmark(
         op_name="trapz",
         torch_op=torch.trapezoid,
+        input_fn=trapz_input_fn,
         gems_op=flag_gems.trapz,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
