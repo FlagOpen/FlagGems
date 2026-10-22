@@ -59,6 +59,14 @@ else:
         pass
 
 
+def _reference_synchronize():
+    try:
+        torch_device_fn.synchronize()
+    except Exception as error:
+        error._reference_sync_failure = True
+        raise
+
+
 def measure_calls(fn, *, warmup_calls=0, repeat_calls=1):
     """Synchronized wall-time sample with explicit counts, without calibration.
 
@@ -71,11 +79,11 @@ def measure_calls(fn, *, warmup_calls=0, repeat_calls=1):
         raise ValueError("repeat_calls must be a positive integer")
     for _ in range(warmup_calls):
         fn()
-    torch_device_fn.synchronize()
+    _reference_synchronize()
     start = time.perf_counter()
     for _ in range(repeat_calls):
         fn()
-    torch_device_fn.synchronize()
+    _reference_synchronize()
     return (time.perf_counter() - start) * 1000 / repeat_calls
 
 
@@ -691,21 +699,37 @@ class Benchmark:
                 torch_device_fn.synchronize()
             except pytest.skip.Exception as error:
                 record.update(status="SKIP", reason=str(error))
-                raise
+                Config.executed_case_ids.add(case.case_id)
+                continue
             except BaseException as error:
-                record["failure"] = reference_failure(error)
+                record.pop("latency_ms", None)
+                record["failure"] = reference_failure(
+                    error, oom_type=torch.OutOfMemoryError
+                )
+                if getattr(error, "_reference_sync_failure", False):
+                    record["stage"] = "synchronize"
                 if (
                     not isinstance(error, Exception)
                     or record["stage"] == "synchronize"
-                    or record["failure"]["category"] == "UNKNOWN"
+                    or record["failure"]["category"]
+                    in {"DEVICE_ERROR", "HOST_OUT_OF_MEMORY"}
                 ):
+                    record["failure"]["skip_eligible"] = False
                     raise
-                # Only explicit capability errors can continue, and never if
-                # queued accelerator work reports an additional failure.
+                # Keep failure evidence as text, then release traceback-held
+                # tensors before recovering from an allocation failure.
+                error.__traceback__ = None
+                args = kwargs = None
                 try:
+                    if record["failure"]["category"] == "OUT_OF_MEMORY":
+                        gc.collect()
+                        torch_device_fn.empty_cache()
                     torch_device_fn.synchronize()
                 except BaseException as sync_error:
-                    record["recovery_failure"] = reference_failure(sync_error)
+                    record["failure"]["skip_eligible"] = False
+                    record["recovery_failure"] = reference_failure(
+                        sync_error, oom_type=torch.OutOfMemoryError
+                    )
                     raise
                 continue
             finally:

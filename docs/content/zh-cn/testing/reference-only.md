@@ -50,9 +50,11 @@ KGS 配套通过设备 slot 和隔离 worker 调用此命令，核对冻结 benc
 
 每个已选 case 保留 `case_id`、`ordinal`、`dtype`、`shape`、`params` 和执行状态。失败记录额外包含 `stage`（`build_inputs`、`benchmark_reference` 或 `synchronize`）与 `failure`（`category`、异常 `type`、原始 `message`、`traceback`），用于区分输入构造、原 baseline 测量和外层设备同步失败。共享计时封装内部的调用或同步异常都属于 `benchmark_reference`，由原 traceback 定位。`dtype` 来自 case 声明；backward 或原始 reference 内部可能转换 dtype，具体报错仍以原始异常为准。
 
-`category` 是保守的诊断提示，不是设备能力表：`DTYPE_UNSUPPORTED` 仅识别明确的 PyTorch `not implemented for '<dtype>'` 信息；`API_MISSING` 仅用于实际访问缺失的 `torch` 模块属性；`NOT_IMPLEMENTED` 保留无法确定是整个 API、后端还是参数组合不支持的 `NotImplementedError`；其余为 `UNKNOWN`。不能从某一个 dtype 或某个输入失败推断整个算子不可用。
+`category` 是保守的诊断提示，不是设备能力表：`OUT_OF_MEMORY` 来自明确的 `torch.OutOfMemoryError`；`DTYPE_UNSUPPORTED` 仅识别明确的 PyTorch `not implemented for '<dtype>'` 信息；`API_MISSING` 用于访问缺失的 `torch` 模块或 ATen namespace/overload 属性；`NOT_IMPLEMENTED` 保留无法确定是整个 API、后端还是参数组合不支持的 `NotImplementedError`；参数、shape、索引及断言异常归为 `TEST_ERROR`，其他异常保留 `UNKNOWN`。明确的设备致命错误为 `DEVICE_ERROR`，宿主内存分配失败为 `HOST_OUT_OF_MEMORY`。不能从某一个 dtype 或某个输入失败推断整个算子不可用。
 
-明确的上述能力错误在设备同步正常后继续下一个 case，所有失败仍逐条保留且总体为 `FAILED`。未知错误、同步失败或中断立即停止当前 node，剩余已选 case 标为 `NOT_RUN`，不伪造失败原因。错误后的同步若再次失败，另存 `recovery_failure`，保留首个异常。原 pytest skip 仍终止整个 node；未完成的 case 不计作通过。收集或 setup 阶段尚未生成 case 时只能提供 pytest 阶段级错误；进程被强杀时也不承诺完整报告。
+普通 case 错误在设备同步正常后继续下一个 case，包含 OOM、dtype 不支持、API 缺失、测试参数错误和未知普通异常。OOM 先释放异常栈持有的输入、回收对象并清理设备缓存，再同步检查。所有这些失败仍记录为 `FAILED`，遍历结束后 pytest 报告失败，不自动改成 SKIP。只有 OOM 和明确 dtype 不支持的 `failure.skip_eligible=true`，表示可据此制定针对平台/case 的显式 skip 规则；API 缺失、普通 dtype 不匹配、数值断言等均为 false。显式规则落地前，只有这两类错误也不能通过审核。
+
+同步失败、明确设备致命错误、宿主内存耗尽或中断立即停止当前 node，剩余 case 标为 `NOT_RUN`。错误恢复若失败，另存 `recovery_failure` 并撤销该 case 的 skip 资格。case 执行内部触发的显式 pytest skip 只跳过当前 case，后续 case 继续；pytest fixture/marker 或 case 循环外的 node-level skip 仍按 pytest 节点语义处理。全部 case 跳过仍为 `ALL_SKIP`。收集、setup 或进程崩溃可能没有完整逐 case 报告，不能虚构结果。
 
 ## 验证范围
 
