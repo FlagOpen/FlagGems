@@ -14641,6 +14641,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_storage_offsets
+  description: 'Returns a zero-copy view of the per-tensor storage-offset metadata
+    of a nested tensor.
+
+    '
+  for:
+  - _nested_tensor_storage_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_to_padded_tensor
   description: Converts a nested (ragged) tensor into a padded dense tensor, filling
     unoccupied positions with a scalar padding value.

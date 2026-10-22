@@ -446,6 +446,12 @@ _FULL_CONFIG = (
     ("_nested_tensor_from_mask_left_aligned", _nested_tensor_from_mask_left_aligned),
     ("_nested_tensor_from_tensor_list", _nested_tensor_from_tensor_list),
     ("_nested_tensor_softmax_with_shape", _nested_tensor_softmax_with_shape),
+    (
+        "_nested_tensor_storage_offsets",
+        nested_tensor_storage_offsets,
+        None,
+        (AUTOGRAD_DISPATCH_KEY,),
+    ),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
