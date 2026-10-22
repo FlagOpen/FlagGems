@@ -92,11 +92,65 @@ _REJECT_VALUES_SHAPES = [(2, 2), (2, 2, 2), ()]
 _SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_IDENTITY_DTYPES), quick=[])
 
 
+def _checked_cpu_input(tensor, dtype, shape):
+    assert tensor.device == torch.device("cpu")
+    assert tensor.dtype == dtype
+    assert tensor.shape == torch.Size(shape)
+    return tensor
+
+
+def _make_cpu_input(dtype, shape, value_range):
+    # These APIs are host-only: accelerator factory capabilities must not
+    # narrow the declared CPU dtype or prevent a native CPU case from running.
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if dtype == torch.bool:
+        result = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            # Older CPU stacks can encode FP8 but cannot fill FP8 directly.
+            fill_dtype = (
+                torch.float32
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else dtype
+            )
+            result = torch.full(shape, low, dtype=fill_dtype, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    return _checked_cpu_input(result, dtype, shape)
+
+
+def _make_cpu_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    result = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(
+        dtype
+    )
+    return _checked_cpu_input(result, dtype, (5,))
+
+
+def _assert_result_equal(result, reference):
+    # Check the host ABI before the shared CPU-reference comparator can move
+    # a wrongly placed candidate output back to CPU.
+    assert result.device == reference.device == torch.device("cpu")
+    tu.assert_result_equal(result, reference)
+
+
 def _independent_operands(dtype, shape, value_range):
     # The reference operand is an independent clone of the same parent, so it has
     # identical strides and storage offset without going through the shared
     # helper's reference-device handling (this kernel only exists on the CPU).
-    values = tu.make_input(dtype, shape, value_range).to(_CPU)
+    values = _make_cpu_input(dtype, shape, value_range).to(_CPU)
     return values, values.detach().clone()
 
 
@@ -111,7 +165,7 @@ def _layout_view(tensor, layout):
 def _layout_operands(dtype, shape, layout):
     # Replaying the same slicing on the clone gives the reference operand the
     # exact strides and storage offset of the candidate operand.
-    values = tu.make_input(dtype, shape, ["-1", "1"]).to(_CPU)
+    values = _make_cpu_input(dtype, shape, ["-1", "1"]).to(_CPU)
     return _layout_view(values, layout), _layout_view(values.detach().clone(), layout)
 
 
@@ -153,13 +207,20 @@ def test_test_optional_intlist_identity(shape, value_range, dtype):
     ref_out = torch.ops.aten._test_optional_intlist(ref_values, None)
     res_out = flag_gems._test_optional_intlist(values, None)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_identity(res_out, ref_out, values)
     # The identity form never writes to its operand, and the returned alias is
     # writable: the write lands in the operand.
-    tu.assert_result_equal(values, before)
-    res_out.fill_(0)
-    tu.assert_result_equal(values, torch.zeros_like(values))
+    _assert_result_equal(values, before)
+    if values.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        # CPU FP8 fill is unavailable on older Torch. Zero the same writable
+        # alias through its bytes; encode the expected zero payload on CPU.
+        res_out.view(torch.uint8).zero_()
+        expected_zeros = torch.zeros_like(values, dtype=torch.float32).to(values.dtype)
+    else:
+        res_out.fill_(0)
+        expected_zeros = torch.zeros_like(values)
+    _assert_result_equal(values, expected_zeros)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -171,9 +232,9 @@ def test_test_optional_intlist_identity_layout(layout, shape):
     ref_out = torch.ops.aten._test_optional_intlist(ref_values, None)
     res_out = flag_gems._test_optional_intlist(values, None)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_identity(res_out, ref_out, values)
-    tu.assert_result_equal(values, before)
+    _assert_result_equal(values, before)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -183,8 +244,8 @@ def test_test_optional_intlist_keyword_addends(addends):
     ref_out = torch.ops.aten._test_optional_intlist(ref_values, addends=addends)
     res_out = flag_gems._test_optional_intlist(values, addends=addends)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(values, ref_values)
     if addends is None:
         assert res_out is values
     else:
@@ -206,8 +267,8 @@ def test_test_optional_intlist_addends(shape, value_range):
     assert res_out.shape == ref_out.shape
     assert res_out is not values
     assert res_out.untyped_storage().data_ptr() != values.untyped_storage().data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(values, ref_values)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -224,8 +285,9 @@ def test_test_optional_intlist_addends_forms(length, addends):
     else:
         assert res_out.dtype == torch.int32
         assert res_out is not values
+        assert not torch._C._is_alias_of(res_out, values)
     assert res_out.shape == ref_out.shape
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -238,7 +300,7 @@ def test_test_optional_intlist_addends_wraparound(payload, addends):
     res_out = flag_gems._test_optional_intlist(values, addends)
 
     assert res_out.dtype == torch.int32
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -257,8 +319,8 @@ def test_test_optional_intlist_out(shape, value_range):
     # the operand untouched.
     assert res is out
     assert res.data_ptr() != values.data_ptr()
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(values, ref_values)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -280,8 +342,8 @@ def test_test_optional_intlist_out_strided(layout, with_addends):
     assert res is out
     assert res.stride() == ref_out.stride()
     assert res.storage_offset() == ref_out.storage_offset()
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(base, ref_base)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -299,13 +361,13 @@ def test_test_optional_intlist_out_resize(with_addends):
 
     assert res is out
     assert res.shape == ref_res.shape == ref_out.shape
-    tu.assert_result_equal(out, ref_out)
+    _assert_result_equal(out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_intlist
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_test_optional_intlist_special_values(dtype, scenario):
-    values = tu.make_special_input(dtype, scenario).to(_CPU)
+    values = _make_cpu_special_input(dtype, scenario).to(_CPU)
     ref_values = values.detach().clone()
 
     ref_out = torch.ops.aten._test_optional_intlist(ref_values, None)
@@ -313,7 +375,7 @@ def test_test_optional_intlist_special_values(dtype, scenario):
 
     # The whole payload is compared, so nan and inf have to survive untouched.
     assert res_out is values
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_intlist
@@ -331,7 +393,7 @@ def test_test_optional_intlist_rejects_backward(layout, dtype):
 
     ref_out = torch.ops.aten._test_optional_intlist(ref_values, None)
     res_out = flag_gems._test_optional_intlist(values, None)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out is values
     with pytest.raises(
         RuntimeError,

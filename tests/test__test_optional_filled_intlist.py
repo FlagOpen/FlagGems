@@ -72,8 +72,62 @@ _BACKWARD_DTYPES = [
 ]
 
 
+def _checked_cpu_input(tensor, dtype, shape):
+    assert tensor.device == torch.device("cpu")
+    assert tensor.dtype == dtype
+    assert tensor.shape == torch.Size(shape)
+    return tensor
+
+
+def _make_cpu_input(dtype, shape, value_range):
+    # These APIs are host-only: accelerator factory capabilities must not
+    # narrow the declared CPU dtype or prevent a native CPU case from running.
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if dtype == torch.bool:
+        result = torch.randint(0, 2, shape, device="cpu").bool()
+    else:
+        if not (dtype.is_floating_point or dtype.is_complex):
+            low, high = int(low), int(high)
+            dtype_min, dtype_max = tu.dtype_bounds(dtype)
+            low = max(low, int(dtype_min))
+            high = min(high, int(dtype_max))
+            low = min(low, high)
+        if low == high:
+            # Older CPU stacks can encode FP8 but cannot fill FP8 directly.
+            fill_dtype = (
+                torch.float32
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else dtype
+            )
+            result = torch.full(shape, low, dtype=fill_dtype, device="cpu").to(dtype)
+        else:
+            result = torch.testing.make_tensor(
+                shape, dtype=dtype, device="cpu", low=low, high=high
+            )
+    return _checked_cpu_input(result, dtype, shape)
+
+
+def _make_cpu_special_input(dtype, scenario):
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    result = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu").to(
+        dtype
+    )
+    return _checked_cpu_input(result, dtype, (5,))
+
+
+def _assert_result_equal(result, reference):
+    # Check the host ABI before the shared CPU-reference comparator can move
+    # a wrongly placed candidate output back to CPU.
+    assert result.device == reference.device == torch.device("cpu")
+    tu.assert_result_equal(result, reference)
+
+
 def _cpu(values):
-    """The native op dispatches on CPU; tu.make_input takes no device argument."""
+    """The native op dispatches on CPU; operands are constructed there."""
     return values.to("cpu")
 
 
@@ -97,6 +151,7 @@ def _list_addends(n):
 def _assert_new_storage(res_out, inp):
     """A fresh result tensor; empty storages share the null data pointer."""
     assert res_out is not inp
+    assert not torch._C._is_alias_of(res_out, inp)
     if inp.numel() > 0:
         assert res_out.data_ptr() != inp.data_ptr()
 
@@ -104,11 +159,11 @@ def _assert_new_storage(res_out, inp):
 def _out_buffer(kind, numel):
     """A valid out buffer plus the storage it was carved from, if any."""
     if kind == "fresh":
-        return torch.zeros(numel, dtype=torch.int32), None
+        return torch.zeros(numel, dtype=torch.int32, device="cpu"), None
     if kind == "offset":
-        base = torch.zeros(numel + 2, dtype=torch.int32)
+        base = torch.zeros(numel + 2, dtype=torch.int32, device="cpu")
         return base[1 : 1 + numel], base
-    base = torch.zeros(2 * numel, dtype=torch.int32)
+    base = torch.zeros(2 * numel, dtype=torch.int32, device="cpu")
     return base[::2], base
 
 
@@ -129,35 +184,35 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__test_optional_filled_intlist_none_addends(shape, value_range, dtype):
-    inp = _cpu(tu.make_input(dtype, shape, value_range))
+    inp = _cpu(_make_cpu_input(dtype, shape, value_range))
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, None)
     res_out = flag_gems._test_optional_filled_intlist(inp, None)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _FILLED_INT_SHAPES)
 def test__test_optional_filled_intlist_filled_int_addends(shape, value_range):
-    inp = _cpu(tu.make_input(torch.int32, shape, value_range))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, value_range))
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, 7)
     res_out = flag_gems._test_optional_filled_intlist(inp, 7)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _LIST_SHAPES)
 def test__test_optional_filled_intlist_list_addends(shape, value_range):
-    inp = _cpu(tu.make_input(torch.int32, shape, value_range))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, value_range))
     addends = _list_addends(inp.numel())
     ref_inp = tu.to_reference(inp)
 
@@ -166,20 +221,20 @@ def test__test_optional_filled_intlist_list_addends(shape, value_range):
 
     assert res_out.device == inp.device
     _assert_new_storage(res_out, inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("addends,value_range", _ADDEND_ROWS)
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
 def test__test_optional_filled_intlist_addends_values(shape, value_range, addends):
-    inp = _cpu(tu.make_input(torch.int32, shape, value_range))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, value_range))
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, addends)
     res_out = flag_gems._test_optional_filled_intlist(inp, addends)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -187,7 +242,7 @@ def test__test_optional_filled_intlist_addends_values(shape, value_range, addend
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", _SMALL_SHAPES)
 def test__test_optional_filled_intlist_out(shape, value_range, out_form):
-    inp = _cpu(tu.make_input(torch.int32, shape, value_range))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, value_range))
     ref_inp = tu.to_reference(inp)
     if out_form == "filled_int":
         addends = 7
@@ -196,8 +251,8 @@ def test__test_optional_filled_intlist_out(shape, value_range, out_form):
     else:
         addends = None
 
-    res_buf = torch.empty(shape, dtype=torch.int32)
-    ref_buf = torch.empty(shape, dtype=torch.int32)
+    res_buf = torch.empty(shape, dtype=torch.int32, device="cpu")
+    ref_buf = torch.empty(shape, dtype=torch.int32, device="cpu")
     ref_out = torch.ops.aten._test_optional_filled_intlist.out(
         ref_inp, addends, out=ref_buf
     )
@@ -208,14 +263,14 @@ def test__test_optional_filled_intlist_out(shape, value_range, out_form):
         # The out overload copies instead of aliasing the input the way the
         # default overload does for a missing addends list.
         _assert_new_storage(res_out, inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("label,out_numel,kind", _OUT_BUFFER_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__test_optional_filled_intlist_out_buffer(label, out_numel, kind, value_range):
-    inp = _cpu(tu.make_input(torch.int32, (2,), value_range))
+    inp = _cpu(_make_cpu_input(torch.int32, (2,), value_range))
     ref_inp = tu.to_reference(inp)
     inp_before = tu.to_reference(inp)
 
@@ -230,13 +285,13 @@ def test__test_optional_filled_intlist_out_buffer(label, out_numel, kind, value_
     assert res_out.storage_offset() == ref_out.storage_offset()
     # Exact native resize/copy semantics for a strided, offset or mismatched
     # buffer: shape and values must match the oracle whatever it does.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     if ref_base is not None:
         # Only the logical elements may be written; the rest of the backing
         # storage keeps its initialised fill on both sides.
-        tu.assert_result_equal(res_base, ref_base)
+        _assert_result_equal(res_base, ref_base)
     # The values input is read-only in both overloads.
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -246,7 +301,7 @@ def test__test_optional_filled_intlist_list_addends_non_contiguous(
     view_case, value_range
 ):
     _, view_fn = view_case
-    base = _cpu(tu.make_input(torch.int32, (16,), value_range))
+    base = _cpu(_make_cpu_input(torch.int32, (16,), value_range))
     inp = view_fn(base)
     addends = _list_addends(inp.numel())
     ref_inp = tu.to_reference(inp)
@@ -255,7 +310,7 @@ def test__test_optional_filled_intlist_list_addends_non_contiguous(
     res_out = flag_gems._test_optional_filled_intlist(inp, addends)
 
     _assert_new_storage(res_out, inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -267,7 +322,7 @@ def test__test_optional_filled_intlist_list_addends_non_contiguous(
     tu.selected_cases([(1,), (16,), (2, 19, 7)], quick=[(1,), (16,), (2, 19, 7)]),
 )
 def test__test_optional_filled_intlist_none_returns_input(shape, dtype):
-    inp = _cpu(tu.make_input(dtype, shape, ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(dtype, shape, ["-1", "1"]))
     before = _metadata(inp)
     ref_inp = tu.to_reference(inp)
 
@@ -279,17 +334,17 @@ def test__test_optional_filled_intlist_none_returns_input(shape, dtype):
     # was taken before the call, so it is not a comparison back to itself.
     assert res_out is inp
     assert _metadata(res_out) == before
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     inp.add_(1)
     ref_inp.add_(1)
-    tu.assert_result_equal(res_out, ref_inp)
+    _assert_result_equal(res_out, ref_inp)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 def test__test_optional_filled_intlist_none_keeps_view_metadata(view_case):
     _, view_fn = view_case
-    base = _cpu(tu.make_input(torch.int32, (16,), ["-1", "1"]))
+    base = _cpu(_make_cpu_input(torch.int32, (16,), ["-1", "1"]))
     inp = view_fn(base)
     assert not inp.is_contiguous() or inp.storage_offset() != 0
     before = _metadata(inp)
@@ -300,7 +355,7 @@ def test__test_optional_filled_intlist_none_keeps_view_metadata(view_case):
 
     assert res_out is inp
     assert _metadata(res_out) == before
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -310,14 +365,14 @@ def test__test_optional_filled_intlist_none_keeps_view_metadata(view_case):
     tu.selected_cases([(1,), (256,), (2, 19, 7)], quick=[(1,), (256,), (2, 19, 7)]),
 )
 def test__test_optional_filled_intlist_none_addends_keyword(shape, dtype):
-    inp = _cpu(tu.make_input(dtype, shape, ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(dtype, shape, ["-1", "1"]))
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, addends=None)
     res_out = flag_gems._test_optional_filled_intlist(inp, addends=None)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -329,14 +384,14 @@ def test__test_optional_filled_intlist_none_addends_keyword(shape, dtype):
     ),
 )
 def test__test_optional_filled_intlist_none_addends_nan_inf(dtype, scenario):
-    inp = _cpu(tu.make_special_input(dtype, scenario))
+    inp = _cpu(_make_cpu_special_input(dtype, scenario))
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, None)
     res_out = flag_gems._test_optional_filled_intlist(inp, None)
 
     assert res_out is inp
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_test_optional_filled_intlist
@@ -344,13 +399,13 @@ def test__test_optional_filled_intlist_none_addends_nan_inf(dtype, scenario):
 def test_test_optional_filled_intlist_rejects_backward(dtype):
     # A non-leaf view reaches the operator's missing derivative; a leaf identity
     # would make autograd stop at the output and never exercise this contract.
-    base = tu.make_input(dtype, (16,), ["-1", "1"]).cpu().requires_grad_(True)
+    base = _make_cpu_input(dtype, (16,), ["-1", "1"]).cpu().requires_grad_(True)
     ref_base = tu.to_reference(base.detach()).requires_grad_(True)
     inp, ref_inp = base[::2], ref_base[::2]
-    upstream = tu.make_input(dtype, inp.shape, ["-1", "1"]).cpu()
+    upstream = _make_cpu_input(dtype, inp.shape, ["-1", "1"]).cpu()
     ref_out = torch.ops.aten._test_optional_filled_intlist(ref_inp, None)
     res_out = flag_gems._test_optional_filled_intlist(inp, None)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     with pytest.raises(
         RuntimeError,
         match="derivative for aten::_test_optional_filled_intlist is not implemented",
@@ -371,7 +426,7 @@ _SHORT_ADDENDS_CASES = [((3,), 7), ((2,), [1]), ((4,), [1, 2]), ((256,), 10)]
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("shape,addends", _SHORT_ADDENDS_CASES)
 def test__test_optional_filled_intlist_rejects_short_addends(shape, addends):
-    inp = _cpu(tu.make_input(torch.int32, shape, ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, ["-1", "1"]))
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, addends)
@@ -383,7 +438,7 @@ def test__test_optional_filled_intlist_rejects_short_addends(shape, addends):
     [((2, 3), [1, 2]), ((2, 3, 4), [1, 2]), ((2, 3), 7), ((2, 19, 7), [1, 2])],
 )
 def test__test_optional_filled_intlist_rejects_non_1d_values(shape, addends):
-    inp = _cpu(tu.make_input(torch.int32, shape, ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(torch.int32, shape, ["-1", "1"]))
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, addends)
@@ -405,7 +460,7 @@ def test__test_optional_filled_intlist_rejects_non_1d_values(shape, addends):
     ],
 )
 def test__test_optional_filled_intlist_rejects_non_int32_values(dtype):
-    inp = _cpu(tu.make_input(dtype, (2,), ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(dtype, (2,), ["-1", "1"]))
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, 7)
@@ -414,7 +469,7 @@ def test__test_optional_filled_intlist_rejects_non_int32_values(dtype):
 @pytest.mark.underscore_test_optional_filled_intlist
 @pytest.mark.parametrize("addends", [3.5, "abc", {"a": 1}])
 def test__test_optional_filled_intlist_rejects_invalid_addends_type(addends):
-    inp = _cpu(tu.make_input(torch.int32, (2,), ["-1", "1"]))
+    inp = _cpu(_make_cpu_input(torch.int32, (2,), ["-1", "1"]))
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, addends)
@@ -432,8 +487,8 @@ def test__test_optional_filled_intlist_rejects_non_tensor_values(values):
     "out_dtype", [torch.float32, torch.float64, torch.int64, torch.int16]
 )
 def test__test_optional_filled_intlist_out_rejects_wrong_dtype(out_dtype):
-    inp = _cpu(tu.make_input(torch.int32, (2,), ["-1", "1"]))
-    out = torch.empty(2, dtype=out_dtype)
+    inp = _cpu(_make_cpu_input(torch.int32, (2,), ["-1", "1"]))
+    out = torch.empty(2, dtype=out_dtype, device="cpu")
 
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._test_optional_filled_intlist(inp, 7, out=out)
