@@ -17,6 +17,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # (input_size, hidden_size, num_layers, bidirectional, bias)
 RECURRENT_CONFIGS = [
@@ -105,6 +106,10 @@ def _reference(weights, args, dtype):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
@@ -121,6 +126,10 @@ def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
@@ -139,6 +148,10 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 @pytest.mark.cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
 def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
     """The buffer is a bitwise copy, so any fixed-width dtype must work."""
     cfg = (4, 3, 2, True, True)
     mode_info = (torch.nn.LSTM, 2, 0, None)
@@ -168,6 +181,10 @@ def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
 
 @pytest.mark.cudnn_rnn_flatten_weight
 def test_cudnn_rnn_flatten_weight_errors():
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
     weights, stride0 = _make_weights(
         torch.float32, (4, 3, 1, False, True), (torch.nn.LSTM, 2, 0, None)
     )
