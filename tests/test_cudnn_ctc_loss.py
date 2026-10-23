@@ -102,10 +102,9 @@ def test_cudnn_ctc_loss_forward(shape):
 
     ref_loss, _, _ = _reference(log_probs, targets, input_lengths, target_lengths)
 
-    with flag_gems.use_gems():
-        res_loss, res_grad = torch.ops.aten._cudnn_ctc_loss(
-            log_probs, targets, input_lengths, target_lengths, 0, False, False
-        )
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, False, False
+    )
 
     assert res_loss.shape == (shape[1],)
     assert res_loss.dtype == torch.float32
@@ -121,10 +120,9 @@ def test_cudnn_ctc_loss_backward(shape):
 
     _, ref_grad, _ = _reference(log_probs, targets, input_lengths, target_lengths)
 
-    with flag_gems.use_gems():
-        _, res_grad = torch.ops.aten._cudnn_ctc_loss(
-            log_probs, targets, input_lengths, target_lengths, 0, False, False
-        )
+    _, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, False, False
+    )
 
     assert res_grad.shape == log_probs.shape
     assert res_grad.dtype == torch.float32
@@ -154,10 +152,9 @@ def test_cudnn_ctc_loss_varying_lengths(input_lengths, target_lengths):
         log_probs, targets, input_lengths, target_lengths
     )
 
-    with flag_gems.use_gems():
-        res_loss, res_grad = torch.ops.aten._cudnn_ctc_loss(
-            log_probs, targets, input_lengths, target_lengths, 0, False, False
-        )
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, False, False
+    )
 
     utils.gems_assert_close(res_loss, ref_loss, torch.float32)
     _assert_valid_region_close(res_grad, ref_grad, input_lengths)
@@ -175,10 +172,9 @@ def test_cudnn_ctc_loss_empty_target():
     input_lengths = [5, 8]
     target_lengths = [0, 1]
 
-    with flag_gems.use_gems():
-        res_loss, res_grad = torch.ops.aten._cudnn_ctc_loss(
-            log_probs, targets, input_lengths, target_lengths, 0, False, False
-        )
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, False, False
+    )
 
     # Zero loss for the empty target, and the gradient of the valid region is
     # `exp(log_probs)` since no label state can consume probability mass.
@@ -213,11 +209,10 @@ def test_cudnn_ctc_loss_autograd():
     (ref_grad,) = torch.autograd.grad(ref.sum(), ref_lp)
 
     gems_lp = log_probs.clone().requires_grad_(True)
-    with flag_gems.use_gems():
-        out = torch.ops.aten._cudnn_ctc_loss(
-            gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
-        )
-        gems_loss = out[0]
+    out = flag_gems.cudnn_ctc_loss(
+        gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
+    )
+    gems_loss = out[0]
     (gems_grad,) = torch.autograd.grad(gems_loss.sum(), gems_lp)
 
     utils.gems_assert_close(gems_loss, ref.detach(), torch.float32)
@@ -241,10 +236,9 @@ def test_cudnn_ctc_loss_tensor_lengths():
         log_probs, targets, input_lengths, target_lengths
     )
 
-    with flag_gems.use_gems():
-        res_loss, res_grad = torch.ops.aten._cudnn_ctc_loss(
-            log_probs, targets, length_tensors[0], length_tensors[1], 0, False, False
-        )
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, length_tensors[0], length_tensors[1], 0, False, False
+    )
 
     utils.gems_assert_close(res_loss, ref_loss, torch.float32)
     _assert_valid_region_close(res_grad, ref_grad, input_lengths)
@@ -257,8 +251,7 @@ def test_cudnn_ctc_loss_invalid_blank():
     log_probs, targets, input_lengths, target_lengths = _make_inputs(
         (8, 2, 6, 2), device
     )
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="blank must be label 0"):
-            torch.ops.aten._cudnn_ctc_loss(
-                log_probs, targets, input_lengths, target_lengths, 1, False, False
-            )
+    with pytest.raises(RuntimeError, match="blank must be label 0"):
+        flag_gems.cudnn_ctc_loss(
+            log_probs, targets, input_lengths, target_lengths, 1, False, False
+        )
