@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .to import to_copy
+
 logger = logging.getLogger(__name__)
 
 
@@ -743,6 +745,14 @@ def _padded_or_direct(a, b, dest, M, K, N, blk_m, blk_n, dot_out_dtype, device):
 
 def mm(a, b):
     logger.debug("GEMS_KUNLUNXIN MM")
+    # [kunlunxin] bf16: compute the product in fp32 and round the result once,
+    # to match the native matmul numerics.  The casts and the fp32 product use
+    # the backend's own kernels by direct import.
+    if a.dtype == torch.bfloat16 and b.dtype == torch.bfloat16:
+        af = to_copy(a, dtype=torch.float32)
+        bf = to_copy(b, dtype=torch.float32)
+        c = mm(af, bf)
+        return to_copy(c, dtype=torch.bfloat16)
     device = a.device
     if is_syrk_transpose_pair(a, b):
         M, K = a.shape
