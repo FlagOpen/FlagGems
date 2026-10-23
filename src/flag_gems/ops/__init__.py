@@ -402,7 +402,6 @@ from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
 )
-from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_bilinear2d_aa_backward import (
     _upsample_bilinear2d_aa_backward,
@@ -465,7 +464,6 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
-from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
@@ -700,8 +698,6 @@ from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
-from flag_gems.ops.expand import expand, expand_
-from flag_gems.ops.expand_as import expand_as
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential import exponential
@@ -864,7 +860,6 @@ from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
 from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
 from flag_gems.ops.histogramdd import histogramdd
-from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hspmm import hspmm
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
@@ -1474,11 +1469,7 @@ from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
 from flag_gems.ops.swapdims import swapdims
-from flag_gems.ops.sym_constrain_range import sym_constrain_range
-from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
-from flag_gems.ops.sym_storage_offset import sym_storage_offset
-from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
@@ -1528,7 +1519,6 @@ from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
-from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
 from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
@@ -1935,7 +1925,6 @@ __all__ = [
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
-    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -1997,7 +1986,6 @@ __all__ = [
     "addr_",
     "adjoint",
     "affine_grid_generator",
-    "alias",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -2267,9 +2255,6 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
-    "expand",
-    "expand_",
-    "expand_as",
     "expand_copy",
     "expm1",
     "expm1_",
@@ -2424,7 +2409,6 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
-    "hsplit",
     "hspmm",
     "hstack",
     "huber_loss",
@@ -3093,13 +3077,8 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "svd",
     "swapdims",
-    "sym_constrain_range",
-    "sym_numel",
     "sym_size",
     "sym_size_int",
-    "sym_storage_offset",
-    "sym_stride",
-    "sym_stride_int",
     "t_",
     "t_copy",
     "t_copy_out",
@@ -3159,7 +3138,6 @@ __all__ = [
     "unique_dim_consecutive",
     "unsafe_index",
     "unsafe_index_put",
-    "unsafe_split_with_sizes",
     "unsqueeze",
     "unsqueeze_",
     "upsample_bicubic2d",

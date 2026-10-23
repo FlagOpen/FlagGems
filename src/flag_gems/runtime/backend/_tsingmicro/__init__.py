@@ -95,8 +95,6 @@ CUSTOMIZED_UNUSED_OPS = (
     "tril_",
     "tril_out",
     "unique_consecutive",
-    "expand",
-    "expand_",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "pad",
