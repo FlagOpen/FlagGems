@@ -42,7 +42,7 @@ from ._foreach_atan import _foreach_atan, _foreach_atan_
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__Scalar,
     _foreach_add__ScalarList,
-            _foreach_clamp_max__Scalar,
+    _foreach_clamp_max__Scalar,
     _foreach_clamp_max__ScalarList,
     _foreach_clamp_max_Scalar,
     _foreach_clamp_max_ScalarList,
@@ -52,7 +52,7 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_clamp_min_ScalarList,
     _foreach_div__Scalar,
     _foreach_div__ScalarList,
-            _foreach_maximum__Scalar,
+    _foreach_maximum__Scalar,
     _foreach_maximum__ScalarList,
     _foreach_maximum_Scalar,
     _foreach_maximum_ScalarList,
@@ -62,12 +62,12 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_minimum_ScalarList,
     _foreach_mul__Scalar,
     _foreach_mul__ScalarList,
-            _foreach_pow__Scalar,
+    _foreach_pow__Scalar,
     _foreach_pow__ScalarList,
-        _foreach_pow_ScalarAndTensor,
-        _foreach_sub__Scalar,
+    _foreach_pow_ScalarAndTensor,
+    _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
-        )
+)
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erf import _foreach_erf
