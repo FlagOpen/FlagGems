@@ -29,6 +29,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
 # CI derives the pytest marker from the implementation file name via the #6359
 # convention; both entry points are declared so ``pytest -m`` selects these
 # tests regardless of the registry state.
@@ -44,7 +46,11 @@ pytestmark = [
 #   bool / int32 / int64 / float64 / fp8 -> ``to_mkldnn()`` itself refuses them
 #            ("dense_to_mkldnn expects float, bfloat16, half, uint8, int8 tensor input"),
 #            so they cannot be expressed as a candidate call at all.
+# The complete native CPU dtype matrix for this reorder (measured; the
+# KernelGen acceptance suite used this exact list). It deviates from the
+# floating-only FLOAT_DTYPES family by design (int8 weights are reorderable).
 SUPPORTED_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.int8]
+FLOAT_DTYPES = SUPPORTED_DTYPES  # alias so the standard dtype-constant name resolves
 
 # Spec shapes filtered to the ranks this operator accepts (rank 3/4/5).
 _ALL_SHAPES = [
@@ -56,6 +62,8 @@ _ALL_SHAPES = [
     (16, 128, 64, 60),  # 4-dim
     (16, 7, 57, 32, 29),  # 5-dim
 ]
+# KernelGen acceptance shapes filtered to the ranks this operator accepts
+# (rank 3/4/5; 0-2 dim weights are asserted as negatives below).
 SHAPES = [shape for shape in _ALL_SHAPES if len(shape) >= 3]
 
 # The five required value ranges from the operator-test spec.
@@ -129,7 +137,8 @@ def _make_special_input(dtype, scenario):
 
 
 def assert_result_equal(result, reference):
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    # exact-equality wrapper (mkldnn comparison has no tolerance path)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
 
 
 def assert_reordered(res_out, ref_out, operand):
@@ -222,11 +231,10 @@ def test_mkldnn_reorder_conv2d_weight_params(params, dtype):
     assert_reordered(res_out, ref_out, inp)
 
 
-@pytest.mark.mkldnn_reorder_conv2d_weight
+@pytest.mark.mkldnn_reorder_conv2d_weight_out
 @pytest.mark.parametrize(
     "shape,dtype",
-    [(32, 16, 3, 3), (8, 4, 3, 3)]
-    and [(s, d) for s in [(32, 16, 3, 3), (8, 4, 3, 3)] for d in SUPPORTED_DTYPES],
+    [(s, d) for s in [(32, 16, 3, 3), (8, 4, 3, 3)] for d in SUPPORTED_DTYPES],
 )
 def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
     dense = make_input(dtype, shape, ["-1", "1"]).cpu()
@@ -247,8 +255,11 @@ def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
+        # The native reorder is value-transparent, so nan/inf survive verbatim
+        # (the same floating dtypes the acceptance suite sweeps).
         (d, s)
-        for d in [torch.float32, torch.float16, torch.bfloat16]
+        for d in SUPPORTED_DTYPES
+        if d != torch.int8
         for s in ("nan", "inf", "mixed")
     ],
 )
@@ -341,7 +352,9 @@ def test_mkldnn_reorder_conv2d_weight_dense_operand():
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+# The native reorder preserves values through autograd forwarding but has no
+# derivative; complex dtypes would need a different raise path (measured).
+@pytest.mark.parametrize("dtype", [d for d in SUPPORTED_DTYPES if d != torch.int8])
 def test_mkldnn_reorder_conv2d_weight_rejects_backward(dtype):
     inp = (
         make_input(dtype, (8, 4, 3, 3), ["-1", "1"]).cpu().to_mkldnn().requires_grad_()

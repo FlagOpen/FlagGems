@@ -82,3 +82,30 @@ def test_mkldnn_reorder_conv2d_weight():
         dtypes=_DTYPES,
     )
     bench.run()
+
+
+class MkldnnReorderConv2dWeightOutBenchmark(MkldnnReorderConv2dWeightBenchmark):
+    """``.out`` variant: yields the mkldnn weight plus a preallocated out buffer."""
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            dense = torch.empty(shape, dtype=cur_dtype)
+            inp = dense.to_mkldnn()
+            out_buf = torch.empty(shape, dtype=cur_dtype).to_mkldnn()
+            yield inp, {
+                "out": out_buf,
+                "padding": list(_PADDING),
+                "stride": list(_STRIDE),
+                "dilation": list(_DILATION),
+                "groups": _GROUPS,
+            }
+
+
+@pytest.mark.mkldnn_reorder_conv2d_weight_out
+def test_mkldnn_reorder_conv2d_weight_out():
+    bench = MkldnnReorderConv2dWeightOutBenchmark(
+        op_name="mkldnn_reorder_conv2d_weight_out",
+        torch_op=torch.ops.aten.mkldnn_reorder_conv2d_weight.out,
+        dtypes=_DTYPES,
+    )
+    bench.run()
