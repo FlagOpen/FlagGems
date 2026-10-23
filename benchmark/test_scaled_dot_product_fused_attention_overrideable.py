@@ -36,7 +36,16 @@ def _build_inputs_fn(plan, dtype, device):
     query, key, value = (
         torch.randn(shape, device=device, dtype=dtype) for _ in range(3)
     )
-    return query, key, value, None, 0.0, plan.params["is_causal"], False, None
+    return (
+        query,
+        key,
+        value,
+        None,
+        0.0,
+        plan.params["is_causal"],
+        False,
+        {"scale": None},
+    )
 
 
 def torch_ref(
