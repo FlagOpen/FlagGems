@@ -443,7 +443,7 @@ ops:
   - alpha: '5.5'
 - id: _values_copy
   description: 'Returns a fresh non-aliasing copy of the values tensor of a
-sparse COO tensor, shaped (nnz,) + dense_shape.
+    sparse COO tensor, shaped (nnz,) + dense_shape.
 
     '
   for:
@@ -457,7 +457,7 @@ sparse COO tensor, shaped (nnz,) + dense_shape.
   - alpha: '5.5'
 - id: _values_copy_out
   description: 'A variant of `_values_copy()` that writes the copied COO values
-tensor into the caller-supplied `out` buffer.
+    tensor into the caller-supplied `out` buffer.
 
     '
   for:
@@ -8846,7 +8846,7 @@ tensor into the caller-supplied `out` buffer.
   - alpha: '5.4'
 - id: fw_primal_copy
   description: 'Returns a fresh copy of the primal value saved by `fw_primal`,
-the copy companion of `_fw_primal`.
+    the copy companion of `_fw_primal`.
 
     '
   for:
@@ -8860,7 +8860,7 @@ the copy companion of `_fw_primal`.
   - alpha: '5.5'
 - id: fw_primal_copy_out
   description: 'A variant of `fw_primal_copy()` that writes the fresh copy of the
-primal value saved by `fw_primal` into the caller-supplied `out` buffer.
+    primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 
     '
   for:
@@ -21232,7 +21232,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - Math
   stages:
-    - alpha: '5.5'
+  - alpha: '5.5'
 - id: triangular_solve
   description: Solves a dense triangular system and returns a full coefficient clone.
   for:
