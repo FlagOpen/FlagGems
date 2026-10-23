@@ -179,19 +179,21 @@ def test_reshape_as_materialized_copy(shape, layout, target, dtype):
 
 
 @pytest.mark.reshape_as
+@pytest.mark.parametrize(
+    "source_shape, target_shape", [((0,), (0, 4)), ((0, 3), (0,)), ((), (1,))]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_reshape_as_special(dtype):
+def test_reshape_as_special(source_shape, target_shape, dtype):
     # Zero-sized and scalar inputs
-    for source_shape, target_shape in [((0,), (0, 4)), ((0, 3), (0,)), ((), (1,))]:
-        inp = torch.randn(source_shape, dtype=dtype, device=flag_gems.device)
-        other = torch.empty(target_shape, dtype=dtype, device=flag_gems.device)
-        ref_inp = utils.to_reference(inp)
-        ref_other = utils.to_reference(other)
+    inp = torch.randn(source_shape, dtype=dtype, device=flag_gems.device)
+    other = torch.empty(target_shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+    ref_other = utils.to_reference(other)
 
-        ref_out = ref_inp.reshape_as(ref_other)
-        res_out = flag_gems.reshape_as(inp, other)
+    ref_out = ref_inp.reshape_as(ref_other)
+    res_out = flag_gems.reshape_as(inp, other)
 
-        utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.reshape_as
