@@ -1131,8 +1131,7 @@ from flag_gems.ops.nested_tensor_storage_offsets import nested_tensor_storage_of
 from flag_gems.ops.nested_to_padded_tensor import nested_to_padded_tensor
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
-from flag_gems.ops.new_zeros import new_zeros_out
-from flag_gems.ops.new_zeros import run as new_zeros
+from flag_gems.ops.new_zeros import new_zeros, new_zeros_out
 from flag_gems.ops.nextafter import nextafter, nextafter_
 from flag_gems.ops.nll_loss2d import nll_loss2d
 from flag_gems.ops.nll_loss_nd import nll_loss_nd_backward, nll_loss_nd_forward

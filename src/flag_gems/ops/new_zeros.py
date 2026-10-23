@@ -194,7 +194,9 @@ def _zero_buffer(buf):
     _fill_any(buf)
 
 
-def run(self, size, *, dtype=None, layout=None, device=None, pin_memory=None, out=None):
+def new_zeros(
+    self, size, *, dtype=None, layout=None, device=None, pin_memory=None, out=None
+):
     logger.debug("GEMS NEW_ZEROS")
     size_t = _as_size(size)
 
@@ -226,7 +228,7 @@ def new_zeros_out(
 ):
     """``aten::new_zeros.out``: zero-fill the caller's buffer and return it."""
     logger.debug("GEMS NEW_ZEROS_OUT")
-    return run(
+    return new_zeros(
         self,
         size,
         dtype=dtype,
