@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 LIST_LENGTH = 8
@@ -48,6 +50,7 @@ def _build_inputs_fn(plan, dtype, device):
 def test_foreach_copy():
     bench = base.GenericBenchmark(
         op_name="foreach_copy",
+        gems_op=flag_gems.foreach_copy,
         torch_op=torch.ops.aten._foreach_copy,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
