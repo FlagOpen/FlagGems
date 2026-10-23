@@ -45,8 +45,10 @@ def lt_scalar(A, B):
 
 
 def less(A, B):
-    return lt(A, B)
+    logger.debug("GEMS LESS")
+    return lt_func(A, B)
 
 
 def less_scalar(A, B):
-    return lt_scalar(A, B)
+    logger.debug("GEMS LESS_SCALAR")
+    return lt_func_scalar(A, B)
