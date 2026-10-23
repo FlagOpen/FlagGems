@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "pad_circular",
+  "name": "_pad_circular",
   "requires_triton_kernel": true,
   "description": "Pads the last one to three dimensions of an N-D tensor using circular\n(periodic wrap-around) boundary values. Negative padding crops.\nThis is an IR representation, not a public API.",
   "parameters": [
