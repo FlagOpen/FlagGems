@@ -402,6 +402,7 @@ _FULL_CONFIG = (
         and hasattr(torch.ops.aten._int_mm, "out"),
     ),
     ("_is_all_true", _is_all_true),
+    ("_is_any_true", _is_any_true),
     ("_jagged_to_padded_dense_forward", _jagged_to_padded_dense_forward),
     ("_linalg_det", _linalg_det),
     ("_linalg_eigh", _linalg_eigh),
