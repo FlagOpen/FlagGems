@@ -1958,6 +1958,7 @@ _FULL_CONFIG = (
     ("svd", svd),
     ("swapdims", swapdims),
     ("sym_constrain_range", sym_constrain_range),
+    ("sym_constrain_range_for_size", sym_constrain_range_for_size),
     ("sym_numel", sym_numel),
     ("sym_size.int", sym_size_int),
     ("sym_storage_offset", sym_storage_offset),
