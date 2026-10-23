@@ -16,7 +16,7 @@ import logging
 
 from .bitwise_or import bitwise_or_scalar
 
-logger = logging.getLogger("flag_gems.ops.or_scalar")
+logger = logging.getLogger(__name__)
 
 
 def or_scalar(self, other):

@@ -643,6 +643,7 @@ def registered_wrappers():
 
 def _foreach_pow_ScalarAndTensor(self, exponent):
     """``pow.ScalarAndTensor``: ``self`` is the scalar base, ``exponent`` the list."""
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_POW_SCALARANDTENSOR")
     tensors = check_tensor_list(exponent)
     srcs, dsts, vals = [], [], []
     for t in tensors:
