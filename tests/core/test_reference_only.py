@@ -198,7 +198,7 @@ def test_invalid_fixed_counts_never_invoke_operator(runner, warmup, repeats):
 def test_invalid_timer_result_is_not_a_pass(runner, monkeypatch, latency):
     bench, config, _ = runner
     monkeypatch.setattr(bench, "get_latency", lambda *a, **kw: latency)
-    with pytest.raises(ValueError, match="invalid latency"):
+    with pytest.raises(pytest.fail.Exception, match="3 reference cases failed"):
         bench.run()
     assert config.reference_records[0]["status"] == "FAILED"
 
@@ -227,22 +227,21 @@ def test_reference_failure_is_not_passed(runner, monkeypatch, failure):
         bench.torch_op = broken
     else:
         monkeypatch.setattr(base.torch_device_fn, "synchronize", broken)
-    with pytest.raises(RuntimeError, match="original failure"):
+    expected_error = RuntimeError if failure == "sync" else pytest.fail.Exception
+    with pytest.raises(expected_error):
         bench.run()
     assert reference_report(config.reference_records)["status"] == "FAILED"
     assert not config.executed_case_ids
-    assert [r["status"] for r in config.reference_records] == [
-        "FAILED",
-        "NOT_RUN",
-        "NOT_RUN",
-    ]
+    assert [r["status"] for r in config.reference_records] == (
+        ["FAILED", "NOT_RUN", "NOT_RUN"] if failure == "sync" else ["FAILED"] * 3
+    )
     record = config.reference_records[0]
     assert (
         record["stage"]
         == {
             "input": "build_inputs",
             "reference": "benchmark_reference",
-            "sync": "benchmark_reference",
+            "sync": "synchronize",
         }[failure]
     )
     assert (
@@ -250,7 +249,9 @@ def test_reference_failure_is_not_passed(runner, monkeypatch, failure):
         and record["shape"] == {}
         and record["params"] == {}
     )
-    assert record["failure"]["category"] == "UNKNOWN"
+    assert record["failure"]["category"] == (
+        "DEVICE_ERROR" if failure == "sync" else "UNKNOWN"
+    )
     assert "RuntimeError: original failure" in record["failure"]["traceback"]
 
 
@@ -283,7 +284,7 @@ def test_capability_failures_are_recorded_individually_and_later_cases_run(runne
     "error,category",
     [
         (AttributeError("arbitrary missing attribute"), "UNKNOWN"),
-        (TypeError("wrong dtype"), "UNKNOWN"),
+        (TypeError("wrong dtype"), "TEST_ERROR"),
         (RuntimeError("unsupported shape"), "UNKNOWN"),
         (NotImplementedError("backend implementation unavailable"), "NOT_IMPLEMENTED"),
         (RuntimeError("\"op\" not implemented for 'BFloat16'"), "DTYPE_UNSUPPORTED"),

@@ -19,15 +19,33 @@ import traceback
 from types import ModuleType
 
 
-def reference_failure(error):
+def reference_failure(error, *, oom_type=()):
     """Conservative diagnostic hints, not an authoritative capability table."""
     message = str(error)
     category = "UNKNOWN"
     obj = getattr(error, "obj", None)
-    if (
+    if isinstance(error, oom_type):
+        category = "OUT_OF_MEMORY"
+    elif isinstance(error, MemoryError):
+        category = "HOST_OUT_OF_MEMORY"
+    elif getattr(error, "_reference_sync_failure", False) or (
+        isinstance(error, RuntimeError)
+        and re.search(
+            r"device-side assert|illegal memory access|device (?:is )?lost|"
+            r"context (?:is |has been )?destroyed",
+            message,
+            re.IGNORECASE,
+        )
+    ):
+        category = "DEVICE_ERROR"
+    elif (
         isinstance(error, AttributeError)
-        and isinstance(obj, ModuleType)
-        and (obj.__name__ == "torch" or obj.__name__.startswith("torch."))
+        and (
+            isinstance(obj, ModuleType)
+            and (obj.__name__ == "torch" or obj.__name__.startswith("torch."))
+            or type(obj).__module__ == "torch._ops"
+            and type(obj).__name__ in {"_OpNamespace", "OpOverloadPacket"}
+        )
         and getattr(error, "name", None)
     ):
         category = "API_MISSING"
@@ -39,8 +57,11 @@ def reference_failure(error):
         category = "DTYPE_UNSUPPORTED"
     elif isinstance(error, NotImplementedError):
         category = "NOT_IMPLEMENTED"
+    elif isinstance(error, (TypeError, ValueError, IndexError, AssertionError)):
+        category = "TEST_ERROR"
     return {
         "category": category,
+        "skip_eligible": category in {"OUT_OF_MEMORY", "DTYPE_UNSUPPORTED"},
         "type": type(error).__name__,
         "message": message,
         "traceback": "".join(
