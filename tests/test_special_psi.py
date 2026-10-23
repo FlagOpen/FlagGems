@@ -187,6 +187,17 @@ def _boundary_input(dtype, kind):
     return as_tensor([finfo.max, finfo.min])
 
 
+def _assert_psi_result(result, reference, expected_device):
+    # Check the candidate's ABI before the numerical comparator moves values
+    # to CPU (in particular when the reference itself runs on CPU).
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    tu.assert_result_close(result, reference)
+
+
 @pytest.mark.special_psi
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
@@ -197,9 +208,10 @@ def test_special_psi(shape, dtype, value_range):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -210,9 +222,10 @@ def test_special_psi_layout(kind, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -223,9 +236,10 @@ def test_special_psi_boundary_values(kind, dtype):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -237,9 +251,10 @@ def test_special_psi_special_values(dtype, scenario):
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -254,11 +269,12 @@ def test_special_psi_out(in_kind, out_layout, dtype):
 
     res_out = _out_buffer(inp.shape, dtype, out_layout, inp.device)
     layout_before = (res_out.stride(), res_out.storage_offset())
+    expected_device = inp.device
     res_ret = flag_gems.special_psi(inp, out=res_out)
 
     assert res_ret is res_out
     assert (res_out.stride(), res_out.storage_offset()) == layout_before
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -274,10 +290,11 @@ def test_special_psi_out_promoted(dtype):
     torch.ops.aten.special_psi.out(ref_inp, out=ref_out)
 
     res_out = torch.empty(inp.shape, dtype=torch.float32, device=inp.device)
+    expected_device = inp.device
     res_ret = flag_gems.special_psi(inp, out=res_out)
 
     assert res_ret is res_out
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -294,11 +311,12 @@ def test_special_psi_backward(dtype):
     ref_out = torch.ops.aten.special_psi(ref_inp)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
 
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
-    tu.assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
 
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_psi_result(res_grad, ref_grad, expected_device)
 
 
 @pytest.mark.special_psi
