@@ -138,8 +138,15 @@ def _out_buffer(shape, dtype, layout, device):
 
 
 def _boundary_input(dtype, kind):
-    """Boundary input tensor for ``kind``, built on the target device."""
-    device = flag_gems.device
+    """Boundary input tensor for ``kind``, returned on the target device."""
+    # Hygon lacks nextafter for Half. Keep the original dtype and complete
+    # signed-subnormal/pole-neighbour recipe on CPU, then copy its payload back.
+    cpu_boundary = (
+        flag_gems.vendor_name == "hygon"
+        and dtype == torch.float16
+        and kind in ("tiny_values", "pole_neighbours")
+    )
+    device = "cpu" if cpu_boundary else flag_gems.device
 
     def as_tensor(values):
         return torch.tensor(values, dtype=dtype, device=device)
@@ -159,7 +166,8 @@ def _boundary_input(dtype, kind):
             torch.ones(1, dtype=dtype, device=device),
         )
         tiny = torch.finfo(dtype).tiny
-        return torch.cat([as_tensor([tiny, -tiny]), smallest, -smallest])
+        result = torch.cat([as_tensor([tiny, -tiny]), smallest, -smallest])
+        return result.to(flag_gems.device) if cpu_boundary else result
     if kind == "negative_poles":
         return as_tensor([-1.0, -2.0, -7.0])
     if kind == "pole_neighbours":
@@ -171,7 +179,8 @@ def _boundary_input(dtype, kind):
         below = torch.nextafter(poles, as_tensor([-float("inf")] * 3))
         above = torch.nextafter(poles, as_tensor([0.0] * 3))
         literal = as_tensor([-1.1, -0.9, -1.01, -0.99, -2.01, -1.99])
-        return torch.cat([literal, below, above])
+        result = torch.cat([literal, below, above])
+        return result.to(flag_gems.device) if cpu_boundary else result
     if kind == "positive":
         return as_tensor([0.5, 1.0, 2.0, 10.0, 1e3])
     finfo = torch.finfo(dtype)
