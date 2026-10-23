@@ -13,18 +13,18 @@
 # limitations under the License.
 
 import pytest
-
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
+
 @pytest.mark.special_modified_bessel_k0_out
-@pytest.mark.parametrize('shape', utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_special_modified_bessel_k0_out(shape, dtype):
-    if flag_gems.vendor_name == 'enflame' and dtype == torch.float64:
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_x = utils.to_reference(x, True)
@@ -32,8 +32,7 @@ def test_special_modified_bessel_k0_out(shape, dtype):
     ref_out = torch.ops.aten.special_modified_bessel_k0.out(ref_x, out=out_ref)
     out_act = torch.empty_like(x)
     out_ptr = out_act.data_ptr()
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.special_modified_bessel_k0.out(x, out=out_act)
+    act_out = flag_gems.special_modified_bessel_k0_out(x, out=out_act)
     assert act_out is out_act
     assert out_act.data_ptr() == out_ptr
     utils.gems_assert_close(act_out, ref_out, dtype)

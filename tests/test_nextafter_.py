@@ -39,8 +39,7 @@ def test_nextafter_(shape, dtype):
     reference = utils.to_reference(inp.clone(), False)
     reference.nextafter_(utils.to_reference(other, False))
 
-    with flag_gems.use_gems():
-        result = inp.nextafter_(other)
+    result = flag_gems.nextafter_(inp, other)
 
     assert result is inp
     assert result.data_ptr() == original_pointer
@@ -60,8 +59,7 @@ def test_nextafter_noncontiguous_broadcast_(dtype):
     reference = utils.to_reference(inp.clone(), False)
     reference.nextafter_(utils.to_reference(other, False))
 
-    with flag_gems.use_gems():
-        result = inp.nextafter_(other)
+    result = flag_gems.nextafter_(inp, other)
 
     assert result is inp
     assert result.data_ptr() == original_pointer
@@ -87,8 +85,7 @@ def test_nextafter_boundaries_(dtype):
     reference = utils.to_reference(inp.clone(), False)
     reference.nextafter_(utils.to_reference(other, False))
 
-    with flag_gems.use_gems():
-        result = inp.nextafter_(other)
+    result = flag_gems.nextafter_(inp, other)
 
     assert result is inp
     utils.gems_assert_equal(result, reference, equal_nan=True)
@@ -98,5 +95,5 @@ def test_nextafter_boundaries_(dtype):
 def test_nextafter_rejects_expanding_self_():
     inp = torch.ones((1, 7), device=flag_gems.device)
     other = torch.ones((3, 7), device=inp.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        inp.nextafter_(other)
+    with pytest.raises(RuntimeError):
+        flag_gems.nextafter_(inp, other)
