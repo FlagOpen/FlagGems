@@ -33,6 +33,14 @@ except ImportError:  # triton without the XPU tile-language extension
     tle = None
     TensorDescriptor = None
 
+# The flagtree compiler (older triton fork pinned in the CI image) cannot
+# legalize `tt.make_range` (from `tl.arange`) when it indexes a TLE local
+# pointer, so the TLE row-reduce fails to compile there. Detect it once and
+# fall back to the non-TLE kernels (same guard as lt.py/less_equal.py).
+_IS_FLAGTREE = os.path.exists(
+    os.path.join(os.path.dirname(triton.__file__), "FLAGTREE_BACKEND")
+)
+
 logger = logging.getLogger(__name__)
 
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
@@ -480,6 +488,8 @@ _TLE_ACC_DTYPE = {
 def _tle_available():
     if not _HAS_TLE:
         return False
+    if _IS_FLAGTREE:
+        return False
     if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
         return False
     return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
@@ -614,7 +624,8 @@ def _tle_any_flat(inp):
             main = rows * cols
             tail = n - main
             nxt = torch.empty((rows + tail,), dtype=torch.float32, device=inp.device)
-            _tle_any_row(cur[:main].view(rows, cols), nxt[:rows], rows, cols)
+            if not _tle_any_row(cur[:main].view(rows, cols), nxt[:rows], rows, cols):
+                return None
             if tail:
                 nxt[rows:].copy_(cur[main:])
             cur = nxt
@@ -622,7 +633,8 @@ def _tle_any_flat(inp):
         if n < 2:
             out.copy_(cur.view(-1))
             return out
-        _tle_any_row(cur.view(1, n), out.view(1), 1, n)
+        if not _tle_any_row(cur.view(1, n), out.view(1), 1, n):
+            return None
     return out
 
 
