@@ -567,3 +567,60 @@ def test_triangular_solve_wide_rhs(use_out):
     torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
     assert result[0].mT.is_contiguous()
     assert result[1].mT.is_contiguous()
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.parametrize("flags", FLAGS)
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_triangular_solve_large_ignored_entries(flags, dtype):
+    B, A = _inputs((), (), 257, 1, dtype, flags[2])
+    reference = _reference(B, A, *flags)
+    unused = torch.ones(257, 257, dtype=torch.bool, device=A.device)
+    unused = unused.tril(-1) if flags[0] else unused.triu(1)
+    A.masked_fill_(unused, float("nan"))
+    if flags[2]:
+        A.diagonal().fill_(float("inf"))
+    reference = reference[0], A.cpu()
+    result = _functional(B, A, flags)
+    _assert_result(result, reference, B, A)
+    assert torch.isfinite(result[0]).all()
+
+
+@pytest.mark.triangular_solve_out
+@pytest.mark.parametrize("flags", FLAGS)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("system", [((), (), 257, 1), ((2, 1), (3,), 129, 3)])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_triangular_solve_out_large_ignored_entries(flags, dtype, system, layout):
+    B, A = _inputs(*system, dtype, flags[2])
+    reference = _reference(B, A, *flags)
+    n = A.shape[-1]
+    unused = torch.ones(n, n, dtype=torch.bool, device=A.device)
+    unused = unused.tril(-1) if flags[0] else unused.triu(1)
+    A.masked_fill_(unused, float("nan"))
+    if flags[2]:
+        A.diagonal(0, -2, -1).fill_(float("inf"))
+    reference = reference[0], A.cpu().expand(reference[1].shape)
+    outputs = []
+    for ref in reference:
+        shape = ref.shape
+        if layout == "transpose":
+            out = torch.empty(
+                *shape[:-2], shape[-1], shape[-2], dtype=dtype, device=A.device
+            ).mT
+        else:
+            out = torch.empty(*shape[:-1], shape[-1] * 2, dtype=dtype, device=A.device)[
+                ..., ::2
+            ]
+        outputs.append(out)
+    X, M = outputs
+    pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
+    before_A, before_B = A.clone(), B.clone()
+    result = _out(B, A, flags, X, M)
+    assert result[0] is X and result[1] is M
+    assert (X.data_ptr(), M.data_ptr()) == pointers
+    assert (X.stride(), M.stride()) == strides
+    _assert_result(result, reference, B, A, functional=False)
+    assert torch.isfinite(X).all()
+    torch.testing.assert_close(A, before_A, atol=0, rtol=0, equal_nan=True)
+    torch.testing.assert_close(B, before_B, atol=0, rtol=0)
