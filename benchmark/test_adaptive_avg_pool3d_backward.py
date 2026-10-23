@@ -36,9 +36,10 @@ class AdaptiveAvgPool3DBackwardBenchmark(base.Benchmark):
         shape, output_size = plan.builder_args
         cur_dtype = case.dtype
         x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-        # Compute forward to get output shape
-        out = torch.nn.functional.adaptive_avg_pool3d(x, output_size)
-        grad = torch.ones_like(out)
+        # The gradient shape is known; building it does not require a forward kernel.
+        grad = torch.ones(
+            (*shape[:-3], *output_size), dtype=cur_dtype, device=self.device
+        )
         # The out-variant writes into a caller-provided buffer.
         grad_input = torch.empty_like(x)
         return grad, x, {"grad_input": grad_input}

@@ -73,10 +73,6 @@ class PadPackedSequenceBenchmark(base.Benchmark):
 @pytest.mark.pad_packed_sequence
 @pytest.mark.underscore_pad_packed_sequence
 def test_pad_packed_sequence():
-    # gems_op is passed explicitly so the measured latency is the operator
-    # itself rather than the GEMS dispatch layer around it; the dispatch path
-    # otherwise adds a flat cost that is larger than the operator at the small
-    # and mid shapes.
     bench = PadPackedSequenceBenchmark(
         op_name="_pad_packed_sequence",
         torch_op=torch.ops.aten._pad_packed_sequence,
