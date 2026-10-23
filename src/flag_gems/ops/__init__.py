@@ -1081,6 +1081,7 @@ from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.moveaxis import moveaxis
+from flag_gems.ops.movedim import movedim
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
@@ -2687,6 +2688,7 @@ __all__ = [
     "mm_out",
     "mode",
     "moveaxis",
+    "movedim",
     "mse_loss",
     "mse_loss_backward",
     "msort",
