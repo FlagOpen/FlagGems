@@ -30,8 +30,14 @@ from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_add_list_ import _foreach_add__List
+from ._foreach_addcdiv_ import (
+    _foreach_addcdiv__Scalar,
+    _foreach_addcdiv__ScalarList,
+    _foreach_addcdiv__Tensor,
+)
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
+from ._foreach_atan import _foreach_atan, _foreach_atan_
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -55,13 +61,12 @@ from ._foreach_binary_scalar import (  # noqa: F401
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
+from ._foreach_erf import _foreach_erf
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
 from ._foreach_math import (
-    _foreach_acos,
-    _foreach_acos_,
     _foreach_asin,
     _foreach_asin_,
     _foreach_lgamma,
@@ -83,6 +88,8 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
+from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -352,6 +359,10 @@ from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
+from .foreach_acos import _foreach_acos, _foreach_acos_  # noqa: F401
+from .foreach_div import _foreach_div__List, _foreach_div_List  # noqa: F401
+from .foreach_erf import _foreach_erf_  # noqa: F401
+from .foreach_log1p import _foreach_log1p, _foreach_log1p_  # noqa: F401
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -704,6 +715,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_i0 import special_i0, special_i0_out  # noqa: F401
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out  # noqa: F401
+from .special_i1e import special_i1e, special_i1e_out  # noqa: F401
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_log1p import special_log1p  # noqa: F401  (kunlunxin override)
 from .special_log1p import special_log1p_out
@@ -843,18 +855,29 @@ __all__ = [
     "_foreach_acos",
     "_foreach_acos_",
     "_foreach_add__List",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_addcdiv__ScalarList",
+    "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
     "_foreach_asin_",
+    "_foreach_atan",
+    "_foreach_atan_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_div__List",
+    "_foreach_div_List",
+    "_foreach_erf",
+    "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lgamma",
     "_foreach_lgamma_",
+    "_foreach_log1p",
+    "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_mul__List",
@@ -864,6 +887,8 @@ __all__ = [
     "_foreach_pow_List",
     "_foreach_round",
     "_foreach_round_",
+    "_foreach_rsqrt",
+    "_foreach_rsqrt_",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_foreach_sign",
@@ -872,6 +897,8 @@ __all__ = [
     "_foreach_sub__List",
     "_foreach_tan",
     "_foreach_tan_",
+    "_foreach_zero",
+    "_foreach_zero_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -1590,6 +1617,8 @@ __all__ = [
     "special_i0_out",
     "special_i0e",
     "special_i0e_out",
+    "special_i1e",
+    "special_i1e_out",
     "special_legendre_polynomial_p",
     "special_log1p",
     "special_log1p_out",

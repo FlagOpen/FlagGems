@@ -103,6 +103,8 @@ backends:
     flagtree: flagtree==0.7.0+ascend3.5
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
+    env:
+      USE_FLAGCX: "OFF"
     deps:
       - cann-shmem==1.6.0
       - torch==2.10.0+cpu
