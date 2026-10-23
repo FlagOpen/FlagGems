@@ -34,8 +34,17 @@ _NON_COO_BACKEND_NAME = {
     torch.sparse_bsc: {"cuda": "SparseCsrCUDA", "cpu": "SparseCsrCPU"},
 }
 
+# Compressed layouts delegate to the native kernel: their values member is not
+# exposed by any other dispatcher-free accessor in Python.
+_COMPRESSED_LAYOUTS = (
+    torch.sparse_csr,
+    torch.sparse_csc,
+    torch.sparse_bsr,
+    torch.sparse_bsc,
+)
 
-def _values(self: torch.Tensor) -> torch.Tensor:
+
+def underscore_values(self: torch.Tensor) -> torch.Tensor:
     """Return the values tensor of a sparse COO tensor as a zero-copy view.
 
     ``aten::_values`` returns the stored values of a sparse COO tensor. The
@@ -57,8 +66,12 @@ def _values(self: torch.Tensor) -> torch.Tensor:
     The COO path is routed through the native ATen kernel via
     ``torch._C._AutoDispatchBelowAutograd()``; calling the operator again
     without that context would recurse once registered on the autograd key.
+
+    Uncoalesced COO input is accepted: native ``aten::_values`` returns the raw
+    stored values regardless of the coalesced flag (only the public
+    ``aten::values`` rejects uncoalesced input).
     """
-    logger.debug("GEMS _VALUES")
+    logger.debug("GEMS UNDERSCORE_VALUES")
 
     if self.layout != torch.sparse_coo:
         backend_names = _NON_COO_BACKEND_NAME.get(self.layout)
@@ -78,3 +91,66 @@ def _values(self: torch.Tensor) -> torch.Tensor:
 
     with torch._C._AutoDispatchBelowAutograd():
         return torch.ops.aten._values.default(self)
+
+
+def values(self: torch.Tensor) -> torch.Tensor:
+    """Implements ``aten::values(Tensor(a) self) -> Tensor(a)``.
+
+    ``aten::values`` is a pure accessor: it returns a view aliasing the stored
+    values buffer of a coalesced sparse tensor, allocating nothing and copying
+    nothing (native ATen implements it as
+    ``get_sparse_impl(self)->values().alias()`` for COO and
+    ``get_sparse_csr_impl(self)->values().alias()`` for the compressed
+    layouts).  This implementation therefore returns the underlying values
+    buffer directly; ``res.data_ptr() == self._values().data_ptr()`` for COO
+    just like native.
+
+    Semantics by layout (probed against native ATen on CUDA, torch 2.9):
+    - ``torch.sparse_coo``: requires a coalesced tensor, otherwise native
+      raises "Cannot get values on an uncoalesced tensor, please call
+      .coalesce() first".  The result is the whole ``nnz x *dense_sizes``
+      buffer, so hybrid COO tensors (trailing dense dimensions) return their
+      full values buffer, matching native.  A coalesced tensor whose stored
+      values are a non-contiguous view is returned as that same view, strides
+      included (verified by forcing the coalesced flag on a strided-values
+      tensor); the alias is returned as-is, never gathered.  The COO path is
+      delegated to :func:`underscore_values`, the registered ``aten::_values``
+      implementation, which returns the same zero-copy alias and raises the
+      same uncoalesced error.
+    - Compressed layouts (CSR/CSC/BSR/BSC): native ``aten::values`` returns
+      the compressed values member as an alias too.  That member is reachable
+      from Python only through the ``values`` operator itself, so a kernel
+      registered for the ``SparseCsr`` backend would recurse into itself when
+      delegating.  This operator is therefore registered for the COO Sparse
+      backends only; compressed tensors are delegated straight to the native
+      kernel, which keeps their behaviour (and the alias) untouched.
+    - Every other layout: native ATen raises
+      "values expected sparse tensor layout but got <layout>"; mirrored
+      verbatim here (only reachable through a direct call, since the
+      dispatcher routes strided inputs to the fallback, not to this kernel).
+    """
+    logger.debug("GEMS VALUES")
+    if self.layout == torch.sparse_coo:
+        if not self.is_coalesced():
+            # ``aten::values`` (unlike ``aten::_values``) rejects uncoalesced
+            # input; the error text mirrors native ATen.
+            raise RuntimeError(
+                "Cannot get values on an uncoalesced tensor, please call "
+                ".coalesce() first"
+            )
+        # The coalesced check above is the only difference from
+        # ``aten::_values``; the alias itself is identical, so delegate rather
+        # than keep a second copy of the accessor logic.
+        return underscore_values(self)
+    if self.layout in _COMPRESSED_LAYOUTS:
+        # Safe to re-enter the dispatcher: this operator is registered only for
+        # the COO Sparse backends, so a compressed input resolves to the native
+        # SparseCsr kernel below this Python frame.
+        return self.values()
+    if self.layout == torch.strided:
+        raise RuntimeError("values expected sparse tensor layout but got Strided")
+    # Unreachable for the registered dispatch keys; kept as a defensive
+    # mirror of the native message for other layouts.
+    raise RuntimeError(
+        "values expected sparse tensor layout but got " + str(self.layout)
+    )

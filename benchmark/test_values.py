@@ -21,13 +21,51 @@ import flag_gems
 
 from . import base, consts, utils
 
+
+class SparseValuesBenchmark(base.Benchmark):
+    """Benchmark for the sparse COO ``values`` accessor.
+
+    Shapes are ``(nnz, *dense_shape)``: each input is a coalesced sparse COO
+    tensor with ``nnz`` stored elements and ``dense_shape`` trailing dense
+    dimensions (empty for a plain COO tensor). ``values`` is an O(1) alias
+    return for both torch and FlagGems, so a speedup near 1.0 is the expected
+    and correct outcome; the sweep exercises the host path across nnz
+    magnitudes and hybrid dense shapes.
+    """
+
+    DEFAULT_METRICS = consts.DEFAULT_METRICS
+    # (nnz,) tuples. The accessor is O(1) in nnz (a pure alias return), so a
+    # small sweep of stored-value counts is enough to cover the host path.
+    DEFAULT_SHAPES = [(1,), (64,), (1024,)]
+
+    def set_shapes(self, shape_file_path=None):
+        # core_shapes.yaml has no `values` entry, so the base `Benchmark`
+        # fallback would pull in its generic dense shapes; shape[0] is nnz
+        # here, and a 2**30-entry COO tensor OOMs on construction. Pin the
+        # sweep to DEFAULT_SHAPES instead.
+        self.shapes = self.DEFAULT_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            nnz = shape[0]
+            dense_shape = tuple(shape[1:])
+            values = torch.randn(nnz, *dense_shape, dtype=cur_dtype, device=self.device)
+            indices = (
+                torch.arange(nnz, device=self.device).remainder(max(nnz // 2, 1) * 2)
+            ).unsqueeze(0)
+            inp = torch.sparse_coo_tensor(
+                indices, values, (max(nnz // 2, 1) * 2, *dense_shape)
+            ).coalesce()
+            yield (inp,)
+
+
 # Sparse COO sizes: cover small, medium and large stored-entry counts. _values
 # is a zero-copy view op (O(1): it only detaches the values tensor from the
 # sparse tensor impl); the dtype sweep varies the values tensor's itemsize.
 VALUES_SHAPES = [(16,), (1024,), (65536,), (1048576,)]
 
 
-class ValuesBenchmark(base.Benchmark):
+class UnderscoreValuesBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = VALUES_SHAPES
 
@@ -47,11 +85,23 @@ class ValuesBenchmark(base.Benchmark):
 
 
 @pytest.mark.values
-def test_values():
-    bench = ValuesBenchmark(
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_values(dtype):
+    bench = SparseValuesBenchmark(
         op_name="values",
-        torch_op=torch.ops.aten._values,
+        torch_op=torch.ops.aten.values,
+        dtypes=[dtype],
         gems_op=flag_gems.values,
+    )
+    bench.run()
+
+
+@pytest.mark.underscore_values
+def test_underscore_values():
+    bench = UnderscoreValuesBenchmark(
+        op_name="underscore_values",
+        torch_op=torch.ops.aten._values,
+        gems_op=flag_gems.underscore_values,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
