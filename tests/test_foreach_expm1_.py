@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_expm1_
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_expm1_(*args, **kwargs)
 
 
 _FAMILY = "expm1"

@@ -23,8 +23,7 @@ _ATEN_OP = torch.ops.aten._foreach_lerp.List
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_lerp_list(*args, **kwargs)
 SHAPES = [(16, 8), (7,), (2, 3, 4)]
 DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
