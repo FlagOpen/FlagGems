@@ -13450,6 +13450,33 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: mkldnn_reorder_conv2d_weight
+  description: 'Re-expresses the packed oneDNN (MkldnnCPU) conv2d weight in the
+    blocked layout the mkldnn convolution primitive expects, preserving every
+    element and dtype bit-for-bit.
+
+    '
+  for:
+  - mkldnn_reorder_conv2d_weight
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: mkldnn_reorder_conv2d_weight_out
+  description: A variant of `mkldnn_reorder_conv2d_weight()` that writes the
+    reordered weight into the `out` mkldnn buffer.
+  for:
+  - mkldnn_reorder_conv2d_weight.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: mkldnn_rnn_layer
   description: 'Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer,
     mode=2)
