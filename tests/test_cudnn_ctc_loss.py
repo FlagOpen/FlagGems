@@ -99,8 +99,10 @@ def test_cudnn_ctc_loss_forward(shape):
     device = flag_gems.device
     torch.manual_seed(0)
     log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
 
-    ref_loss, _, _ = _reference(log_probs, targets, input_lengths, target_lengths)
+    ref_loss, _, _ = _reference(ref_log_probs, ref_targets, input_lengths, target_lengths)
 
     res_loss, res_grad = flag_gems.cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0, False, False
@@ -117,8 +119,10 @@ def test_cudnn_ctc_loss_backward(shape):
     device = flag_gems.device
     torch.manual_seed(0)
     log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
 
-    _, ref_grad, _ = _reference(log_probs, targets, input_lengths, target_lengths)
+    _, ref_grad, _ = _reference(ref_log_probs, ref_targets, input_lengths, target_lengths)
 
     _, res_grad = flag_gems.cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0, False, False
@@ -147,9 +151,11 @@ def test_cudnn_ctc_loss_varying_lengths(input_lengths, target_lengths):
     log_probs, targets, _, _ = _make_inputs(
         shape, device, input_lengths, target_lengths
     )
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
 
     ref_loss, ref_grad, _ = _reference(
-        log_probs, targets, input_lengths, target_lengths
+        ref_log_probs, ref_targets, input_lengths, target_lengths
     )
 
     res_loss, res_grad = flag_gems.cudnn_ctc_loss(
@@ -179,9 +185,10 @@ def test_cudnn_ctc_loss_empty_target():
     # Zero loss for the empty target, and the gradient of the valid region is
     # `exp(log_probs)` since no label state can consume probability mass.
     assert res_loss[0].item() == 0.0
+    ref_grad = utils.to_reference(log_probs[: input_lengths[0], 0], True).exp()
     utils.gems_assert_close(
         res_grad[: input_lengths[0], 0],
-        log_probs[: input_lengths[0], 0].exp(),
+        ref_grad,
         torch.float32,
     )
 
@@ -197,10 +204,10 @@ def test_cudnn_ctc_loss_autograd():
     targets = torch.tensor([1, 2, 3, 4], dtype=torch.int32)
     target_lengths = [2, 1, 1]
 
-    ref_lp = log_probs.clone().requires_grad_(True)
+    ref_lp = utils.to_reference(log_probs, True).clone().requires_grad_(True)
     ref = F.ctc_loss(
         ref_lp,
-        targets.to(device),
+        targets.to(ref_lp.device),
         [t_steps] * batch,
         target_lengths,
         reduction="none",
@@ -227,13 +234,15 @@ def test_cudnn_ctc_loss_tensor_lengths():
     # Fixed (T, N, C, S) shape; only the lengths-as-tensors path is exercised.
     shape = (16, 4, 16, 5)
     log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
     length_tensors = (
         torch.tensor(input_lengths, dtype=torch.int32),
         torch.tensor(target_lengths, dtype=torch.int32),
     )
 
     ref_loss, ref_grad, _ = _reference(
-        log_probs, targets, input_lengths, target_lengths
+        ref_log_probs, ref_targets, input_lengths, target_lengths
     )
 
     res_loss, res_grad = flag_gems.cudnn_ctc_loss(
