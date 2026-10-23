@@ -1804,26 +1804,10 @@ def nmdim_single_kernel(
         lo = tl.where((~go_left) & active, mid + 1, lo)
     hit = inb & (keys == lo)
     ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
-    tl.store(out_values + pid, tl.load(inp + base + ridx))
-    tl.store(out_indices + pid, ridx.to(tl.int64))
-
-
-# The chunked path is a partial + combine pipeline of loop-free kernels rather
-# than one kernel with a tile loop.  Three independent lowering failures were
-# measured for the loop form once a row spans more than one tile (NTILES >= 2;
-# NTILES == 1 compiles and is correct):
-#   * `tl.reduce` inside the tile loop -> "failed to legalize operation
-#     'tt.reduce'";
-#   * a scalar `tt.addptr` (row base, or the final scalar value fetch) next to
-#     CHUNK-wide tiles -> "'tt.addptr' op all non-scalar operands/results must
-#     have the same shape and base type";
-#   * after folding the base into the pointer outside the loops, the nested
-#     `tl.range` bisection still died in `arith.addi`, and full `tl.static_range`
-#     unrolling of the inner loop died in `ConvertTritonXPUToLLVM`.
-# Every kernel below therefore handles exactly one tile (or one row of tile
-# partials) with no loop at all, which is the same shape as the proven
-# `nmflat_*` flat pipeline.  The bisection state lives in device memory, so the
-# whole reduction still needs zero host synchronizations.
+    dst = tl.arange(0, 8)
+    keep = dst < 1
+    tl.store(out_values + pid + dst, tl.load(inp + base + ridx), mask=keep)
+    tl.store(out_indices + pid + dst, ridx.to(tl.int64), mask=keep)
 
 
 @libentry()
@@ -2005,8 +1989,14 @@ def nmdim_finish_kernel(
     slots = row * PSTRIDE + tl.arange(0, NTP)
     best = tl.min(tl.load(pfirst + slots), axis=0)
     ridx = tl.minimum(best, N - 1)
-    tl.store(out_values + row, tl.load(inp + row.to(tl.int64) * ROW_PITCH + ridx))
-    tl.store(out_indices + row, ridx.to(tl.int64))
+    dst = tl.arange(0, 8)
+    keep = dst < 1
+    tl.store(
+        out_values + row + dst,
+        tl.load(inp + row.to(tl.int64) * ROW_PITCH + ridx),
+        mask=keep,
+    )
+    tl.store(out_indices + row + dst, ridx.to(tl.int64), mask=keep)
 
 
 def _nmdim_key_bits(dtype):
@@ -2044,6 +2034,18 @@ def _nmdim_launch(rows, M, N, out_values, out_indices):
     kw = dict(num_warps=4, num_stages=1, buffer_size_limit=2048)
     lanes = _nmdim_tile_lanes(key_bits)
     block_n = max(64, triton.next_power_of_2(N))
+    # int64 (8-byte keys) fuses into a broken tile when the width is exactly
+    # 64 lanes: the generated access reads a full 64-lane int64 vector past
+    # the end of a short row, which raises KL_XID_KERNEL_EXCEPTION (status
+    # 719) whenever the over-read leaves the allocated page.  Measured with
+    # the same input/data: block_n=64 crashed in 5/10 fresh processes while
+    # an over-allocated input buffer crashed 0/8, and block_n=128 crashed
+    # 0/40 across N in {3,33,64,65,127,128} and M in {2,258}.  Bumping the
+    # 64-lane case to 128 keeps the exact same kernel semantics (the tile is
+    # clamped and lane-predicated, so N <= 64 still works) and costs nothing
+    # measurable for int64, which is not part of any benchmark matrix.
+    if key64 and block_n == 64:
+        block_n = 128
     dev = rows.device
     if block_n <= lanes:
         with torch_device_fn.device(dev):
