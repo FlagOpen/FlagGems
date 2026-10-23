@@ -53,6 +53,7 @@ from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .flash_api import mha_varlan_fwd
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -307,6 +308,7 @@ __all__ = [
     "max_dim",
     "mean",
     "mean_dim",
+    "mha_varlan_fwd",
     "min",
     "min_dim",
     "mm",
