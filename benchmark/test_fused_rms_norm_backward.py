@@ -48,9 +48,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fused_rms_norm_backward
+@pytest.mark.underscore_fused_rms_norm_backward
 def test_fused_rms_norm_backward():
     OperatorCaseBenchmark(
-        op_name="fused_rms_norm_backward",
+        op_name="_fused_rms_norm_backward",
         torch_op=torch.ops.aten._fused_rms_norm_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

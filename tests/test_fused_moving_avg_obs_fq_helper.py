@@ -61,6 +61,7 @@ def _run_reference(x, observer_on, fake_quant_on, per_channel, ch_axis, symmetri
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.underscore_fused_moving_avg_obs_fq_helper
 @pytest.mark.parametrize("shape,ch_axis", FMAOFQ_SHAPES)
 @pytest.mark.parametrize("observer_on", [1, 0])
 @pytest.mark.parametrize("fake_quant_on", [1, 0])
@@ -136,6 +137,7 @@ def test_fused_moving_avg_obs_fq_helper(
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.underscore_fused_moving_avg_obs_fq_helper
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     """Match ATen's float32-only input contract."""

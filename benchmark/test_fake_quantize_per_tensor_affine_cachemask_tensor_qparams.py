@@ -43,9 +43,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.underscore_fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams():
     bench = OperatorBenchmark(
-        op_name="fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+        op_name="_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
         torch_op=torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

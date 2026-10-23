@@ -47,6 +47,7 @@ def _make_inputs(shape, dtype, enabled=1, noncontiguous=False):
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.underscore_fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("enabled", [0, 1])
@@ -87,6 +88,7 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.underscore_fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 @pytest.mark.parametrize("enabled", [0, 1])
 def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_layout(enabled):
     inp, scale, zero_point, fake_quant_enabled = _make_inputs(
@@ -110,6 +112,7 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_layout(enabled
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.underscore_fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_empty():
     inp, scale, zero_point, fake_quant_enabled = _make_inputs(
         (2, 0, 3), torch.float32

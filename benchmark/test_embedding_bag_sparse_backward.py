@@ -57,9 +57,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 def test_embedding_bag_sparse_backward():
     EmbeddingBagSparseBackwardBenchmark(
-        op_name="embedding_bag_sparse_backward",
+        op_name="_embedding_bag_sparse_backward",
         torch_op=torch.ops.aten._embedding_bag_sparse_backward,
         gems_op=flag_gems._embedding_bag_sparse_backward,
         case_fn=_case_fn,

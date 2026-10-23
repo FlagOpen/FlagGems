@@ -36,6 +36,7 @@ def _reference_out(inp, coefficients, out):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("m,n,k", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out(m, n, k, dtype):
@@ -64,6 +65,7 @@ def test_compute_linear_combination_out(m, n, k, dtype):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out_resize(dtype):
     torch.manual_seed(1)
@@ -86,6 +88,7 @@ def test_compute_linear_combination_out_resize(dtype):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out_noncontiguous(dtype):
     torch.manual_seed(2)
@@ -111,6 +114,7 @@ def test_compute_linear_combination_out_noncontiguous(dtype):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 def test_compute_linear_combination_out_rejects_dtype_mismatch():
     torch.manual_seed(0)
     inp = torch.randn((4, 5), dtype=torch.float32, device=flag_gems.device)

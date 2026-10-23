@@ -105,6 +105,7 @@ def _run_sparse_backward(
 
 # Hardcoded bag counts covering small/medium batch sizes for sparse backward coverage.
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 # Hardcoded embedding dims covering typical small/medium embedding vector widths.
 @pytest.mark.parametrize("embedding_dim", [16, 32])
@@ -140,6 +141,7 @@ def test_embedding_bag_sparse_backward_sum(num_bags, embedding_dim, dtype):
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -173,6 +175,7 @@ def test_embedding_bag_sparse_backward_mean(num_bags, embedding_dim, dtype):
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -208,6 +211,7 @@ def test_embedding_bag_sparse_backward_per_sample_weights(
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

@@ -49,6 +49,7 @@ def _reference_backward(grad_out, inp, normalized_shape, rstd, weight, output_ma
 
 
 @pytest.mark.fused_rms_norm_backward
+@pytest.mark.underscore_fused_rms_norm_backward
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("output_mask", [(True, True), (True, False), (False, True)])
@@ -74,6 +75,7 @@ def test_fused_rms_norm_backward(shape, dtype, output_mask):
 
 
 @pytest.mark.fused_rms_norm_backward
+@pytest.mark.underscore_fused_rms_norm_backward
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_fused_rms_norm_backward_without_weight(dtype):
     torch.manual_seed(0)
