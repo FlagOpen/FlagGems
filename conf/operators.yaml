@@ -5969,6 +5969,20 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: fbgemm_linear_int8_weight
+  description: Applies a linear layer with an fbgemm-packed quantized int8 weight,
+    per-output-channel column offsets and scalar weight scale/zero-point to fp32
+    activations (dynamically quantized to uint8 inside the kernel), computing via
+    the aten fbgemm CPU kernel with host staging for CUDA activations.
+  for:
+  - fbgemm_linear_int8_weight
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
 - id: feature_alpha_dropout
   description: Applies alpha dropout independently to each feature map, preserving
     the self-normalizing properties of SELU activations.
