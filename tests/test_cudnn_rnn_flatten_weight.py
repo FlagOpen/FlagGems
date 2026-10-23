@@ -137,9 +137,7 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 
     res_weights = [w.clone() for w in weights]
     out = torch.empty_like(ref_out)
-    res_out = flag_gems.cudnn_rnn_flatten_weight_out(
-        res_weights, *args, out=out
-    )
+    res_out = flag_gems.cudnn_rnn_flatten_weight_out(res_weights, *args, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_equal(res_out, ref_out)
