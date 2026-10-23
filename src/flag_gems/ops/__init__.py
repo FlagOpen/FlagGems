@@ -799,6 +799,7 @@ from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
+from flag_gems.ops.ge_ import ge_scalar_, ge_tensor_
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.geqrf import geqrf
@@ -2361,6 +2362,8 @@ __all__ = [
     "gcd_out",
     "ge",
     "ge_scalar",
+    "ge_scalar_",
+    "ge_tensor_",
     "gelu",
     "gelu_",
     "gelu_backward",
