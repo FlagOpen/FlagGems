@@ -70,7 +70,6 @@ from ._foreach_binary_scalar import (  # noqa: F401
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
-from ._foreach_erf import _foreach_erf
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
