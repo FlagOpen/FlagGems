@@ -69,8 +69,6 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run"]
-
 
 # ---------------------------------------------------------------------------
 # forward: compensated fp32 cross-correlation over one output row tile
