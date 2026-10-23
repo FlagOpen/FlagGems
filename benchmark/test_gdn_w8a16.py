@@ -1,5 +1,13 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
+"""Benchmark with external real-shape data (not bundled in this repository).
+
+Default source: /data/fzy/real_shapes_20261012/gdn_w8a16_fp8__int8/shapes.json
+Override with GDN_SHAPE_FILE=/path/to/shapes.json. The JSON is a list of
+records with op, labels, shape, and count fields; additional fields are allowed.
+Run: GDN_SHAPE_FILE=/path/to/shapes.json python benchmark/test_gdn_w8a16.py
+"""
+
 import gc
 import json
 import os
@@ -15,7 +23,8 @@ from flag_gems import gdn_w8a16
 ROOT = Path(os.environ.get("GDN_RESULT_DIR", "gdn_w8a16_results"))
 SHAPES = Path(
     os.environ.get(
-        "GDN_SHAPE_FILE", str(Path(__file__).parent / "shapes" / "gdn_w8a16.json")
+        "GDN_SHAPE_FILE",
+        "/data/fzy/real_shapes_20261012/gdn_w8a16_fp8__int8/shapes.json",
     )
 )
 
