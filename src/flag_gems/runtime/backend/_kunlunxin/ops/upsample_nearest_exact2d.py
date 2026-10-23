@@ -37,17 +37,6 @@ _MAX_FLAT_BLOCK = 2048
 _MIN_ROW_IW = 512
 _NUM_WARPS = 4
 
-# Exact 2x fast path (see `_upsample_exact2x_kernel`).  One lane covers four
-# output elements (16-bit inputs) or two (32-bit inputs), so the tile is
-# measured in widened 64-bit words.
-X2_PROGRAMS = 12
-X2_MAX_BLOCK = 4096
-X2_MIN_BLOCK = 512
-X2_NUM_WARPS = 4
-# Above 2**23 an fp32 `(ow + 0.5f) * 0.5f` is no longer exactly `ow / 2`, so the
-# integer identity used by the fast path can diverge from ATen's float formula.
-X2_MAX_DIM = 1 << 23
-
 # Staging copy (only reached for non-contiguous inputs): aim for ~12 programs
 # like the main kernel, but keep the tile at or below 4096 -- 32768 is a
 # registered hard-fail on this backend.
@@ -246,86 +235,6 @@ def _upsample_nearest_exact2d_row_kernel(
         tl.store(out_ptr + o_off, data, mask=ow < OW)
     else:
         tl.store(out_ptr + o_off, data)
-
-
-@triton.jit
-def _upsample_exact2x_kernel(
-    ptr_o,
-    ptr_i,
-    JW: tl.constexpr,
-    ESZ: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    t = pid * BLOCK + tl.arange(0, BLOCK)
-    jj = t % JW
-    hh = t // JW
-    src = (hh // 2) * JW + jj
-    word = tl.load(ptr_i + src)
-    if ESZ == 2:
-        # two 16-bit elements per word -> four output elements per int64
-        lo = ((word & 0xFFFF) * 0x10001).to(tl.int64) & 0xFFFFFFFF
-        hi = (((word >> 16) & 0xFFFF) * 0x10001).to(tl.int64) & 0xFFFFFFFF
-        wide = (hi << 32) | lo
-    else:
-        # one 32-bit element per word -> two output elements per int64
-        base = word.to(tl.int64) & 0xFFFFFFFF
-        wide = base | (base << 32)
-    tl.store(ptr_o + t, wide)
-
-
-def _pick_block_2x(n_words):
-    """Largest power-of-two tile <= the ~``X2_PROGRAMS``-program ideal.
-
-    The tile has to divide ``n_words`` exactly so that the fast path needs no
-    tail handling (masked 2-D stores are unreliable on this backend).  ``None``
-    means no such tile exists and the caller must use the general kernel.
-    """
-    ideal = min(
-        X2_MAX_BLOCK,
-        max(X2_MIN_BLOCK, triton.next_power_of_2(triton.cdiv(n_words, X2_PROGRAMS))),
-    )
-    block = ideal
-    while block >= X2_MIN_BLOCK:
-        if n_words % block == 0:
-            return block
-        block //= 2
-    return None
-
-
-def _exact2x_words(input, OH, OW, rheight, rwidth):
-    """Return ``(JW, esz)`` when the exact-2x fast path applies, else ``None``."""
-    N, C, IH, IW = input.shape
-    if OH != 2 * IH or OW != 2 * IW:
-        return None
-    if not (rheight == 0.5 and rwidth == 0.5):
-        return None
-    if max(IH, IW, OH, OW) >= X2_MAX_DIM:
-        return None
-    esz = input.element_size()
-    if esz not in (2, 4):
-        return None
-    # The input row has to split into whole int32 words (and the output row into
-    # whole int64 words), otherwise rows would share a word.
-    if (IW * esz) % 4 != 0:
-        return None
-    if input.data_ptr() % 4 != 0:
-        return None
-    return (IW * esz) // 4, esz
-
-
-def _launch_2x(input, out, jw, esz, block):
-    n_words = (out.numel() * esz) // 8
-    with torch_device_fn.device(input.device):
-        _upsample_exact2x_kernel[(n_words // block,)](
-            out.view(torch.int64),
-            input.view(torch.int32),
-            JW=jw,
-            ESZ=esz,
-            BLOCK=block,
-            num_warps=X2_NUM_WARPS,
-        )
-    return out
 
 
 def _f32(value):
@@ -545,18 +454,19 @@ def _upsample_nearest_exact2d(
     rheight = _reciprocal_scale(IH, OH, scales_h)
     rwidth = _reciprocal_scale(IW, OW, scales_w)
     input = _stage_contiguous(input)
-
-    fast = _exact2x_words(input, OH, OW, rheight, rwidth)
-    if fast is not None:
-        jw, esz = fast
-        block = _pick_block_2x((total * esz) // 8)
-        if block is not None:
-            output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
-            return _launch_2x(input, output, jw, esz, block)
-
-    block = _pick_block(total)
-    buf = torch.empty(
-        triton.cdiv(total, block) * block, device=input.device, dtype=input.dtype
+    output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
+    NC = N * C
+    is_2x = (
+        OH == 2 * IH
+        and OW == 2 * IW
+        and (scales_h is None or float(scales_h) == 2.0)
+        and (scales_w is None or float(scales_w) == 2.0)
+    )
+    if is_2x:
+        return _launch_2x(input, output, rheight, NC, OH, OW, IH, IW)
+    block = min(_MAX_ROW_BLOCK, triton.next_power_of_2(OW))
+    return _launch_row(
+        input, output, rheight, rwidth, NC, C, OH, OW, IH, IW, OW % block != 0
     )
 
 
@@ -590,18 +500,24 @@ def _upsample_nearest_exact2d_out(
     rheight = _reciprocal_scale(IH, OH, scales_h)
     rwidth = _reciprocal_scale(IW, OW, scales_w)
     input = _stage_contiguous(input)
-    out_strided = not out.is_contiguous()
-    if not out_strided and out.data_ptr() % 8 == 0:
-        fast = _exact2x_words(input, OH, OW, rheight, rwidth)
-        if fast is not None:
-            jw, esz = fast
-            block = _pick_block_2x((total * esz) // 8)
-            if block is not None:
-                return _launch_2x(input, out, jw, esz, block)
-    # The caller's buffer cannot be over-allocated, so a partial tail tile has
-    # to fall back to a guarded store.
-    need_mask = out_strided or total % _pick_block(total) != 0
-    return _launch(input, out, total, rheight, rwidth, out_strided, need_mask)
+    NC = N * C
+    is_2x = (
+        OH == 2 * IH
+        and OW == 2 * IW
+        and (scales_h is None or float(scales_h) == 2.0)
+        and (scales_w is None or float(scales_w) == 2.0)
+    )
+    if is_2x and out.is_contiguous():
+        # The fast path views the buffer as u32/u64; a user buffer is not
+        # over-allocated, so guarded stores are needed on partial tiles.
+        return _launch_2x(input, out, rheight, NC, OH, OW, IH, IW)
+    # General path. The row kernel reads the caller's buffer with its own
+    # strides; a partial tail tile needs a guarded store (the buffer cannot be
+    # over-allocated). The tail condition is per output row (ow >= OW would
+    # leave the row and must not be written); a strided out also needs guards.
+    block = min(_MAX_ROW_BLOCK, triton.next_power_of_2(OW))
+    need_mask = OW % block != 0 or not out.is_contiguous()
+    return _launch_row(input, out, rheight, rwidth, NC, C, OH, OW, IH, IW, need_mask)
 
 
 __all__ = ["_upsample_nearest_exact2d", "_upsample_nearest_exact2d_out"]
