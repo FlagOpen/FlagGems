@@ -10602,6 +10602,31 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: int_repr
+  description: |
+    Returns the raw integer codes stored by an affine-quantized tensor, mapping
+    quint8/qint8/qint32 storage to uint8/int8/int32 without applying the scale
+    or zero point.
+  for:
+  - int_repr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: int_repr_out
+  description: A variant of `int_repr` that writes the result into the `out` tensor.
+  for:
+  - int_repr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: inverse
   description: |
     Computes the inverse of a square matrix, batched over the leading dimensions
