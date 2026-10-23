@@ -44,6 +44,61 @@ _SUPPORTED_DTYPES = [
 _UNIT_RANGE = ["-1", "1"]
 
 
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name != "ascend" or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # NPU can store FP8, but the shared factory's device-side cast cannot
+    # encode it. Keep the original dtype/range recipe and transfer its bytes.
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        result = torch.full(shape, low, dtype=dtype, device="cpu")
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return result.to(flag_gems.device)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name != "ascend" or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        .to(dtype)
+        .to(flag_gems.device)
+    )
+
+
+def _channels_last(inp):
+    if flag_gems.vendor_name != "ascend" or inp.device.type == "cpu":
+        return inp.contiguous(memory_format=torch.channels_last)
+    # NPU's contiguous(memory_format=channels_last) is unavailable. Construct
+    # the same physical layout on CPU and transfer contiguous storage, then
+    # restore its sizes, strides and offset on the original target device.
+    cpu = inp.cpu().contiguous(memory_format=torch.channels_last)
+    flat = torch.empty(0, dtype=cpu.dtype, device="cpu").set_(
+        cpu.untyped_storage(),
+        0,
+        (cpu.untyped_storage().nbytes() // cpu.element_size(),),
+        (1,),
+    )
+    storage = flat.to(inp.device).untyped_storage()
+    return torch.empty(0, dtype=inp.dtype, device=inp.device).set_(
+        storage, cpu.storage_offset(), cpu.size(), cpu.stride()
+    )
+
+
 def _assert_same_code(res_out, ref_out):
     # The schema returns a plain Python int and the code is exact, so compare
     # the type and the value directly instead of wrapping it in a tensor.
@@ -72,7 +127,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_debug_has_internal_overlap(dtype, value_range, shape):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
@@ -103,7 +158,7 @@ _LAYOUT_ROWS = [
     (
         "channels_last_4d",
         (2, 3, 4, 4),
-        lambda t: t.contiguous(memory_format=torch.channels_last),
+        _channels_last,
     ),
     # A size-1 axis is not a broadcast even with stride zero (code 0).
     ("size1_zero_stride", (8,), lambda t: torch.as_strided(t, (1, 4), (0, 1))),
@@ -197,7 +252,7 @@ _SPECIAL_VALUE_CASES = tu.selected_cases(
 @pytest.mark.underscore_debug_has_internal_overlap
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_VALUE_CASES)
 def test_debug_has_internal_overlap_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
@@ -207,7 +262,15 @@ def test_debug_has_internal_overlap_special_values(dtype, scenario):
 
 
 _INVALID_ARG_ROWS = [
-    pytest.param(None, id="none"),
+    pytest.param(
+        None,
+        id="none",
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "hygon"
+            and torch.__version__.split("+", 1)[0] == "2.4.1",
+            reason="Hygon Torch 2.4.1 native query accepts None as an undefined Tensor",
+        ),
+    ),
     pytest.param(3.14, id="float"),
     pytest.param(1, id="int"),
     pytest.param("tensor", id="str"),
