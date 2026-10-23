@@ -1045,6 +1045,10 @@ _FULL_CONFIG = (
         "fake_quantize_per_tensor_affine_cachemask_backward",
         fake_quantize_per_tensor_affine_cachemask_backward,
     ),
+    (
+        "fbgemm_linear_fp16_weight_fp32_activation",
+        fbgemm_linear_fp16_weight_fp32_activation,
+    ),
     ("feature_alpha_dropout", feature_alpha_dropout),
     ("feature_alpha_dropout_", feature_alpha_dropout_),
     ("feature_dropout", feature_dropout),

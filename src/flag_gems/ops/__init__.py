@@ -732,6 +732,9 @@ from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask import (
 from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
+from flag_gems.ops.fbgemm_linear_fp16_weight_fp32_activation import (
+    fbgemm_linear_fp16_weight_fp32_activation,
+)
 from flag_gems.ops.feature_alpha_dropout import feature_alpha_dropout
 from flag_gems.ops.feature_alpha_dropout_ import feature_alpha_dropout_
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
@@ -2294,6 +2297,7 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask",
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "fake_quantize_per_tensor_affine_cachemask_out",
+    "fbgemm_linear_fp16_weight_fp32_activation",
     "feature_alpha_dropout",
     "feature_alpha_dropout_",
     "feature_dropout",
