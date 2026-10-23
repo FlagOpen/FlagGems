@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_round_
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_round_(*args, **kwargs)
 
 
 _FAMILY = "round"
