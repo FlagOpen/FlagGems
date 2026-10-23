@@ -111,8 +111,7 @@ def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
     ref_out = _reference(weights, args, dtype)
 
     res_weights = [w.clone() for w in weights]
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._cudnn_rnn_flatten_weight(res_weights, *args)
+    res_out = flag_gems.cudnn_rnn_flatten_weight(res_weights, *args)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -129,10 +128,9 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 
     res_weights = [w.clone() for w in weights]
     out = torch.empty_like(ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._cudnn_rnn_flatten_weight.out(
-            res_weights, *args, out=out
-        )
+    res_out = flag_gems.cudnn_rnn_flatten_weight_out(
+        res_weights, *args, out=out
+    )
 
     assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_equal(res_out, ref_out)
@@ -149,8 +147,7 @@ def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
     args = _op_args(cfg, mode_info)
 
     res_weights = [w.clone() for w in weights]
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._cudnn_rnn_flatten_weight(res_weights, *args)
+    res_out = flag_gems.cudnn_rnn_flatten_weight(res_weights, *args)
 
     # cuDNN cannot handle fp64/int64 weights, so derive the copy order from an
     # fp32 probe of the same shapes filled with 0..N-1: the flattened probe is
@@ -174,11 +171,10 @@ def test_cudnn_rnn_flatten_weight_errors():
     weights, stride0 = _make_weights(
         torch.float32, (4, 3, 1, False, True), (torch.nn.LSTM, 2, 0, None)
     )
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError):
-            torch.ops.aten._cudnn_rnn_flatten_weight([], 4, 4, 2, 3, 0, 1, True, False)
-        # Truncated weight list.
-        with pytest.raises(RuntimeError):
-            torch.ops.aten._cudnn_rnn_flatten_weight(
-                weights[:2], stride0, 4, 2, 3, 0, 1, True, False
-            )
+    with pytest.raises(RuntimeError):
+        flag_gems.cudnn_rnn_flatten_weight([], 4, 4, 2, 3, 0, 1, True, False)
+    # Truncated weight list.
+    with pytest.raises(RuntimeError):
+        flag_gems.cudnn_rnn_flatten_weight(
+            weights[:2], stride0, 4, 2, 3, 0, 1, True, False
+        )
