@@ -113,6 +113,7 @@ from ._masked_scale import _masked_scale  # noqa: F401
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_enum import _pad_enum
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
@@ -235,8 +236,6 @@ from .bitwise_xor import (
 from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
@@ -246,7 +245,6 @@ from .celu import celu, celu_
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
-from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -550,7 +548,6 @@ from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num, nan_to_num_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
-from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
@@ -688,7 +685,6 @@ from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinc import sinc, sinc_, special_sinc
 from .sinh import sinh, sinh_  # noqa: F401
-from .slice import slice
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
@@ -808,7 +804,6 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
-from .unsafe_chunk import unsafe_chunk  # noqa: F401
 from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -931,6 +926,7 @@ __all__ = [
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
+    "_nested_view_from_jagged_copy",
     "_pad_enum",
     "_pdist_backward",
     "_pdist_forward",
@@ -1063,8 +1059,6 @@ __all__ = [
     "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
-    "broadcast_tensors",
-    "broadcast_to",
     "bucketize",
     "cat",
     "cat_out",
@@ -1079,7 +1073,6 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
-    "chunk",
     "chunk_cat",
     "chunk_gated_delta_rule_fwd",
     "clamp",
@@ -1592,7 +1585,6 @@ __all__ = [
     "sin_",
     "sinc",
     "sinc_",
-    "slice",
     "slice_backward",
     "slice_scatter",
     "smooth_l1_loss",
@@ -1729,7 +1721,6 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
-    "unsafe_chunk",
     "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
