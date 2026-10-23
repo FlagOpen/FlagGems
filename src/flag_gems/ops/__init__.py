@@ -1069,6 +1069,7 @@ from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm import miopen_batch_norm
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
+from flag_gems.ops.miopen_ctc_loss import miopen_ctc_loss
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mixed_dtypes_linear import mixed_dtypes_linear
@@ -2669,6 +2670,7 @@ __all__ = [
     "minimum",
     "miopen_batch_norm",
     "miopen_batch_norm_backward",
+    "miopen_ctc_loss",
     "mish",
     "mish_",
     "mish_backward",

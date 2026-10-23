@@ -1435,6 +1435,7 @@ _FULL_CONFIG = (
     ("minimum", minimum),
     ("miopen_batch_norm", miopen_batch_norm),
     ("miopen_batch_norm_backward", miopen_batch_norm_backward),
+    ("miopen_ctc_loss", miopen_ctc_loss),
     ("mish", mish),
     ("mish_", mish_),
     ("mish_backward", mish_backward),

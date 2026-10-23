@@ -13555,6 +13555,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: miopen_ctc_loss
+  description: |
+    Connectionist Temporal Classification loss, MIOpen variant. Returns the
+    per-batch negative log-likelihoods together with the gradient of their
+    sum with respect to `log_probs`.
+  for:
+    - miopen_ctc_loss
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5.0'
 - id: mish
   description: Applies the Mish activation function element-wise.
   for:
