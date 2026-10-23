@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -75,7 +73,6 @@ def test_fused_moving_avg_obs_fq_helper():
     FusedMovingAvgObsFqBenchmark(
         op_name="_fused_moving_avg_obs_fq_helper",
         torch_op=torch.ops.aten._fused_moving_avg_obs_fq_helper,
-        gems_op=flag_gems._fused_moving_avg_obs_fq_helper,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

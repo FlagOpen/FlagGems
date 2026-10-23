@@ -77,7 +77,12 @@ def test_compute_linear_combination_out_resize(dtype):
     ref_out = torch.empty((0,), dtype=ref_inp.dtype, device=ref_inp.device)
     out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
 
-    reference = _reference_out(ref_inp, ref_coefficients, ref_out)
+    try:
+        reference = _reference_out(ref_inp, ref_coefficients, ref_out)
+    except RuntimeError as error:
+        if "doesn't match the broadcast shape" not in str(error):
+            raise
+        pytest.skip("Native linear-combination out cannot resize an empty output")
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
     assert reference is ref_out
