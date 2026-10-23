@@ -1804,17 +1804,9 @@ def nmdim_single_kernel(
         lo = tl.where((~go_left) & active, mid + 1, lo)
     hit = inb & (keys == lo)
     ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
-    # Scalar gather faults (status 719) after the 64-step uint64 bisection; select
-    # from register `vals` instead, hoisting the reduction out of `if` (miscompiled inside).
-    med_val = tl.sum(tl.where(cols == ridx, vals, tl.zeros_like(vals)), axis=0).to(
-        vals.dtype
-    )
     dst = tl.arange(0, 8)
     keep = dst < 1
-    if KEY64:
-        tl.store(out_values + pid + dst, med_val, mask=keep)
-    else:
-        tl.store(out_values + pid + dst, tl.load(inp + base + ridx), mask=keep)
+    tl.store(out_values + pid + dst, tl.load(inp + base + ridx), mask=keep)
     tl.store(out_indices + pid + dst, ridx.to(tl.int64), mask=keep)
 
 
