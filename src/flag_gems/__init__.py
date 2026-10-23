@@ -132,6 +132,11 @@ _FULL_CONFIG = (
     ("_batch_norm_no_update", _batch_norm_no_update),
     ("_batch_norm_with_update", _batch_norm_with_update),
     ("_batch_norm_with_update_functional", _batch_norm_with_update_functional),
+    (
+        "_cast_Byte",
+        cast_Byte,
+        lambda: torch_has_aten_overload("_cast_Byte", "default"),
+    ),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
