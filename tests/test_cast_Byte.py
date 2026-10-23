@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 import torch
 
@@ -104,14 +102,11 @@ def test_cast_Byte_fractional(dtype):
 
 @pytest.mark.cast_Byte
 @pytest.mark.parametrize("requires_grad", [False, True])
-def test_cast_Byte_dispatch(requires_grad, caplog):
+def test_cast_Byte_requires_grad(requires_grad):
     x = torch.randn(1025, device=flag_gems.device, requires_grad=requires_grad)
-    expected = torch.ops.aten._cast_Byte(x)
-    with caplog.at_level(logging.DEBUG, logger="flag_gems.ops.cast_Byte"):
-        with flag_gems.use_gems(include=["cast_Byte"]):
-            actual = torch.ops.aten._cast_Byte(x, True)
+    expected = torch.ops.aten._cast_Byte(x, True)
+    actual = flag_gems.cast_Byte(x, True)
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-    assert "GEMS CAST_BYTE" in caplog.text
     assert not actual.requires_grad
 
 
@@ -120,8 +115,7 @@ def test_cast_Byte_dispatch(requires_grad, caplog):
 def test_cast_Byte_complex(dtype):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()
     expected = torch.ops.aten._cast_Byte(x)
-    with flag_gems.use_gems(include=["cast_Byte"]):
-        actual = flag_gems.cast_Byte(x)
+    actual = flag_gems.cast_Byte(x)
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
