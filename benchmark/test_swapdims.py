@@ -15,34 +15,46 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
-# narrow slices along dim 0; enumerate shapes explicitly.
-NARROW_SHAPES = [(10000, 256), (10000, 4096), (10000, 65536)]
+# 2D / 3D / 4D shapes for benchmarking swapdims. swapdims is a zero-copy view
+# op, so the benchmark measures dispatch + as_strided overhead rather than
+# data movement; the sizes still exercise both small and large stride products.
+SWAPDIMS_SHAPES = [
+    (64, 64),
+    (256, 512),
+    (1024, 1024),
+    (4096, 4096),
+    (64, 512, 512),
+    (128, 256, 64),
+    (8, 16, 32, 64),
+]
 
 
-class NarrowBenchmark(base.Benchmark):
-    """Benchmark for narrow operation (zero-copy view)."""
+class SwapdimsBenchmark(base.Benchmark):
+    """Benchmark for ``aten::swapdims`` (zero-copy dim swap view)."""
 
     DEFAULT_SHAPE_DESC = "input shape"
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = NARROW_SHAPES
+        self.shapes = SWAPDIMS_SHAPES
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:
             inp = torch.randn(shape, dtype=dtype, device=self.device)
-            dim = 0
-            start = shape[dim] // 4
-            length = shape[dim] // 2
-            yield inp, dim, start, length
+            # Swap the first and last dims for every shape.
+            ndim = inp.dim()
+            yield inp, 0, ndim - 1
 
 
-@pytest.mark.narrow
-def test_narrow():
-    bench = NarrowBenchmark(
-        op_name="narrow",
-        torch_op=torch.narrow,
+@pytest.mark.swapdims
+def test_swapdims():
+    bench = SwapdimsBenchmark(
+        op_name="swapdims",
+        torch_op=torch.swapdims,
+        gems_op=flag_gems.swapdims,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
