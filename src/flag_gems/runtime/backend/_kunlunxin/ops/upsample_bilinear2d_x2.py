@@ -17,12 +17,18 @@
 
 At an exact 2x scale the antialiased triangular filter degenerates to the
 plain two-tap bilinear filter, so both operators can use the same payload
-``upsample_bilinear2d_x2.xpu`` (verified bit-exact on CPU).
+(verified bit-exact on CPU).
 
 The payload is a hand-written XTDK cluster kernel: one program per cluster,
 64 cores per cluster, contiguous GM2LM/LM2GM only, a 3-row sliding window
-held in fp32 local memory.  See the header of the ``.xpu`` file for the
-schedule.
+held in fp32 local memory.
+
+It ships precompiled, as a stripped device object (``upsample_bilinear2d_x2.o``)
+rather than as C++ source: only the entry symbols survive in the artifact.
+The kernel source is the ``.xpu`` blob from commit ``3118d0360``; re-pack with
+``docs/xpu3/how_to_pack_payload/pack_payload.py <payload>.xpu --obj-dir .``
+from the triton tree after any source change -- the ``object=`` compile key is
+the ``.o`` digest, so a stale artifact is silently reused.
 
 ``upsample_bilinear2d_x2`` returns ``None`` when the fast path does not apply
 (any other scale, ``align_corners=True``, explicit scales, non-contiguous or
@@ -57,19 +63,19 @@ try:
     import triton.experimental.tle.language as _tle_lang
 
     if hasattr(_tle_ext, "raw") and hasattr(_tle_ext.raw, "dialect"):
-        _XPU_FILE = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "upsample_bilinear2d_x2.xpu"
+        _OBJ_FILE = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "upsample_bilinear2d_x2.o"
         )
 
-        @_tle_ext.raw.dialect("xpu3", file=_XPU_FILE)
+        @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
         def upsample_bilinear2d_x2_f32(inp, out, NC, IH, IW):
             ...
 
-        @_tle_ext.raw.dialect("xpu3", file=_XPU_FILE)
+        @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
         def upsample_bilinear2d_x2_f16(inp, out, NC, IH, IW):
             ...
 
-        @_tle_ext.raw.dialect("xpu3", file=_XPU_FILE)
+        @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
         def upsample_bilinear2d_x2_bf16(inp, out, NC, IH, IW):
             ...
 

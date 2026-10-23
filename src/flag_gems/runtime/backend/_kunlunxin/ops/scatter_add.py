@@ -42,7 +42,12 @@ logger = logging.getLogger(__name__)
 __all__ = ["scatter_add", "scatter_add_"]
 
 # ---------------------------------------------------------------------------
-# tle.raw payloads -- fused + dtype-generic, see scatter_add_lm.xpu
+# tle.raw payloads -- fused + dtype-generic, shipped precompiled as a stripped
+# device object (scatter_add_lm.o) so the C++ never enters the repo.  The kernel
+# source is the `.xpu` blob from commit 3118d0360; after any source change re-pack
+# it with `docs/xpu3/how_to_pack_payload/pack_payload.py <payload>.xpu --obj-dir .`
+# in the triton tree -- `object=` keys the compile cache on the `.o` digest, so a
+# stale artifact is silently reused.
 # ---------------------------------------------------------------------------
 _HAS_TLE_RAW = False
 _SUPPORTED_DT = (torch.float32, torch.float16, torch.bfloat16)
@@ -55,8 +60,8 @@ try:
     import triton.experimental.tle.language as _tle_lang
 
     if hasattr(_tle_ext, "raw") and hasattr(_tle_ext.raw, "dialect"):
-        _XPU_FILE = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "scatter_add_lm.xpu"
+        _OBJ_FILE = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "scatter_add_lm.o"
         )
 
         def _mk_stub(name):
@@ -70,7 +75,7 @@ try:
                 ...
 
             _payload.__name__ = name
-            return _tle_ext.raw.dialect("xpu3", file=_XPU_FILE)(_payload)
+            return _tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)(_payload)
 
         for _path in ("lm", "atomic"):
             for _dtag in _DT_TAG.values():
