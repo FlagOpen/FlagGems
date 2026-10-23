@@ -16015,6 +16015,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: quantized_lstm_cell
+  description: Runs one LSTM cell step on dynamically quantized weights via the aten
+    quantized cell (the fbgemm CPU kernel behind fbgemm_linear_int8_weight_fp32_activation,
+    with host staging for CUDA activations); hx is a list of two tensors (hidden and
+    cell state) and the op returns (h_next, c_next); packed_ih/packed_hh are opaque
+    fbgemm packed-weight objects passed through untouched.
+  for:
+  - quantized_lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: quantized_max_pool1d
   description: Applies 1D max pooling over a per-tensor quantized tensor.
   for:
