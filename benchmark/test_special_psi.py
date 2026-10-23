@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -37,6 +39,17 @@ class SpecialPsiBenchmark(base.UnaryPointwiseBenchmark):
     replay all use the same descriptors and shapes.
     """
 
+    def _candidate_call(self):
+        override = (
+            base.Config.override_registry.get_override(self.op_name)
+            if base.Config.override_registry is not None
+            else None
+        )
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise TypeError("special_psi benchmark requires a callable candidate")
+        return candidate, nullcontext(), override is not None
+
     def build_inputs(self, case):
         shape = case.builder_args[0].builder_args[0]
         if case.dtype == torch.float64:
@@ -50,6 +63,6 @@ def test_special_psi():
         op_name="special_psi",
         torch_op=torch.ops.aten.special_psi,
         dtypes=_BENCH_DTYPES,
-        gems_op=getattr(flag_gems, "special_psi", None),
+        gems_op=flag_gems.special_psi,
     )
     bench.run()
