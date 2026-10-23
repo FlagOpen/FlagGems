@@ -99,6 +99,65 @@ def _channels_last(inp):
     )
 
 
+def _input_metadata(inp):
+    common = (
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        inp.size(),
+        inp.requires_grad,
+        inp._version,
+    )
+    if inp.layout == torch.strided:
+        storage = inp.untyped_storage()
+        return common + (
+            inp.stride(),
+            inp.storage_offset(),
+            inp.data_ptr(),
+            storage._cdata,
+            storage.nbytes(),
+            inp.is_conj(),
+            inp.is_neg(),
+        )
+    assert inp.layout == torch.sparse_coo
+    return common + (inp.sparse_dim(), inp.dense_dim(), inp._nnz(), inp.is_coalesced())
+
+
+def _storage_bytes(inp):
+    # Byte observation works for FP8 and preserves NaNs and signed zero.
+    # Clone the CPU snapshot too, so a CPU input cannot alias its saved bytes.
+    storage = inp.untyped_storage().cpu()
+    return (
+        torch.empty(0, dtype=torch.uint8, device="cpu")
+        .set_(storage, 0, (storage.nbytes(),), (1,))
+        .clone()
+    )
+
+
+def _input_snapshot(inp):
+    metadata = _input_metadata(inp)
+    # Retain each original storage so its identity cannot be recycled.
+    if inp.layout == torch.strided:
+        return metadata, _storage_bytes(inp), inp.untyped_storage()
+    return (
+        metadata,
+        (_input_snapshot(inp._indices()), _input_snapshot(inp._values())),
+        None,
+    )
+
+
+def _assert_input_unchanged(inp, before):
+    metadata, payload, _storage_guard = before
+    # Check the original device, dtype, geometry and storage identity before
+    # copying values to CPU. Empty tensors still have a StorageImpl identity.
+    assert _input_metadata(inp) == metadata, "query changed input metadata or storage"
+    if inp.layout == torch.strided:
+        assert torch.equal(_storage_bytes(inp), payload), "query changed input storage bytes"
+    else:
+        _assert_input_unchanged(inp._indices(), payload[0])
+        _assert_input_unchanged(inp._values(), payload[1])
+
+
 def _assert_same_code(res_out, ref_out):
     # The schema returns a plain Python int and the code is exact, so compare
     # the type and the value directly instead of wrapping it in a tensor.
@@ -130,10 +189,12 @@ def test_debug_has_internal_overlap(dtype, value_range, shape):
     inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
+    input_before = _input_snapshot(inp)
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
     res_out = flag_gems._debug_has_internal_overlap(inp)
 
     _assert_same_code(res_out, ref_out)
+    _assert_input_unchanged(inp, input_before)
 
 
 def _base_tensor(shape):
@@ -202,10 +263,12 @@ def test_debug_has_internal_overlap_layout(row):
     layout_before = (inp.size(), inp.stride(), inp.storage_offset(), inp.data_ptr())
     values_before = tu.to_reference(inp)
 
+    input_before = _input_snapshot(inp)
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
     res_out = flag_gems._debug_has_internal_overlap(inp)
 
     _assert_same_code(res_out, ref_out)
+    _assert_input_unchanged(inp, input_before)
     assert (
         inp.size(),
         inp.stride(),
@@ -235,10 +298,12 @@ def test_debug_has_internal_overlap_sparse(shape):
     inp = _make_sparse(shape)
     ref_inp = tu.to_reference(inp)
 
+    input_before = _input_snapshot(inp)
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
     res_out = flag_gems._debug_has_internal_overlap(inp)
 
     _assert_same_code(res_out, ref_out)
+    _assert_input_unchanged(inp, input_before)
 
 
 # Positive special values stay out of quick mode; the shared generator gives
@@ -255,10 +320,12 @@ def test_debug_has_internal_overlap_special_values(dtype, scenario):
     inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
+    input_before = _input_snapshot(inp)
     ref_out = torch.ops.aten._debug_has_internal_overlap(ref_inp)
     res_out = flag_gems._debug_has_internal_overlap(inp)
 
     _assert_same_code(res_out, ref_out)
+    _assert_input_unchanged(inp, input_before)
 
 
 _INVALID_ARG_ROWS = [
