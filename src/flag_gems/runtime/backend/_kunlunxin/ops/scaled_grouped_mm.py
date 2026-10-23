@@ -43,6 +43,8 @@ to the unchanged generic implementation. No generic source, test, tolerance or
 native fallback is touched, and every non-FP8 call is delegated verbatim.
 """
 
+import logging
+
 import torch
 import triton
 
@@ -60,6 +62,8 @@ from flag_gems.ops.scaled_grouped_mm import (
 )
 
 __all__ = ["scaled_grouped_mm"]
+
+logger = logging.getLogger(__name__)
 
 _E4M3_DTYPES = tuple(
     getattr(torch, name)
@@ -103,8 +107,10 @@ def scaled_grouped_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
+    logger.debug("GEMS_KUNLUNXIN SCALED_GROUPED_MM")
     if self.dtype in _E4M3_DTYPES and not _native_e4m3_dot(self.dtype, self.device):
         fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+        logger.debug("GEMS_KUNLUNXIN SCALED_GROUPED_MM MATERIALIZE FP8 TO FP16")
         # The generic implementation derives the output dtype from the operand
         # dtype; preserve the original FP8-derived default (bfloat16) when the
         # caller did not request one explicitly.
