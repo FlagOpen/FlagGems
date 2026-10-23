@@ -551,6 +551,8 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    ("_sparse_sparse_matmul", _sparse_sparse_matmul),
+    ("_sparse_sparse_matmul.out", _sparse_sparse_matmul_out),
     ("_spdiags", spdiags),
     ("_spsolve", spsolve, None, (SPARSE_CSR_DISPATCH_KEY,)),
     ("_stack", _stack),
