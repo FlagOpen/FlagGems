@@ -68,6 +68,12 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
 )
+from ._foreach_binary_tensor import (  # noqa: F401
+    _foreach_add__Tensor,
+    _foreach_add_Tensor,
+    _foreach_mul__Tensor,
+    _foreach_mul_Tensor,
+)
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
@@ -867,7 +873,9 @@ __all__ = [
     "_foreach_acos",
     "_foreach_acos_",
     "_foreach_add__List",
+    "_foreach_add__Tensor",
     "_foreach_add_List",
+    "_foreach_add_Tensor",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
@@ -896,6 +904,8 @@ __all__ = [
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_mul__List",
+    "_foreach_mul__Tensor",
+    "_foreach_mul_Tensor",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
