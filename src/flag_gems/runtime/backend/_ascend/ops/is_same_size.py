@@ -16,7 +16,7 @@ import logging
 
 import torch
 
-logger = logging.getLogger("flag_gems.ops.is_same_size")
+logger = logging.getLogger(__name__)
 
 
 def is_same_size(self: torch.Tensor, other: torch.Tensor) -> bool:
