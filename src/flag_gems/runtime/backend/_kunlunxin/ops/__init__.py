@@ -72,6 +72,7 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_expm1_ import _foreach_expm1_
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
 from ._foreach_math import (
@@ -887,6 +888,7 @@ __all__ = [
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lgamma",
