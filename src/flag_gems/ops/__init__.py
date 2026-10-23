@@ -68,6 +68,7 @@ from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
+from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -326,6 +327,7 @@ from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged
 from flag_gems.ops._new_zeros_with_same_feature_meta import (
     _new_zeros_with_same_feature_meta,
 )
+from flag_gems.ops._nnz import _nnz
 from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
@@ -423,6 +425,7 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
+from flag_gems.ops._values_copy import _values_copy, _values_copy_out
 from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
     _weight_int4pack_mm_with_scales_and_zeros,
 )
@@ -615,6 +618,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convert_indices_from_csr_to_coo import (
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from flag_gems.ops.convolution import convolution
 from flag_gems.ops.convolution_backward_overrideable import (
     convolution_backward_overrideable,
@@ -786,6 +793,7 @@ from flag_gems.ops.functional_assert_async import _functional_assert_async
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
+from flag_gems.ops.fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
@@ -1071,6 +1079,7 @@ from flag_gems.ops.mixed_dtypes_linear import mixed_dtypes_linear
 from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
+from flag_gems.ops.moveaxis import moveaxis
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
@@ -1118,6 +1127,7 @@ from flag_gems.ops.ne_ import ne_, ne_scalar_
 from flag_gems.ops.neg import neg, neg_
 from flag_gems.ops.negative import negative
 from flag_gems.ops.negative_ import negative_
+from flag_gems.ops.nested_tensor_storage_offsets import nested_tensor_storage_offsets
 from flag_gems.ops.nested_to_padded_tensor import nested_to_padded_tensor
 from flag_gems.ops.new_full import new_full
 from flag_gems.ops.new_ones import new_ones
@@ -1309,6 +1319,7 @@ from flag_gems.ops.set_ import (
 )
 from flag_gems.ops.sgn import sgn, sgn_out
 from flag_gems.ops.sgn_ import sgn_
+from flag_gems.ops.shape_as_tensor import shape_as_tensor
 from flag_gems.ops.sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from flag_gems.ops.sign import sign, sign_, sign_out
 from flag_gems.ops.signbit import signbit, signbit_out
@@ -1469,6 +1480,7 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapdims import swapdims
 from flag_gems.ops.sym_constrain_range import sym_constrain_range
 from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
@@ -1574,6 +1586,7 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
+from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
@@ -1642,6 +1655,8 @@ __all__ = [
     "_conj_physical",
     "_conj_physical_out",
     "_conv_depthwise2d",
+    "_convert_indices_from_csr_to_coo",
+    "_convert_indices_from_csr_to_coo_out",
     "_convert_weight_to_int4pack",
     "_convolution_double_backward",
     "_convolution_mode",
@@ -1654,6 +1669,7 @@ __all__ = [
     "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
+    "_dimI",
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
@@ -1828,6 +1844,8 @@ __all__ = [
     "_fused_rms_norm_forward",
     "_fused_sgd_",
     "_fused_sgd__tensor_lr",
+    "_fw_primal_copy",
+    "_fw_primal_copy_out",
     "_gather_sparse_backward",
     "_has_compatible_shallow_copy_type",
     "_histogramdd_from_bin_cts",
@@ -1871,6 +1889,7 @@ __all__ = [
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
     "_new_zeros_with_same_feature_meta",
+    "_nnz",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -1942,6 +1961,8 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
+    "_values_copy",
+    "_values_copy_out",
     "_weight_int4pack_mm_with_scales_and_zeros",
     "_weight_norm",
     "_wrapped_linear_prepack",
@@ -2670,6 +2691,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mode",
+    "moveaxis",
     "mse_loss",
     "mse_loss_backward",
     "msort",
@@ -2718,6 +2740,7 @@ __all__ = [
     "neg_",
     "negative",
     "negative_",
+    "nested_tensor_storage_offsets",
     "nested_to_padded_tensor",
     "new_full",
     "new_ones",
@@ -2922,6 +2945,7 @@ __all__ = [
     "sgn",
     "sgn_",
     "sgn_out",
+    "shape_as_tensor",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
@@ -3085,6 +3109,7 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapdims",
     "sym_constrain_range",
     "sym_numel",
     "sym_size",
@@ -3189,6 +3214,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_as_complex",
+    "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",
     "vsplit",
