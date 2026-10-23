@@ -196,6 +196,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _indices
+  description: Returns the coordinate (indices) tensor of a sparse COO tensor as a
+    zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
+  for:
+  - _indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _linalg_eigh
   description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
     matrix.
