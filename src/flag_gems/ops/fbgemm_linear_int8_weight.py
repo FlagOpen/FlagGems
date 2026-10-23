@@ -89,6 +89,10 @@ def _validate(input, weight, col_offsets, weight_scale, weight_zero_point, bias)
         raise RuntimeError("weight must have dtype Int8")
     if weight.dim() != 2:
         raise RuntimeError("Expected weight.dim() == 2 to be true, but got false.")
+    if input.shape[-1] != weight.shape[1]:
+        # TORCH_CHECK(K == weight.size(1)) in the aten kernel; checked here so
+        # the mismatch surfaces before the host staging below.
+        raise RuntimeError("Expected K == weight.size(1) to be true, but got false.")
     if not isinstance(col_offsets, torch.Tensor):
         raise TypeError("col_offsets must be a torch.Tensor")
     if col_offsets.dtype != torch.int32:
@@ -119,11 +123,16 @@ def fbgemm_linear_int8_weight(
                 "Expected temporary cpp type wrapper of type "
                 "c10::intrusive_ptr<PackBMatrix<int8_t>>"
             )
+        # Every tensor argument is staged to host memory: the kernel reads the
+        # activation/bias payloads on the CPU, and passing a device-resident
+        # weight/col_offsets would re-enter this wrapper through the CUDA
+        # dispatch key (they are only dim/K-checked by aten, but the dispatch
+        # still consults the registered CUDA key while any argument is CUDA).
         result = torch.ops.aten.fbgemm_linear_int8_weight(
             input.cpu(),
-            weight,
+            weight.cpu(),
             packed,
-            col_offsets,
+            col_offsets.cpu(),
             weight_scale,
             weight_zero_point,
             bias.cpu() if bias is not None else bias,

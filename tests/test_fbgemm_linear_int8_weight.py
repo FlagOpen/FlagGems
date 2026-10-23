@@ -98,20 +98,30 @@ def _reference(input, weight_int8, weight_scale, weight_zero_point, bias):
     """fbgemm-free logical equivalent.
 
     The kernel quantizes the activations to uint8 with dynamically computed
-    parameters (0..255 affine on the input min/max) and multiplies the
-    dequantized activations by the dequantized int8 weight
-    ``(w - weight_zero_point) * weight_scale``.
+    parameters (0..255 affine on the input min/max, computed by fbgemm on the
+    host) and multiplies the dequantized activations by the dequantized int8
+    weight ``(w - weight_zero_point) * weight_scale``.
+
+    The quantization grid of the reference is derived from the **host** copy
+    of the activations: the wrapper stages CUDA activations to the CPU kernel,
+    and the fbgemm grid is a host-side fp32 computation whose zero-point
+    rounding has been observed to differ by one unit from a CUDA-side
+    ``torch.quantize_per_tensor`` on some torch builds. Deriving the grid from
+    ``input.cpu()`` keeps the two grids consistent (the remaining difference
+    is only fbgemm int-math vs torch fp32 linear accumulation).
     """
-    weight_int8 = weight_int8.to(input.device)
-    if bias is not None:
-        bias = bias.to(input.device)
-    x_min = input.min()
-    x_max = input.max()
+    host_input = input.cpu()
+    x_min = host_input.min()
+    x_max = host_input.max()
     x_scale = (x_max - x_min) / 255.0
     x_zp = torch.round(-x_min / x_scale)
-    input_q = torch.quantize_per_tensor(input, x_scale, x_zp, dtype=torch.quint8)
-    weight_deq = (weight_int8.float() - weight_zero_point) * weight_scale
-    return torch.nn.functional.linear(input_q.dequantize(), weight_deq, bias)
+    host_grid = torch.quantize_per_tensor(host_input, x_scale, x_zp, dtype=torch.quint8)
+    weight_deq = (
+        weight_int8.to(input.device).float() - weight_zero_point
+    ) * weight_scale
+    return torch.nn.functional.linear(
+        host_grid.dequantize().to(input.device), weight_deq, bias
+    )
 
 
 @pytest.mark.fbgemm_linear_int8_weight
