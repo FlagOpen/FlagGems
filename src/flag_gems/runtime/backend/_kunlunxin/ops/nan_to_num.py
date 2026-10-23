@@ -28,7 +28,7 @@ config_ = CodeGenConfig(
     config=config_,
 )
 @triton.jit
-def nan_to_num_func(x, nan, posinf, neginf): 
+def nan_to_num_func(x, nan, posinf, neginf):
     M = 3.4028234663852886e38  # exact f32 max finite
     m_pos = tl.minimum(tl.maximum((x - M) * 1e30 * 1e30, 0.0), 1.0)
     m_neg = tl.minimum(tl.maximum((0.0 - x - M) * 1e30 * 1e30, 0.0), 1.0)

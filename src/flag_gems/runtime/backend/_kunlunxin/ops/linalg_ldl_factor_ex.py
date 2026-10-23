@@ -18,7 +18,7 @@ def _next_pow2(n):
     return 1 << (n - 1).bit_length()
 
 
-def _plan(n): 
+def _plan(n):
     rows = triton.next_power_of_2(n)
     if rows == n:
         lda = n if (n >= 16 and n % 8 == 0 and n * n <= 4096) else max(64, rows)
@@ -241,7 +241,7 @@ def _check_linalg_ldl_factor_ex(A, hermitian, check_errors):
 
 def ldl_factor_ex(A, hermitian=False, check_errors=False):
     logger.debug("GEMS_KUNLUNXIN LINALG_LDL_FACTOR_EX")
-    _check_linalg_ldl_factor_ex(A, hermitian, check_errors) 
+    _check_linalg_ldl_factor_ex(A, hermitian, check_errors)
     n = A.shape[-1]
     batch_count = A.numel() // (n * n)
     input_contiguous = A.contiguous().reshape(batch_count, n, n)
