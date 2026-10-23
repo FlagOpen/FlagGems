@@ -29,13 +29,6 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 logger = logging.getLogger(__name__)
 device = device.name
 
-# The flagtree compiler in the CI image rejects TRITONXPU_COMPARE_FUSION on the
-# wide native kernels (cmpf(ui32) verifier error); detect it once (same as
-# less_equal.py) and skip the fusion flag only on that compiler.
-_IS_FLAGTREE = os.path.exists(
-    os.path.join(os.path.dirname(triton.__file__), "FLAGTREE_BACKEND")
-)
-
 
 config_ = CodeGenConfig(
     1024,
@@ -60,154 +53,17 @@ def le_func(x, y):
 
 def le(A, B):
     logger.debug("GEMS_KUNLUNXIN LE")
-    # Native fused-compare fast path (mirrors less_equal.py, which is the same
-    # x <= y). Contiguous same-shape float tensor-tensor writes bool directly,
-    # no fp32 buffer / _copy_from. Generic path otherwise.
-    numel = A.numel()
-    if (
-        A.dtype in (torch.float16, torch.float32, torch.bfloat16)
-        and A.dtype == B.dtype
-        and A.is_contiguous()
-        and B.is_contiguous()
-        and A.shape == B.shape
-        and 0 < numel
-    ):
-        if numel <= _LE_TENSOR_FAST_MAX:
-            return _le_tensor_native(A, B, numel, _le_tensor_adaptive_tile(numel))
-        return _le_tensor_large(A, B, numel)
-    if not _IS_FLAGTREE:
-        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    # NOTE: do not enable TRITONXPU_COMPARE_FUSION here. The flagtree compiler
+    # on the CI runner lowers the generic pointwise bool store as
+    # cmpf(i1) + extui(i8) + store and then fuses it into a 32-bit
+    # triton_xpu.cmpf result (tensor<65536xui32>), which the op verifier
+    # rejects and blows uni_sram (OutOfResources) on the fp16 1024x1024 case.
+    # TRITONXPU_FP16_FAST is kept: it only strips the .to(fp32) so the compare
+    # runs as a native fp16 vcmpf (32-lane) instead of widening to fp32.
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = le_func(A, B)
-    if not _IS_FLAGTREE:
-        del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
-
-
-# ---------------------------------------------------------------------------
-# le tensor-tensor fast path: native fused compare (x <= y) writing bool
-# directly. Mirrors less_equal.py (identical semantics). Tiles / masked-ceiling
-# / launch opts are the same values proven there.
-_LE_TENSOR_FAST_TILE = 131072
-_LE_TENSOR_FAST_GRID = 8
-_LE_TENSOR_FAST_TILE_MIN = 4096
-_LE_TENSOR_FAST_MAX = 1 << 18
-_LE_TENSOR_MASKED_TILE_MAX = 16384
-_LE_BUFFER_SIZE_LIMIT = 8192
-_LE_FAST_LAUNCH_OPTS = {
-    "buffer_size_limit": _LE_BUFFER_SIZE_LIMIT,
-    "unroll_num": 16,
-    "isCloseMemoryAsync": False,
-}
-_LE_MASKED_LAUNCH_OPTS = {
-    "unroll_num": 16,
-    "isCloseMemoryAsync": False,
-}
-
-
-def _le_tensor_adaptive_tile(numel):
-    return max(
-        _LE_TENSOR_FAST_TILE_MIN,
-        triton.next_power_of_2(
-            (numel + _LE_TENSOR_FAST_GRID - 1) // _LE_TENSOR_FAST_GRID
-        ),
-    )
-
-
-@triton.jit
-def le_tensor_native_kernel(out_ptr, x_ptr, y_ptr, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    r = tl.load(x_ptr + tid) <= tl.load(y_ptr + tid)
-    tl.store(out_ptr + tid, r.to(tl.int8))
-
-
-@triton.jit
-def le_tensor_native_masked_kernel(out_ptr, x_ptr, y_ptr, numel, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    mask = tid < numel
-    tid_c = tl.minimum(tid, numel - 1)
-    r = (tl.load(x_ptr + tid_c) <= tl.load(y_ptr + tid_c)) & mask
-    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
-
-
-def _le_tensor_native(A, B, numel, tile=_LE_TENSOR_FAST_TILE):
-    out = torch.empty_like(A, dtype=torch.bool)
-    x = A.reshape(-1)
-    y = B.reshape(-1)
-    masked = numel % tile != 0
-    if masked and tile > _LE_TENSOR_MASKED_TILE_MAX:
-        tile = _LE_TENSOR_MASKED_TILE_MAX
-    grid = (math.ceil(numel / tile),) if masked else (numel // tile,)
-    if not _IS_FLAGTREE:
-        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
-    os.environ["TRITONXPU_FP16_FAST"] = "1"
-    launch_opts = {} if _IS_FLAGTREE else _LE_FAST_LAUNCH_OPTS
-    masked_opts = {} if _IS_FLAGTREE else _LE_MASKED_LAUNCH_OPTS
-    try:
-        if masked:
-            le_tensor_native_masked_kernel[grid](
-                out, x, y, numel, TILE=tile, num_warps=4, **masked_opts
-            )
-        else:
-            le_tensor_native_kernel[grid](
-                out, x, y, TILE=tile, num_warps=4, **launch_opts
-            )
-    finally:
-        if not _IS_FLAGTREE:
-            del os.environ["TRITONXPU_COMPARE_FUSION"]
-        del os.environ["TRITONXPU_FP16_FAST"]
-    return out
-
-
-@triton.jit
-def le_tensor_native_tail_kernel(
-    out_ptr, x_ptr, y_ptr, tail, offset, TILE: tl.constexpr
-):
-    pid = tl.program_id(0)
-    tid = offset + pid * TILE + tl.arange(0, TILE)
-    mask = tid < offset + tail
-    tid_c = tl.minimum(tid, offset + tail - 1)
-    r = (tl.load(x_ptr + tid_c) <= tl.load(y_ptr + tid_c)) & mask
-    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
-
-
-def _le_tensor_large(A, B, numel):
-    out = torch.empty_like(A, dtype=torch.bool)
-    x = A.reshape(-1)
-    y = B.reshape(-1)
-    tail = numel % _LE_TENSOR_FAST_TILE
-    bulk = numel - tail
-    if not _IS_FLAGTREE:
-        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
-    os.environ["TRITONXPU_FP16_FAST"] = "1"
-    launch_opts = {} if _IS_FLAGTREE else _LE_FAST_LAUNCH_OPTS
-    masked_opts = {} if _IS_FLAGTREE else _LE_MASKED_LAUNCH_OPTS
-    try:
-        if bulk:
-            le_tensor_native_kernel[(bulk // _LE_TENSOR_FAST_TILE,)](
-                out, x, y, TILE=_LE_TENSOR_FAST_TILE, num_warps=4, **launch_opts
-            )
-        if tail:
-            le_tensor_native_tail_kernel[
-                (math.ceil(tail / _LE_TENSOR_MASKED_TILE_MAX),)
-            ](
-                out,
-                x,
-                y,
-                tail,
-                bulk,
-                TILE=_LE_TENSOR_MASKED_TILE_MAX,
-                num_warps=4,
-                **masked_opts,
-            )
-    finally:
-        if not _IS_FLAGTREE:
-            del os.environ["TRITONXPU_COMPARE_FUSION"]
-        del os.environ["TRITONXPU_FP16_FAST"]
-    return out
 
 
 @pointwise_dynamic(
@@ -290,8 +146,7 @@ def _le_scalar_native(A, scalar, numel, masked, tile=_LE_SCALAR_FAST_TILE):
         torch.bfloat16: tl.bfloat16,
         torch.float32: tl.float32,
     }[A.dtype]
-    if not _IS_FLAGTREE:
-        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     try:
         if masked:
@@ -320,8 +175,7 @@ def _le_scalar_native(A, scalar, numel, masked, tile=_LE_SCALAR_FAST_TILE):
                 isCloseMemoryAsync=False,
             )
     finally:
-        if not _IS_FLAGTREE:
-            del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
         del os.environ["TRITONXPU_FP16_FAST"]
     return out
 
