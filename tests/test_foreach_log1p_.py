@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_log1p_
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_log1p_(*args, **kwargs)
 
 
 _FAMILY = "log1p"
