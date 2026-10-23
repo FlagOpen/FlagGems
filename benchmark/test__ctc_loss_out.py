@@ -30,6 +30,10 @@ class CtcLossOutBenchmark(OperatorBenchmark):
     ]
     DEFAULT_SHAPE_DESC = "T, N, C, S"
 
+    def set_shapes(self, shape_file_path=None):
+        # This recipe needs T/N/C/S, not a backend's generic matrix shapes.
+        super().set_shapes(shape_file_path, default_shapes=self.DEFAULT_SHAPES)
+
     def set_more_shapes(self):
         return []
 
