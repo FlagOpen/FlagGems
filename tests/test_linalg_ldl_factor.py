@@ -45,6 +45,7 @@ def _assert_factorization_equal(result, reference, dtype):
 
 
 @pytest.mark.linalg_ldl_factor
+@pytest.mark.ldl_factor
 @pytest.mark.parametrize("shape", LDL_FACTOR_SHAPES)
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 @pytest.mark.parametrize("hermitian", [False, True])
@@ -63,6 +64,7 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
 
 
 @pytest.mark.linalg_ldl_factor
+@pytest.mark.ldl_factor
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 def test_linalg_ldl_factor_batched(shape, dtype):
@@ -78,6 +80,7 @@ def test_linalg_ldl_factor_batched(shape, dtype):
 
 
 @pytest.mark.linalg_ldl_factor
+@pytest.mark.ldl_factor
 @pytest.mark.parametrize(
     "shape,dtype,error_type,message",
     [

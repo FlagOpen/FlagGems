@@ -45,9 +45,10 @@ class AdaptiveAvgPool3DBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.adaptive_avg_pool3d_backward
+@pytest.mark.adaptive_avg_pool3d_backward_grad_input
 def test_adaptive_avg_pool3d_backward():
     bench = AdaptiveAvgPool3DBackwardBenchmark(
-        op_name="adaptive_avg_pool3d_backward",
+        op_name="adaptive_avg_pool3d_backward_grad_input",
         torch_op=torch.ops.aten.adaptive_avg_pool3d_backward.grad_input,
         dtypes=consts.FLOAT_DTYPES,
     )

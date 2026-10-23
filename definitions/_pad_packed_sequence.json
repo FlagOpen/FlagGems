@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "pad_packed_sequence",
+  "name": "_pad_packed_sequence",
   "requires_triton_kernel": true,
   "description": "Pads a packed batch of variable length sequences back into a dense\n(T, B, *) tensor together with the per-batch-element sequence lengths.",
   "parameters": [

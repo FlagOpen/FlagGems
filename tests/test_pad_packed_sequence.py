@@ -18,6 +18,7 @@ def _make_batch_sizes(lengths):
 
 
 @pytest.mark.pad_packed_sequence
+@pytest.mark.underscore_pad_packed_sequence
 @pytest.mark.parametrize("batch_size", [1, 8, 32, 128])
 @pytest.mark.parametrize("max_length", [8, 16, 32, 128])
 @pytest.mark.parametrize("batch_first", [False, True])
@@ -48,6 +49,7 @@ def test_pad_packed_sequence(batch_size, max_length, batch_first, dtype):
 
 
 @pytest.mark.pad_packed_sequence
+@pytest.mark.underscore_pad_packed_sequence
 @pytest.mark.parametrize("batch_size", [8, 32])
 @pytest.mark.parametrize("max_length", [16, 32])
 @pytest.mark.parametrize("padding_value", [0.0, -1.0, 1.5])

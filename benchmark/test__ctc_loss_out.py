@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -78,7 +76,6 @@ def test_perf__ctc_loss_out():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._ctc_loss.out,
-        gems_op=flag_gems.ops._ctc_loss_out,
         dtypes=CTC_DTYPES,
         is_inplace=True,
         fresh_inputs=True,
