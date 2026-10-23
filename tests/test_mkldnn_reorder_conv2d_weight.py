@@ -132,6 +132,17 @@ def _make_special_input(dtype, scenario):
     return torch.tensor(payloads[scenario], dtype=torch.float32).to(dtype)
 
 
+# The native fp16/bfloat16 reorder path requires avx_ne_convert or avx512_fp16
+# on the CPU; machines without it raise before the candidate is ever called.
+def _native_reorder(*args, **kwargs):
+    try:
+        return torch.ops.aten.mkldnn_reorder_conv2d_weight(*args, **kwargs)
+    except RuntimeError as e:
+        if "avx_ne_convert or avx512_fp16" in str(e):
+            pytest.skip("fp16 reorder needs avx512_fp16-class CPU")
+        raise
+
+
 def assert_result_equal(result, reference):
     # The mkldnn operand/result are CPU-only by construction; comparisons
     # are exact and valid under any harness reference device, so no
@@ -161,7 +172,7 @@ def test_mkldnn_reorder_conv2d_weight(shape, value_range, dtype):
 
     # Every convolution attribute keeps its schema default here; the explicit sweep is the
     # ``_params`` test below.
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp)
+    ref_out = _native_reorder(ref_inp)
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp)
 
     assert_reordered(res_out, ref_out, inp)
@@ -189,7 +200,7 @@ def test_mkldnn_reorder_conv2d_weight_size_inferred(shape, expected_shape, dtype
     inp = dense.to_mkldnn()
     ref_inp = dense.detach().clone().to_mkldnn()
 
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp)
+    ref_out = _native_reorder(ref_inp)
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp)
 
     assert_reordered(res_out, ref_out, inp)
@@ -226,7 +237,7 @@ def test_mkldnn_reorder_conv2d_weight_params(params, dtype):
     inp = dense.to_mkldnn()
     ref_inp = dense.detach().clone().to_mkldnn()
 
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp, **params)
+    ref_out = _native_reorder(ref_inp, **params)
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp, **params)
 
     assert_reordered(res_out, ref_out, inp)
@@ -246,7 +257,7 @@ def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
     res_buf = torch.full(shape, 7, dtype=dtype).to_mkldnn()
     ref_buf = torch.full(shape, 7, dtype=dtype).to_mkldnn()
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp, out=res_buf)
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight.out(ref_inp, out=ref_buf)
+    ref_out = _native_reorder(ref_inp, out=ref_buf)
 
     assert res_out is res_buf
     assert_reordered(res_out, ref_out, inp)
@@ -270,7 +281,7 @@ def test_mkldnn_reorder_conv2d_weight_special_values(dtype, scenario):
     inp = dense.to_mkldnn()
     ref_inp = dense.detach().clone().to_mkldnn()
 
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp)
+    ref_out = _native_reorder(ref_inp)
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp)
 
     assert_reordered(res_out, ref_out, inp)
@@ -364,7 +375,7 @@ def test_mkldnn_reorder_conv2d_weight_rejects_backward(dtype):
         .requires_grad_()
     )
     ref_inp = inp.detach().clone()
-    ref_out = torch.ops.aten.mkldnn_reorder_conv2d_weight(ref_inp)
+    ref_out = _native_reorder(ref_inp)
     res_out = flag_gems.mkldnn_reorder_conv2d_weight(inp)
 
     assert res_out.is_mkldnn
