@@ -4418,7 +4418,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
     - NeuralNetwork
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5.0'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
     the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
