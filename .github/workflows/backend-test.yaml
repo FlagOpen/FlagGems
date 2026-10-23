@@ -306,27 +306,31 @@ jobs:
           tools/test-op.sh ${{ inputs.pr_id }}
 
   # Enflame runs inside a container on the enflame-s60-* server available to
-  # this repository. The base repo uses enflame-s60-tmp; FlagGems-vllm uses
+  # this repository. The base repo uses enflame-s60-0; FlagGems-vllm uses
   # enflame-s60-1. Equivalent to:
   #   docker run --rm -it --privileged -v /dev:/dev \
+  #     --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864 \
   #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #
   # NOTE: image/options/runner labels all come from .github/backends.json via
   # the preprocess matrix, not from this file.
   #
-  # enflame-s60-tmp runs in DooD (Docker-outside-of-Docker) mode, so this job's
-  # container is created via a real `docker create` and container.options is
-  # honoured. Earlier, the runner started the job as a bare k8s pod instead —
-  # container.options had nowhere to apply, so the GCU context the backend
-  # needs couldn't be created (dtu_context_create failed even though efsmi
-  # still reported a healthy card). --privileged -v /dev:/dev is required for
-  # GCU context creation to succeed under DooD.
+  # enflame-s60-0 runs the job as a k8s pod. container.options only takes
+  # effect when GitHub Actions actually invokes `docker create` to build the
+  # job container; a prior attempt on enflame-s60-tmp running in bare k8s-pod
+  # mode had no such step, so --privileged -v /dev:/dev went unused and the
+  # GCU context the backend needs couldn't be created (dtu_context_create
+  # failed even though efsmi still reported a healthy card). That was
+  # confirmed fixed by switching enflame-s60-tmp to DooD (Docker-outside-of-
+  # Docker) mode, where options is passed through to a real `docker create`.
+  # enflame-s60-0 is expected to behave the same way under k8s now; keeping
+  # options set here costs nothing if it's a no-op, and is required if it
+  # isn't.
   #
-  # gpu_check_enflame.sh probes a real allocation, so a regression here (e.g.
-  # the runner reverting to bare k8s pods) shows up as a clear failure in
-  # "Check GPU availability" instead of an opaque driver abort inside the test
-  # run.
+  # gpu_check_enflame.sh probes a real allocation, so a regression here shows
+  # up as a clear failure in "Check GPU availability" instead of an opaque
+  # driver abort inside the test run.
   test-enflame:
     if: ${{ inputs.backend == 'enflame-tops1106' }}
     runs-on: >-
