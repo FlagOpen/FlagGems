@@ -38,6 +38,14 @@ from ._foreach_addcdiv_ import (
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_atan import _foreach_atan, _foreach_atan_
+from ._foreach_binary_tensor import (  # noqa: F401
+    _foreach_add_Tensor,
+    _foreach_add__Tensor,
+    _foreach_div_Tensor,
+    _foreach_div__Tensor,
+    _foreach_mul_Tensor,
+    _foreach_mul__Tensor,
+)
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -849,6 +857,12 @@ __all__ = [
     "_foreach_abs_",
     "_foreach_acos",
     "_foreach_acos_",
+    "_foreach_add_Tensor",
+    "_foreach_add__Tensor",
+    "_foreach_div_Tensor",
+    "_foreach_div__Tensor",
+    "_foreach_mul_Tensor",
+    "_foreach_mul__Tensor",
     "_foreach_add__List",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
