@@ -916,6 +916,7 @@ _FULL_CONFIG = (
     ),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_affine_grid_generator_backward", cudnn_affine_grid_generator_backward),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
