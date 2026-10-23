@@ -20043,7 +20043,7 @@ ops:
   kind:
     - Reduction
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5'
 - id: trapz
   description: |
     Computes the trapezoidal rule along a dimension using constant spacing dx.
