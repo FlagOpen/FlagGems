@@ -16087,6 +16087,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: quantized_rnn_tanh_cell
+  description: Runs one RNN cell step with a tanh nonlinearity on dynamically quantized
+    weights via the aten quantized cell (the fbgemm CPU kernel behind
+    fbgemm_linear_int8_weight_fp32_activation, with host staging for CUDA
+    activations); packed_ih/packed_hh are opaque fbgemm packed-weight objects passed
+    through untouched.
+  for:
+  - quantized_rnn_tanh_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: rad2deg
   description: 'Converts each element from angles in radians to degrees.
 
