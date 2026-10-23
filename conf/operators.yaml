@@ -14764,6 +14764,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: new_zeros
+  description: 'Returns a Tensor of size `size` filled with 0, with the same
+    `torch.dtype` and `torch.device` as the input tensor.
+
+    '
+  for:
+  - new_zeros
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: new_zeros_out
+  description: 'A variant of `new_zeros` with output written to provided `out`.
+
+    '
+  for:
+  - new_zeros.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: new_zeros_with_same_feature_meta
   description: |
     Create zeros preserving the feature tensor dtype, device, strides, and storage offset.
