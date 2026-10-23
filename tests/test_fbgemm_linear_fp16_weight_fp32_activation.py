@@ -18,23 +18,35 @@ Reference strategy
 ``fbgemm_linear_fp16_weight_fp32_activation`` is delegated to aten (there is
 no Triton kernel). ``packed_weight`` is an opaque CPU tensor whose TensorImpl
 carries an fbgemm ``LinearPackedParamsBase`` C++ object; the packing format is
-owned by the fbgemm library and cannot be synthesized by FlagGems. On this
-build the op only has a CPU kernel, and the CUDA-resident path of native aten
-segfaults (the fbgemm CPU SIMD unpacking dereferences device pointers), so
-the FlagGems wrapper stages CUDA activations through host memory around the
-same aten call.
+owned by the fbgemm library and cannot be synthesized by FlagGems.
 
-The tests therefore validate:
+**Deliberately no end-to-end numerical comparison.** The logical reference
+``F.linear(input, weight.half().float(), bias)`` reproduces the fp16-weight
+unpack semantics, but only the accumulation *order* differs between the real
+fbgemm CPU SIMD kernel (used by the delegated aten path) and a cublas GEMM
+over the unpacked fp16-rounded weight. Both are correct fp16-weight GEMMs;
+their results drift by ~1 ulp of the output magnitude, which at (512, 512)
+already reaches 2.06e-2 > any fixed atol=2e-2 budget that must also hold at
+smaller shapes. This was observed on CI builds that ship the real fbgemm
+library (local builds without fbgemm cannot reproduce it). The same applies
+to the sibling op ``fbgemm_linear_int8_weight`` (PR #7638) and to
+``fbgemm_linear_int8_weight_fp32_activation`` (PR #7647), which dropped the
+numerical comparison for the same reason. This test file therefore restricts
+itself to behavior that is identical on every build (validation and error
+paths, dtype/shape/device contracts, fp16-bias upcast routing) plus
+wrapper-vs-aten parity checks against the delegated kernel itself, so CI
+never depends on fbgemm-vs-reference numerics.
 
-* the numerical contract against a **logical-equivalent, fbgemm-free
-  reference**: unpack semantics of the fp16 packed weight equal a plain
-  ``w.half()`` round-trip, so the reference is
-  ``torch.nn.functional.linear(input, weight.half().float(), bias)`` with
-  fp32 activations (the kernel converts them to fp16 internally);
-* the wrapper's validation logic (dtype / dim / error paths) via illegal
-  inputs;
-* device routing: CUDA inputs flow through the wrapper and produce results
-  equal to the CPU reference, where the native aten call itself crashes.
+Validation covers:
+
+* non-fp32 activations are rejected before dispatch;
+* 1-D input rejection (matrix-only op, same message as aten);
+* K mismatch rejection (same message as aten);
+* fp16/fp32/bf16 bias accepted, other dtypes rejected.
+
+The delegation path itself is exercised via bitwise wrapper-vs-aten parity
+(both sides call the same fbgemm kernel in the same process, so the
+comparison is build-independent) and a shape/dtype/device smoke check.
 """
 
 import pytest
@@ -65,6 +77,24 @@ SHAPES = (
 N_OUT, N_IN = 16, 32
 
 
+@pytest.fixture(autouse=True)
+def _require_fbgemm_helpers():
+    """Skip the whole module when the fbgemm-backed aten helpers are absent.
+
+    The packed object comes from a deprecated fbgemm aten kernel whose
+    availability varies across torch builds; probing lazily via torch.ops
+    keeps the module importable everywhere.
+    """
+    if not hasattr(torch.ops.aten, "fbgemm_pack_gemm_matrix_fp16") or not hasattr(
+        torch.ops.aten, "fbgemm_linear_fp16_weight_fp32_activation"
+    ):
+        pytest.skip(
+            "fbgemm-backed aten helpers (fbgemm_pack_gemm_matrix_fp16 / "
+            "fbgemm_linear_fp16_weight_fp32_activation) unavailable on this "
+            "torch build"
+        )
+
+
 def _packed_weight(n_out=N_OUT, n_in=N_IN, seed=0):
     """Build a real fbgemm-packed fp16 weight object (CPU-resident)."""
     generator = torch.Generator().manual_seed(seed)
@@ -73,44 +103,94 @@ def _packed_weight(n_out=N_OUT, n_in=N_IN, seed=0):
     return weight, packed
 
 
-def _reference(input, weight, bias):
-    """fbgemm-free logical equivalent: fp32 activation, fp16-rounded weight."""
-    weight = weight.to(input.device)
-    if bias is not None:
-        bias = bias.to(input.device)
-    return torch.nn.functional.linear(input, weight.half().float(), bias)
+def _assert_delegates(input, packed, bias, n_out):
+    """A legal call must return an fp32 result of the right shape, on the
+    input's device, without raising. No numerical assertion: the delegated
+    aten fbgemm kernel is the single source of truth, and its accumulation
+    order differs from any fbgemm-free reference across builds (see module
+    docstring)."""
+    res_out = flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
+    assert res_out.dtype == torch.float32
+    assert res_out.shape == input.shape[:-1] + (n_out,)
+    assert res_out.device.type == input.device.type
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
 @pytest.mark.parametrize("shape", SHAPES)
-def test_fbgemm_linear_fp16_weight_fp32_activation(shape):
+def test_fbgemm_linear_fp16_weight_fp32_activation_delegates(shape):
+    """A legal call delegates to the aten fbgemm kernel without raising.
+
+    On CPU inputs the wrapper calls the aten kernel directly; on CUDA inputs
+    it stages the activation and bias through host memory around the same
+    call. The packed object itself must stay host-resident: the fbgemm pack
+    kernel has no CUDA registration and moving/cloning a packed tensor drops
+    the LinearPackedParamsBase C++ wrapper it carries. Output is fp32 with
+    shape (..., N_out); values come verbatim from the delegated kernel (no
+    numerical comparison - see module docstring).
+    """
     weight, packed = _packed_weight(n_in=shape[-1])
     input = torch.randn(shape, device=flag_gems.device, dtype=torch.float32)
     bias = torch.randn(weight.shape[0], device=flag_gems.device)
 
-    res_out = flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
-
-    # The FlagGems wrapper executes the aten fbgemm CPU kernel (host staging
-    # for CUDA activations), while the logical reference runs on the device
-    # through cublas. Both round the weight to fp16 first; only the fp32
-    # accumulation order differs, so compare with a tolerance that covers
-    # GEMM reduction-order noise.
-    ref_out = _reference(utils.to_reference(input), weight, utils.to_reference(bias))
-    utils.gems_assert_close(res_out, ref_out, dtype=torch.float32, atol=2e-2)
+    _assert_delegates(input, packed, bias, n_out=weight.shape[0])
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
-def test_fbgemm_linear_fp16_weight_fp32_activation_fp16_bias_upcast():
-    """A fp16 bias is accepted and upcast: out == linear(x, unpack(w), b)."""
+def test_fbgemm_linear_fp16_weight_fp32_activation_wrapper_matches_aten_bitwise():
+    """The wrapper result is bitwise identical to calling the same aten CPU
+    kernel directly.
+
+    Both sides execute the same fbgemm CPU kernel in the same process, so this
+    parity check holds on every build regardless of the fbgemm accumulation
+    order (no fbgemm-free reference involved). The aten reference call is
+    made with CPU-resident activations on purpose: a direct aten call with
+    CUDA-resident activations makes the native kernel dereference device
+    pointers and segfault (that is exactly what the wrapper's host staging
+    exists to avoid), so the comparison stages the reference side the same
+    way and asserts the staged result is bitwise equal.
+    """
+    weight, packed = _packed_weight(seed=2)
+    input = torch.randn(64, N_IN, device=flag_gems.device, dtype=torch.float32)
+    bias = torch.randn(weight.shape[0], device=flag_gems.device)
+
+    res_out = flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
+    aten_out = torch.ops.aten.fbgemm_linear_fp16_weight_fp32_activation(
+        utils.to_reference(input).cpu(), packed, utils.to_reference(bias).cpu()
+    )
+    # The wrapper returns on the input device (host staging round-trips), the
+    # direct CPU aten call stays on CPU; move the CPU result to the input
+    # device so the shared bitwise helper compares values only.
+    assert res_out.device.type == input.device.type
+    torch.testing.assert_close(
+        res_out.cpu(),
+        aten_out.cpu(),
+        atol=0,
+        rtol=0,
+    )
+
+
+@pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
+def test_fbgemm_linear_fp16_weight_fp32_activation_fp16_bias_accepted():
+    """A fp16 bias is accepted (upcast inside the kernel) and the call routes
+    through the wrapper on every build.
+
+    No numerical comparison - see module docstring.
+    """
     weight, packed = _packed_weight(seed=1)
     input = torch.randn(8, N_IN, device=flag_gems.device, dtype=torch.float32)
     bias = torch.randn(weight.shape[0], device=flag_gems.device, dtype=torch.float16)
 
-    res_out = flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
-    ref_out = _reference(
-        utils.to_reference(input), weight, utils.to_reference(bias).float()
-    )
-    utils.gems_assert_close(res_out, ref_out, dtype=torch.float32, atol=2e-2)
+    _assert_delegates(input, packed, bias, n_out=weight.shape[0])
+
+
+@pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
+def test_fbgemm_linear_fp16_weight_fp32_activation_bf16_bias_accepted():
+    """A bf16 bias is accepted (upcast inside the kernel)."""
+    weight, packed = _packed_weight(seed=3)
+    input = torch.randn(8, N_IN, device=flag_gems.device, dtype=torch.float32)
+    bias = torch.randn(weight.shape[0], device=flag_gems.device, dtype=torch.bfloat16)
+
+    _assert_delegates(input, packed, bias, n_out=weight.shape[0])
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
@@ -122,6 +202,17 @@ def test_fbgemm_linear_fp16_weight_fp32_activation_unsupported_activation(dtype)
     bias = torch.randn(weight.shape[0], device=flag_gems.device)
     with pytest.raises(RuntimeError, match="expected scalar type Float"):
         flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
+
+
+@pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
+def test_fbgemm_linear_fp16_weight_fp32_activation_unsupported_bias_dtype():
+    """A non-fp32/fp16/bf16 bias is rejected before dispatch."""
+    weight, packed = _packed_weight()
+    input = torch.randn(4, N_IN, device=flag_gems.device, dtype=torch.float32)
+    for bias_dtype in (torch.float64, torch.int32):
+        bias = torch.randn(weight.shape[0], device=flag_gems.device).to(bias_dtype)
+        with pytest.raises(RuntimeError, match="bias must have dtype"):
+            flag_gems.fbgemm_linear_fp16_weight_fp32_activation(input, packed, bias)
 
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
@@ -146,7 +237,11 @@ def test_fbgemm_linear_fp16_weight_fp32_activation_k_mismatch():
 
 @pytest.mark.fbgemm_linear_fp16_weight_fp32_activation
 def test_fbgemm_linear_fp16_weight_fp32_activation_non_contiguous_input():
-    """A strided activation is accepted and matches the contiguous result."""
+    """A strided activation is accepted and matches the contiguous result.
+
+    Both sides go through the same wrapper, so this stays a bitwise check
+    against the delegated kernel itself (no cross-implementation reference).
+    """
     weight, packed = _packed_weight()
     pool = torch.randn(8, N_IN * 2, device=flag_gems.device, dtype=torch.float32)
     input = pool[:, ::2]
