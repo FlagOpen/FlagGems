@@ -18723,6 +18723,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_bsr_tensor
+  description: 'Assembles a block-compressed sparse row (BSR) tensor from its stored
+    components: the block-row pointers (crow_indices), the block-column indices
+    (col_indices) and the block payload (values), with an optional explicit logical
+    size.
+
+    '
+  for:
+  - sparse_bsr_tensor.crow_col_value
+  - sparse_bsr_tensor.crow_col_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_dim
   description: 'Returns the number of sparse dimensions of a tensor: 0 for strided
     tensors, the index count for sparse COO, 2 for compressed layouts.
