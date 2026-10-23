@@ -39,6 +39,13 @@ from ._foreach_addcdiv_ import (
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_atan import _foreach_atan, _foreach_atan_
+from ._foreach_binary import (  # noqa: F401
+    _foreach_addcdiv_ScalarList,
+    _foreach_addcdiv_Tensor,
+    _foreach_lerp_List,
+    _foreach_mul_List,
+    _foreach_sub_List,
+)
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__Scalar,
     _foreach_add__ScalarList,
@@ -96,7 +103,18 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
-from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
+from ._foreach_unary import (  # noqa: F401
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_reciprocal_,
+    _foreach_rsqrt,
+    _foreach_rsqrt_,
+    _foreach_sin,
+    _foreach_sin_,
+    _foreach_sqrt_,
+)
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -872,6 +890,8 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
+    "_foreach_addcdiv_ScalarList",
+    "_foreach_addcdiv_Tensor",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
     "_foreach_asin_",
@@ -879,6 +899,8 @@ __all__ = [
     "_foreach_atan_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cos_",
     "_foreach_div__List",
     "_foreach_div__Tensor",
     "_foreach_div_List",
@@ -887,8 +909,11 @@ __all__ = [
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_lerp_List",
     "_foreach_lgamma",
     "_foreach_lgamma_",
     "_foreach_log1p",
@@ -896,12 +921,14 @@ __all__ = [
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_mul__List",
+    "_foreach_mul_List",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
     "_foreach_pow__Scalar",
     "_foreach_pow__ScalarList",
     "_foreach_pow_List",
+    "_foreach_reciprocal_",
     "_foreach_pow_ScalarAndTensor",
     "_foreach_round",
     "_foreach_round_",
@@ -911,8 +938,12 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign",
     "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sqrt",
+    "_foreach_sqrt_",
     "_foreach_sub__List",
+    "_foreach_sub_List",
     "_foreach_tan",
     "_foreach_tan_",
     "_foreach_zero",
