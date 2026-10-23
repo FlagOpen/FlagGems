@@ -139,7 +139,6 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
-from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -158,6 +157,7 @@ from .special_round_out import special_round_out
 from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
@@ -335,6 +335,8 @@ __all__ = [
     "square_",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "true_divide",
     "true_divide_",
     "true_divide_out",
@@ -440,6 +442,7 @@ if get_device_capability(current_device()) >= (3, 1):
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
+from .resolve_conj import resolve_conj
 from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
 
 __all__.extend(["scaled_mm", "scaled_mm_out"])
