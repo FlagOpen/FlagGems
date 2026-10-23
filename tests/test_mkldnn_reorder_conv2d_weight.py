@@ -31,21 +31,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# CI derives the pytest marker from the implementation file name via the #6359
-# convention; both entry points are declared so ``pytest -m`` selects these
-# tests regardless of the registry state.
-pytestmark = [
-    pytest.mark.mkldnn_reorder_conv2d_weight,
-    pytest.mark.underscore_mkldnn_reorder_conv2d_weight,
-    # Rule 55 (--ref=cpu) human-verified: the operand/result are CPU-only by
-    # construction, so the CPU reference and the candidate compare exactly.
-    # The skipif below encodes that verification without skipping anything.
-    pytest.mark.skipif(
-        False,
-        reason="CPU-only op: reference and candidate are both CPU tensors under --ref=cpu (verified)",
-    ),
-]
-
 # The mkldnn layout only exists on CPU, so the reference and the candidate are
 # both CPU tensors regardless of the harness device; comparisons stay exact.
 

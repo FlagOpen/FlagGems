@@ -26,14 +26,6 @@ import torch
 
 from . import base
 
-# CI derives the pytest marker from the implementation file name via the #6359
-# convention; both entry points are declared so ``pytest -m`` selects these
-# tests regardless of the registry state.
-pytestmark = [
-    pytest.mark.mkldnn_reorder_conv2d_weight,
-    pytest.mark.underscore_mkldnn_reorder_conv2d_weight,
-]
-
 # Representative conv2d weight geometries (out_channels, in_channels / groups, kh, kw),
 # mirroring the KernelGen acceptance benchmark.
 DEFAULT_WEIGHT_SHAPES = [
