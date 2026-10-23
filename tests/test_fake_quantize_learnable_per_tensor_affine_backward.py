@@ -79,7 +79,8 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
         result[2], ref_out[2], torch.float32, reduce_dim=reduce_size
     )
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
+        assert value.device == snapshot.device
+        utils.gems_assert_equal(value, utils.to_reference(snapshot))
     assert result[0].shape == self_t.shape
     assert result[1].shape == scale.shape
     assert result[2].shape == zero_point_t.shape

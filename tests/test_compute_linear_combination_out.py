@@ -61,8 +61,10 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     assert out.shape == (m, k)
     assert out.dtype == dtype
     utils.gems_assert_close(out, reference, dtype, reduce_dim=n)
-    utils.gems_assert_equal(inp, saved_inp)
-    utils.gems_assert_equal(coefficients, saved_coefficients)
+    assert inp.device == saved_inp.device
+    assert coefficients.device == saved_coefficients.device
+    utils.gems_assert_equal(inp, utils.to_reference(saved_inp))
+    utils.gems_assert_equal(coefficients, utils.to_reference(saved_coefficients))
 
 
 @pytest.mark.compute_linear_combination_out
