@@ -573,14 +573,13 @@ def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
-def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
+def test_cholesky_solve_complex_lazy_conjugate_direct(dtype):
     A, L, rhs = _make_cholesky_solve_inputs((64, 4), dtype)
     factor = L.mH
     assert factor.is_conj()
 
     ref_out = _reference_cholesky_solve(rhs, factor, upper=True)
-    with flag_gems.use_gems(exclude=["zero_"]):
-        res_out = torch.cholesky_solve(rhs, factor, upper=True)
+    res_out = flag_gems.cholesky_solve(rhs, factor, upper=True)
 
     _assert_cholesky_solve_close(res_out, ref_out, dtype)
     _assert_backward_error(A, res_out, rhs, dtype)

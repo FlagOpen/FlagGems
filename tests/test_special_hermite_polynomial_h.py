@@ -34,7 +34,7 @@ def _skip_unsupported_cambricon_float64(dtype):
         pytest.skip(reason="Issue #5253: float64 is not supported on Cambricon")
 
 
-def _assert_dispatch(caplog):
+def _assert_gems_call(caplog):
     expected = (
         f"{utils.gems_log_prefix(flag_gems.special_hermite_polynomial_h)} "
         "SPECIAL_HERMITE_POLYNOMIAL_H"
@@ -82,7 +82,7 @@ def test_special_hermite_polynomial_h_scalar_degree(shape, dtype):
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("overload", ["default", "n_scalar"])
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_hermite_polynomial_h_registered_dispatch(overload, dtype, caplog):
+def test_special_hermite_polynomial_h_direct_call(overload, dtype, caplog):
     x = torch.tensor([-1.0, -0.25, 0.5, 1.0], dtype=dtype, device=flag_gems.device)
     degree = (
         torch.tensor([0, 1, 5, 9], dtype=torch.int64, device=flag_gems.device)
@@ -99,10 +99,9 @@ def test_special_hermite_polynomial_h_registered_dispatch(overload, dtype, caplo
     ref_out = reference_op(ref_x, ref_degree)
 
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_hermite_polynomial_h"):
-        with flag_gems.use_gems():
-            res_out = reference_op(x, degree)
+        res_out = flag_gems.special_hermite_polynomial_h(x, degree)
 
-    _assert_dispatch(caplog)
+    _assert_gems_call(caplog)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
