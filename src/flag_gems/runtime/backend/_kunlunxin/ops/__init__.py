@@ -38,14 +38,6 @@ from ._foreach_addcdiv_ import (
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_atan import _foreach_atan, _foreach_atan_
-from ._foreach_binary_tensor import (  # noqa: F401
-    _foreach_add_Tensor,
-    _foreach_add__Tensor,
-    _foreach_div_Tensor,
-    _foreach_div__Tensor,
-    _foreach_mul_Tensor,
-    _foreach_mul__Tensor,
-)
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -66,6 +58,14 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_minimum_ScalarList,
     _foreach_mul__Scalar,
     _foreach_sub__Scalar,
+)
+from ._foreach_binary_tensor import (  # noqa: F401
+    _foreach_add__Tensor,
+    _foreach_add_Tensor,
+    _foreach_div__Tensor,
+    _foreach_div_Tensor,
+    _foreach_mul__Tensor,
+    _foreach_mul_Tensor,
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
@@ -857,13 +857,9 @@ __all__ = [
     "_foreach_abs_",
     "_foreach_acos",
     "_foreach_acos_",
-    "_foreach_add_Tensor",
-    "_foreach_add__Tensor",
-    "_foreach_div_Tensor",
-    "_foreach_div__Tensor",
-    "_foreach_mul_Tensor",
-    "_foreach_mul__Tensor",
     "_foreach_add__List",
+    "_foreach_add__Tensor",
+    "_foreach_add_Tensor",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
@@ -876,7 +872,9 @@ __all__ = [
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_div__List",
+    "_foreach_div__Tensor",
     "_foreach_div_List",
+    "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc",
@@ -890,6 +888,8 @@ __all__ = [
     "_foreach_log2",
     "_foreach_log2_",
     "_foreach_mul__List",
+    "_foreach_mul__Tensor",
+    "_foreach_mul_Tensor",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",

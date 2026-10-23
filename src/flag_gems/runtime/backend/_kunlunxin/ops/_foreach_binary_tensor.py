@@ -32,14 +32,12 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_binary import (
-    _foreach_add_Tensor as _generic_add_tensor,
-    _foreach_add__Tensor as _generic_add__tensor,
-    _foreach_div_Tensor as _generic_div_tensor,
-    _foreach_div__Tensor as _generic_div__tensor,
-    _foreach_mul_Tensor as _generic_mul_tensor,
-    _foreach_mul__Tensor as _generic_mul__tensor,
-)
+from flag_gems.ops._foreach_binary import _foreach_add__Tensor as _generic_add__tensor
+from flag_gems.ops._foreach_binary import _foreach_add_Tensor as _generic_add_tensor
+from flag_gems.ops._foreach_binary import _foreach_div__Tensor as _generic_div__tensor
+from flag_gems.ops._foreach_binary import _foreach_div_Tensor as _generic_div_tensor
+from flag_gems.ops._foreach_binary import _foreach_mul__Tensor as _generic_mul__tensor
+from flag_gems.ops._foreach_binary import _foreach_mul_Tensor as _generic_mul_tensor
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
 from ._foreach_direct import _pick_block, _select_ptr
@@ -52,16 +50,50 @@ _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 @triton.jit
 def _foreach_tensor_direct_kernel(
-    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
-    o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    o0,
+    o1,
+    o2,
+    o3,
+    o4,
+    o5,
+    o6,
+    o7,
+    o8,
+    o9,
+    o10,
+    o11,
+    o12,
+    o13,
+    o14,
+    o15,
     scalar_ptr,
     t,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
     OP: tl.constexpr,
 ):
-    a = _select_ptr(t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)
-    o = _select_ptr(t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15)
+    a = _select_ptr(
+        t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
+    )
+    o = _select_ptr(
+        t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15
+    )
     a = a.to(tl.pointer_type(DT))
     o = o.to(tl.pointer_type(DT))
     s = tl.load(scalar_ptr).to(tl.float32)
@@ -108,7 +140,13 @@ def _try_direct(self, other, inplace, op):
 
     grid = (nt, n // block)
     _foreach_tensor_direct_kernel[grid](
-        *a_ptrs, *o_ptrs, other, nt, tl_dtype(dtype), block, op,
+        *a_ptrs,
+        *o_ptrs,
+        other,
+        nt,
+        tl_dtype(dtype),
+        block,
+        op,
         num_warps=num_warps,
         unroll_num=16,
         buffer_size_limit=8192,
@@ -118,6 +156,7 @@ def _try_direct(self, other, inplace, op):
 
 
 def _foreach_add_Tensor(self, other, *, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ADD_TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0 and alpha == 1:
         out = _try_direct(self, other, inplace=False, op=0)
@@ -127,6 +166,7 @@ def _foreach_add_Tensor(self, other, *, alpha=1):
 
 
 def _foreach_add__Tensor(self, other, *, alpha=1):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ADD__TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0 and alpha == 1:
         if _try_direct(self, other, inplace=True, op=0):
@@ -135,6 +175,7 @@ def _foreach_add__Tensor(self, other, *, alpha=1):
 
 
 def _foreach_mul_Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_MUL_TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0:
         out = _try_direct(self, other, inplace=False, op=1)
@@ -144,6 +185,7 @@ def _foreach_mul_Tensor(self, other):
 
 
 def _foreach_mul__Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_MUL__TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0:
         if _try_direct(self, other, inplace=True, op=1):
@@ -152,6 +194,7 @@ def _foreach_mul__Tensor(self, other):
 
 
 def _foreach_div_Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV_TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0:
         out = _try_direct(self, other, inplace=False, op=2)
@@ -161,6 +204,7 @@ def _foreach_div_Tensor(self, other):
 
 
 def _foreach_div__Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV__TENSOR")
     self = check_tensor_list(self)
     if other is not None and other.dim() == 0:
         if _try_direct(self, other, inplace=True, op=2):
