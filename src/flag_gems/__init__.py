@@ -1215,6 +1215,7 @@ _FULL_CONFIG = (
     ("int_repr", int_repr),
     ("int_repr.out", int_repr),
     ("inverse", inverse),
+    ("is_neg", is_neg),
     ("is_nonzero", is_nonzero),
     ("is_same_size", is_same_size),
     ("isclose", isclose),
