@@ -1357,9 +1357,7 @@ from flag_gems.ops.special_ndtr import special_ndtr
 from flag_gems.ops.special_ndtri import special_ndtri
 from flag_gems.ops.special_round import special_round, special_round_out
 from flag_gems.ops.special_scaled_modified_bessel_k0 import (
-    run as special_scaled_modified_bessel_k0,
-)
-from flag_gems.ops.special_scaled_modified_bessel_k0 import (
+    special_scaled_modified_bessel_k0,
     special_scaled_modified_bessel_k0_out,
 )
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (

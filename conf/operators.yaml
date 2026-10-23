@@ -18789,7 +18789,7 @@ ops:
 
     '
   for:
-  - special.scaled_modified_bessel_k0
+  - special_scaled_modified_bessel_k0
   labels:
   - aten
   - pointwise
@@ -18804,7 +18804,7 @@ ops:
 
     '
   for:
-  - special.scaled_modified_bessel_k0.out
+  - special_scaled_modified_bessel_k0.out
   labels:
   - aten
   - pointwise

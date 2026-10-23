@@ -474,7 +474,7 @@ def _launch(x, out, work_dt):
     return out
 
 
-def run(x, *, out=None):
+def special_scaled_modified_bessel_k0(x, *, out=None):
     logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K0")
     if not isinstance(x, torch.Tensor):
         raise TypeError("special_scaled_modified_bessel_k0: x must be a Tensor")
@@ -514,4 +514,4 @@ def run(x, *, out=None):
 def special_scaled_modified_bessel_k0_out(x, out):
     """``aten::special_scaled_modified_bessel_k0.out``: write into ``out``."""
     logger.debug("GEMS SPECIAL_SCALED_MODIFIED_BESSEL_K0_OUT")
-    return run(x, out=out)
+    return special_scaled_modified_bessel_k0(x, out=out)
