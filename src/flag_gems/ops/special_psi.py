@@ -463,7 +463,7 @@ class _PsiFunction(torch.autograd.Function):
         return out
 
 
-def run(self, out=None):
+def special_psi(self, out=None):
     """Elementwise digamma (psi), matching aten::special_psi semantics."""
     logger.debug("GEMS SPECIAL_PSI")
     if not isinstance(self, torch.Tensor):
@@ -504,4 +504,4 @@ def run(self, out=None):
 def special_psi_out(self, out):
     """``aten::special_psi.out``: write the result into ``out`` and return it."""
     logger.debug("GEMS SPECIAL_PSI_OUT")
-    return run(self, out=out)
+    return special_psi(self, out=out)
