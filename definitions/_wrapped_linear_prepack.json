@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "wrapped_linear_prepack",
+  "name": "_wrapped_linear_prepack",
   "requires_triton_kernel": true,
   "description": "Representative ATen schema: aten::_wrapped_linear_prepack(Tensor weight, Tensor weight_scale, Tensor weight_zero_point, Tensor bias) -> Tensor. Tests cover the FlagGems uint8 packed layout, metadata magic/version, qint8 ties-to-even rounding and clamping, contiguous and noncontiguous weights/bias, empty dimensions, and invalid qparam or bias shapes.",
   "parameters": [

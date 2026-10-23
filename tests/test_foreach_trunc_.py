@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_trunc_
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_trunc_(*args, **kwargs)
 
 
 _FAMILY = "trunc"

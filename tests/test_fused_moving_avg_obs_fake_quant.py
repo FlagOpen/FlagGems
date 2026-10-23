@@ -127,7 +127,7 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
         for tensor in (running_min_tri, running_max_tri, scale_tri, zp_tri)
     ]
 
-    res_out = flag_gems.ops.fused_moving_avg_obs_fake_quant(
+    res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
         torch.tensor([observer_on], dtype=torch.int32),
         torch.tensor([fake_quant_on], dtype=torch.int32),
@@ -240,7 +240,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     # The current FlagGems implementation scalarizes these state tensors and
     # ignores per_row_fake_quant/ch_axis. Keep the pinned ATen contract here so
     # deferred runtime validation exposes that implementation mismatch.
-    res_out = flag_gems.ops.fused_moving_avg_obs_fake_quant(
+    res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
         observer_tri,
         fake_quant_tri,
