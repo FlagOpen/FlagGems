@@ -114,6 +114,45 @@ def kernel_1_unmasked_v2(
 
 @libentry()
 @triton.jit
+def kernel_1_unmasked_pipe(
+    inp,
+    target,
+    mid,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    CHUNK: tl.constexpr,
+    reduction: tl.constexpr,
+):
+    # Pipelined unmasked stage-1 for the fully divisible big tensors. The
+    # single-shot load+reduce at BLOCK >= 131072 leaves the cluster on its
+    # reduce tail (two cluster barriers plus a serial 64-entry shared-memory
+    # partial sum, measured ~5us per scheduling wave), so the tile is split
+    # into CHUNK-lane stages accumulated in registers with num_stages=2
+    # software pipelining; the loads of stage i+1 overlap the reduction of
+    # stage i (measured 115.8us -> 67.6us on [4096,4096] f16). Only the
+    # CHUNK-lane sum is a tl.sum, the partial partials are register adds, so
+    # the cross-core tree runs once per program exactly as before. The final
+    # sum is exact in fp32 (verified against the CPU reference on
+    # [4096,4096]..[1024,65536] for f16/f32/bf16; the chunked order actually
+    # matches an f64 reference to within the fp32 sum error, see
+    # harness/solution/mse_loss/README.md).
+    pid = ext.program_id(0)
+    acc = tl.zeros((CHUNK,), dtype=tl.float32)
+    for i in tl.range(0, BLOCK_SIZE // CHUNK, num_stages=2):
+        offset = pid * BLOCK_SIZE + i * CHUNK + tl.arange(0, CHUNK)
+        inp_val = tl.load(inp + offset).to(tl.float32)
+        target_val = tl.load(target + offset).to(tl.float32)
+        sub = inp_val - target_val
+        acc += sub * sub
+    sum_val = tl.sum(acc)
+    # Reduction.MEAN.value: 1 Reduction.SUM.value: 2
+    if reduction == 1:
+        sum_val = sum_val / M
+    tl.store(mid + pid, sum_val)
+
+
+@libentry()
+@triton.jit
 def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     # `mid` has BLOCK_MID slots but only the first `mid_size` hold partials;
     # the padding lanes are dropped BY VALUE before the sum -- a value
@@ -140,10 +179,24 @@ class Reduction(Enum):
 # with buffer_size_limit=2048 (verified against the CPU reference on
 # [4096,4096]..[1024,65536] for f16/f32/bf16; 32768/65536/131072/262144-lane
 # single-tile sums are all exact). Measured on the 2-load + reduce pattern of
-# this operator the 131072-lane tile runs at ~600-1000 GB/s vs ~430-850 GB/s
-# for the 32768-lane tile (+27..36% on the big shapes, see
-# harness/solution/mse_loss/README.md), so fully divisible tensors get it.
+# this operator the plain 131072-lane tile runs at ~600-1000 GB/s vs the
+# pipelined tile (kernel_1_unmasked_pipe) at ~900-1300 GB/s on the big shapes
+# (see harness/solution/mse_loss/README.md), so fully divisible tensors get
+# the pipelined kernel.
 _FULL_BLOCK = 131072
+# Pipelined stage-1 tile for the biggest fully divisible tensors: 8 CHUNK
+# stages, fewer programs, and the reduce tail amortized over more work
+# (measured 73.4us -> 67.6us on [4096,4096] f16 and 378 -> 341us on
+# [1024,65536] f32 vs the 131072-lane pipelined tile).
+_PIPE_LARGE_BLOCK = 262144
+# Tensors at least this many elements take _PIPE_LARGE_BLOCK (16 programs
+# minimum); the 4-8 program range [1024,1024]-ish shapes is launch-bound and
+# prefers the smaller tile (14.3us vs 10.5us on 1M f16).
+_PIPE_LARGE_THRESHOLD = 4194304
+# Pipelined stage chunk: 1/8 of _PIPE_LARGE_BLOCK, 1/4 of _FULL_BLOCK. Only
+# the CHUNK-lane tl.sum runs the cluster tree; the pipeline overlap wins over
+# the single-shot tile for CHUNK < BLOCK (see kernel_1_unmasked_pipe).
+_PIPE_CHUNK = 32768
 # Secondary exact tile: 2 programs of 32768 lanes beat 1 program of 65536
 # lanes on the 65536-element shapes (cluster scheduling), so tensors that are
 # only 32768-aligned keep the legacy-size tile.
@@ -171,6 +224,30 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     block_size = get_block_size_1d(M, inp.element_size() * 2)
 
+    if (M >= _PIPE_LARGE_THRESHOLD) and (M % _PIPE_LARGE_BLOCK == 0):
+        # Largest pipelined tile first: 16+ programs of 262144 lanes. Same
+        # exactness argument as _FULL_BLOCK but with the pipelined stages.
+        mid_size = M // _PIPE_LARGE_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=inp.device)
+            out = torch.empty([], dtype=dtype, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                kernel_1_unmasked_pipe[(mid_size,)](
+                    inp,
+                    target,
+                    mid,
+                    M,
+                    _PIPE_LARGE_BLOCK,
+                    _PIPE_CHUNK,
+                    reduction,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                kernel_2[(1, 1, 1)](
+                    mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
+                )
+            return out
+
     if (M > _FULL_BLOCK) and (M % _FULL_BLOCK == 0):
         # Fully divisible by the largest exact tl.sum tile: the unmasked
         # stage-1 path skips the masked-memory penalty entirely (masked
@@ -188,12 +265,13 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
             # necessarily a power of two, e.g. [10000, 65536] -> 20000 ->
             # BLOCK_MID 32768).
             with torch_device_fn.device(inp.device):
-                kernel_1_unmasked_v2[(mid_size,)](
+                kernel_1_unmasked_pipe[(mid_size,)](
                     inp,
                     target,
                     mid,
                     M,
                     _FULL_BLOCK,
+                    _PIPE_CHUNK,
                     reduction,
                     buffer_size_limit=_BUFFER_SIZE_LIMIT,
                 )
@@ -201,8 +279,6 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
                     mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
                 )
             return out
-        # mid grid would exceed the stage-2 ceiling; fall through to the
-        # legacy path, which grows stage-1 blocks to keep mid_size <= 32768.
 
     if (M > _V2_BLOCK) and (M % _V2_BLOCK == 0):
         # Divisible by 32768 but not by 131072 (e.g. 65536 = 2 tiles): keep
