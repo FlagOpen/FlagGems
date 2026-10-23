@@ -57,11 +57,14 @@ def _attn_fwd_inner(
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
-    # range of values handled by this stage
+    # Align both causal regions to the same KV tile boundary. When N > M,
+    # starting the masked region at the Q tile would overlap the last full
+    # KV tile and expose future keys in the unmasked region.
     if STAGE == 1:
-        lo, hi = 0, start_m * BLOCK_M
+        lo, hi = 0, (start_m * BLOCK_M // BLOCK_N) * BLOCK_N
     elif STAGE == 2:
-        lo, hi = start_m * BLOCK_M, (start_m + 1) * BLOCK_M
+        lo = (start_m * BLOCK_M // BLOCK_N) * BLOCK_N
+        hi = (start_m + 1) * BLOCK_M
     # causal = False
     else:
         lo, hi = 0, KV_CTX
@@ -78,7 +81,11 @@ def _attn_fwd_inner(
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        # Load along the contiguous head dimension before transposing for QK.
+        # A directly loaded [D, N] tile lowers poorly on the Ascend backend.
+        key = tl.trans(
+            tl.load(K_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+        )
         if PRE_LOAD_V:
             value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
@@ -217,8 +224,8 @@ def _attn_fwd(
     K_block_ptr = (
         K
         + kv_offset
-        + offs_n[None, :] * stride_k_seqlen
-        + offs_headsize[:, None] * stride_k_headsize
+        + offs_n[:, None] * stride_k_seqlen
+        + offs_headsize[None, :] * stride_k_headsize
     )
     V_block_ptr = (
         V
@@ -740,9 +747,10 @@ def scaled_dot_product_attention_forward(
             HEAD_DIM_K,  #
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
-            # Larger GPU-style tiles exceed the 192 KiB UB at head_dim=256.
+            # D=256 benefits from longer KV tiles with row-major K loads.
+            # Keep M=32: M=64 overflows UB even without multibuffering.
             BLOCK_M=32,
-            BLOCK_N=min(32, HEAD_DIM_K),
+            BLOCK_N=64 if HEAD_DIM_K == 256 else min(32, HEAD_DIM_K),
             PRE_LOAD_V=False,
             num_warps=4,
             num_stages=1,
@@ -795,6 +803,10 @@ def scaled_dot_product_attention_backward(
 
     # Bound live accumulators and temporary buffers for the 192 KiB UB.
     BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 32, 32, 32
+    # dQ has one gradient accumulator and fits a larger query tile. Keep
+    # dK/dV at N=32; N=64 exceeds the accumulator buffer for D=256.
+    if HEAD_DIM_K == 256:
+        BLOCK_M2 = 64
 
     RCP_LN2 = 1.0 / math.log(2)
 
