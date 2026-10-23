@@ -107,6 +107,20 @@ class Benchmark:
         **kwargs,
     ):
         self.op_name = op_name
+        if getattr(Config, "ref_as_candidate", False):
+            if not callable(torch_op):
+                raise ValueError(
+                    f"Operator '{op_name}': --ref-as-candidate requires an explicit "
+                    "callable torch_op reference"
+                )
+            if any(
+                getattr(type(self), name) is not getattr(Benchmark, name)
+                for name in ("run", "_measure_input", "get_latency", "_candidate_call")
+            ):
+                raise ValueError(
+                    f"Operator '{op_name}': custom benchmark execution does not "
+                    "support the --ref-as-candidate reference contract"
+                )
         if is_backward and self.op_name.find("_backward") == -1:
             self.op_name += "_backward"
         if (
@@ -567,6 +581,8 @@ class Benchmark:
 
     def _candidate_call(self):
         """Resolve the same callable and dispatch scope for candidate-only modes."""
+        if getattr(Config, "ref_as_candidate", False):
+            return self.torch_op, nullcontext(), False
         override = (
             Config.override_registry.get_override(self.op_name)
             if Config.override_registry is not None
@@ -799,6 +815,8 @@ class Benchmark:
                 before = registry.call_counts().get(key, 0) if overridden else 0
                 with dispatch:
                     metric.latency = self.get_latency(op, *args, **kwargs)
+                if getattr(Config, "ref_as_candidate", False):
+                    metric.candidate_source = "reference"
                 if overridden:
                     if registry.call_counts().get(key, 0) <= before:
                         raise RuntimeError(
@@ -859,6 +877,11 @@ class Benchmark:
             return
 
         self.init_user_config()
+        if (
+            getattr(Config, "ref_as_candidate", False)
+            and "latency" not in self.to_bench_metrics
+        ):
+            raise ValueError("--ref-as-candidate requires the candidate latency metric")
         configured_case_ids = getattr(Config, "case_ids", None)
         selection_requested = case_ids is not None or configured_case_ids is not None
         selected_case_ids = case_ids if case_ids is not None else configured_case_ids
