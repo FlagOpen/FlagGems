@@ -457,6 +457,8 @@ _FULL_CONFIG = (
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
     ("_new_zeros_with_same_feature_meta", _new_zeros_with_same_feature_meta),
+    ("_nnpack_spatial_convolution", nnpack_spatial_convolution),
+    ("_nnpack_spatial_convolution.out", nnpack_spatial_convolution),
     (
         "_nnz",
         _nnz,
