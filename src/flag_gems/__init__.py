@@ -27,6 +27,10 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
+from flag_gems.ops._make_per_tensor_quantized_tensor import (
+    _make_per_tensor_quantized_tensor,
+    _make_per_tensor_quantized_tensor_out,
+)
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -418,6 +422,18 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    (
+        "_make_per_tensor_quantized_tensor",
+        _make_per_tensor_quantized_tensor,
+        None,
+        (QUANTIZED_DISPATCH_KEY,),
+    ),
+    (
+        "_make_per_tensor_quantized_tensor.out",
+        _make_per_tensor_quantized_tensor_out,
+        None,
+        (QUANTIZED_DISPATCH_KEY,),
+    ),
     ("_masked_scale", _masked_scale),
     ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
