@@ -34,8 +34,6 @@ import triton.language as tl
 
 from flag_gems.ops._foreach_binary import _foreach_add__Tensor as _generic_add__tensor
 from flag_gems.ops._foreach_binary import _foreach_add_Tensor as _generic_add_tensor
-from flag_gems.ops._foreach_binary import _foreach_div__Tensor as _generic_div__tensor
-from flag_gems.ops._foreach_binary import _foreach_div_Tensor as _generic_div_tensor
 from flag_gems.ops._foreach_binary import _foreach_mul__Tensor as _generic_mul__tensor
 from flag_gems.ops._foreach_binary import _foreach_mul_Tensor as _generic_mul_tensor
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
@@ -193,32 +191,11 @@ def _foreach_mul__Tensor(self, other):
     return _generic_mul__tensor(self, other)
 
 
-def _foreach_div_Tensor(self, other):
-    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV_TENSOR")
-    self = check_tensor_list(self)
-    if other is not None and other.dim() == 0:
-        out = _try_direct(self, other, inplace=False, op=2)
-        if out is not None:
-            return out
-    return _generic_div_tensor(self, other)
-
-
-def _foreach_div__Tensor(self, other):
-    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV__TENSOR")
-    self = check_tensor_list(self)
-    if other is not None and other.dim() == 0:
-        if _try_direct(self, other, inplace=True, op=2):
-            return None
-    return _generic_div__tensor(self, other)
-
-
 __all__ = [
     "_foreach_add_Tensor",
     "_foreach_add__Tensor",
     "_foreach_mul_Tensor",
     "_foreach_mul__Tensor",
-    "_foreach_div_Tensor",
-    "_foreach_div__Tensor",
 ]
 
 
@@ -231,8 +208,12 @@ def _patch_generic_wrapper():
         _m._foreach_add__Tensor = _foreach_add__Tensor
         _m._foreach_mul_Tensor = _foreach_mul_Tensor
         _m._foreach_mul__Tensor = _foreach_mul__Tensor
-        _m._foreach_div_Tensor = _foreach_div_Tensor
-        _m._foreach_div__Tensor = _foreach_div__Tensor
+    import flag_gems
+
+    flag_gems._foreach_add_Tensor = _foreach_add_Tensor
+    flag_gems._foreach_add__Tensor = _foreach_add__Tensor
+    flag_gems._foreach_mul_Tensor = _foreach_mul_Tensor
+    flag_gems._foreach_mul__Tensor = _foreach_mul__Tensor
 
 
 _patch_generic_wrapper()

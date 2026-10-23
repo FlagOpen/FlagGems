@@ -71,8 +71,6 @@ from ._foreach_binary_scalar import (  # noqa: F401
 from ._foreach_binary_tensor import (  # noqa: F401
     _foreach_add__Tensor,
     _foreach_add_Tensor,
-    _foreach_div__Tensor,
-    _foreach_div_Tensor,
     _foreach_mul__Tensor,
     _foreach_mul_Tensor,
 )
@@ -875,8 +873,8 @@ __all__ = [
     "_foreach_acos_",
     "_foreach_add__List",
     "_foreach_add__Tensor",
-    "_foreach_add_Tensor",
     "_foreach_add_List",
+    "_foreach_add_Tensor",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
