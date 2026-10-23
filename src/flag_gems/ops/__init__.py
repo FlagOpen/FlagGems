@@ -620,6 +620,10 @@ from flag_gems.ops.convert_indices_from_csr_to_coo import (
     _convert_indices_from_csr_to_coo_out,
 )
 from flag_gems.ops.convolution import convolution
+from flag_gems.ops.convolution_backward import (
+    convolution_backward,
+    convolution_backward_out,
+)
 from flag_gems.ops.convolution_backward_overrideable import (
     convolution_backward_overrideable,
     convolution_backward_overrideable_out,
@@ -892,6 +896,7 @@ from flag_gems.ops.infinitely_differentiable_gelu_backward import (
 )
 from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
+from flag_gems.ops.int_repr import int_repr
 from flag_gems.ops.inverse import inverse
 from flag_gems.ops.ior_scalar import ior_scalar
 from flag_gems.ops.ior_tensor import ior_tensor
@@ -1348,6 +1353,7 @@ from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
+from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -2168,6 +2174,8 @@ __all__ = [
     "conv_transpose2d",
     "conv_transpose3d",
     "convolution",
+    "convolution_backward",
+    "convolution_backward_out",
     "convolution_backward_overrideable",
     "convolution_backward_overrideable_out",
     "convolution_overrideable",
@@ -2462,6 +2470,7 @@ __all__ = [
     "inner",
     "int_mm",
     "int_mm_out",
+    "int_repr",
     "inverse",
     "ior_scalar",
     "ior_tensor",
@@ -2975,6 +2984,7 @@ __all__ = [
     "sort_stable",
     "sparse_broadcast_to",
     "sparse_bsc_tensor",
+    "sparse_bsr_tensor",
     "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",

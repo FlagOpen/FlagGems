@@ -29,6 +29,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs_ import _foreach_abs_
+from ._foreach_add_list import _foreach_add_List
 from ._foreach_add_list_ import _foreach_add__List
 from ._foreach_addcdiv_ import (
     _foreach_addcdiv__Scalar,
@@ -46,6 +47,7 @@ from ._foreach_binary import (  # noqa: F401
     _foreach_sub_List,
 )
 from ._foreach_binary_scalar import (  # noqa: F401
+    _foreach_add__Scalar,
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
     _foreach_clamp_max__ScalarList,
@@ -55,6 +57,8 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_clamp_min__ScalarList,
     _foreach_clamp_min_Scalar,
     _foreach_clamp_min_ScalarList,
+    _foreach_div__Scalar,
+    _foreach_div__ScalarList,
     _foreach_maximum__Scalar,
     _foreach_maximum__ScalarList,
     _foreach_maximum_Scalar,
@@ -64,11 +68,15 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_minimum_Scalar,
     _foreach_minimum_ScalarList,
     _foreach_mul__Scalar,
+    _foreach_mul__ScalarList,
+    _foreach_pow__Scalar,
+    _foreach_pow__ScalarList,
+    _foreach_pow_ScalarAndTensor,
     _foreach_sub__Scalar,
+    _foreach_sub__ScalarList,
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
-from ._foreach_erf import _foreach_erf
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
@@ -376,10 +384,16 @@ from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .foreach_acos import _foreach_acos, _foreach_acos_  # noqa: F401
-from .foreach_div import _foreach_div__List, _foreach_div_List  # noqa: F401
-from .foreach_erf import _foreach_erf_  # noqa: F401
+from .foreach_div import (  # noqa: F401
+    _foreach_div__List,
+    _foreach_div__Tensor,
+    _foreach_div_List,
+    _foreach_div_Tensor,
+)
+from .foreach_erf import _foreach_erf, _foreach_erf_  # noqa: F401
 from .foreach_log1p import _foreach_log1p, _foreach_log1p_  # noqa: F401
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
+from .frexp import frexp
 from .full import full
 from .full_like import full_like
 from .functional_assert_async import _functional_assert_async
@@ -590,6 +604,7 @@ from .not_equal import not_equal, not_equal_scalar
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
+from .or_scalar import or_scalar
 from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
@@ -659,6 +674,7 @@ from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
+from .scaled_grouped_mm import scaled_grouped_mm
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -784,6 +800,7 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .sym_numel import sym_numel
 from .t_copy import t_copy, t_copy_out
 from .take import take, take_out
 from .take_along_dim import take_along_dim_kernel  # noqa: F401
@@ -868,6 +885,7 @@ __all__ = [
     "_foreach_acos",
     "_foreach_acos_",
     "_foreach_add__List",
+    "_foreach_add_List",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
@@ -884,7 +902,9 @@ __all__ = [
     "_foreach_cos",
     "_foreach_cos_",
     "_foreach_div__List",
+    "_foreach_div__Tensor",
     "_foreach_div_List",
+    "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc",
@@ -905,8 +925,11 @@ __all__ = [
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
     "_foreach_pow_List",
     "_foreach_reciprocal_",
+    "_foreach_pow_ScalarAndTensor",
     "_foreach_round",
     "_foreach_round_",
     "_foreach_rsqrt",
@@ -1202,6 +1225,7 @@ __all__ = [
     "fmod_tensor_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
+    "frexp",
     "full",
     "full_like",
     "fused_experts_impl",
@@ -1468,6 +1492,7 @@ __all__ = [
     "one_hot",
     "ones",
     "ones_like",
+    "or_scalar",
     "or_tensor",
     "ormqr",
     "outplace_fused_experts",
@@ -1555,6 +1580,7 @@ __all__ = [
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
     "scaled_dot_product_efficient_attention_backward",
+    "scaled_grouped_mm",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "ScaleDotProductAttention",
@@ -1692,6 +1718,7 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "SUPPORTED_FP8_DTYPE",
+    "sym_numel",
     "t_copy",
     "t_copy_out",
     "take",
