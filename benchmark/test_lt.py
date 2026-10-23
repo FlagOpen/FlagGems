@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -27,8 +29,9 @@ def _input_fn_scalar(shape, cur_dtype, device):
 @pytest.mark.lt
 def test_lt():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="lt",
-        torch_op=torch.lt,
+        op_name="less",
+        torch_op=torch.ops.aten.less.Tensor,
+        gems_op=flag_gems.less,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -37,9 +40,10 @@ def test_lt():
 @pytest.mark.lt_scalar
 def test_lt_scalar():
     bench = base.GenericBenchmark(
-        op_name="lt_scalar",
+        op_name="less_scalar",
         input_fn=_input_fn_scalar,
-        torch_op=torch.lt,
+        torch_op=torch.ops.aten.less.Scalar,
+        gems_op=flag_gems.less_scalar,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
