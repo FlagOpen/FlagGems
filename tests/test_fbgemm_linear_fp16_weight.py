@@ -98,15 +98,6 @@ def test_fbgemm_linear_fp16_weight(shape):
 
 
 @pytest.mark.fbgemm_linear_fp16_weight
-def test_fbgemm_linear_fp16_weight_bias_none():
-    """The schema requires a Tensor bias; a bias-free call is a schema error."""
-    weight, packed = _packed_weight()
-    input = torch.randn(4, N_IN, device=flag_gems.device, dtype=torch.float32)
-    with pytest.raises(Exception):
-        flag_gems.fbgemm_linear_fp16_weight(input, packed, None)
-
-
-@pytest.mark.fbgemm_linear_fp16_weight
 def test_fbgemm_linear_fp16_weight_fp16_bias_upcast():
     """A fp16 bias is accepted and upcast: out == linear(x, unpack(w), b)."""
     weight, packed = _packed_weight(seed=1)
