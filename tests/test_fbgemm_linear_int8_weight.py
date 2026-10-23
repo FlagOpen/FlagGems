@@ -28,13 +28,15 @@ The tests therefore validate:
 * the numerical contract against a **logical-equivalent, fbgemm-free
   reference**: the kernel dynamically quantizes the fp32 activations to uint8
   and multiplies by the dequantized int8 weight ``(w - weight_zero_point) *
-  weight_scale``. To make the comparison well-defined regardless of how the
-  fbgemm quantization parameters round (they are computed with different
-  arithmetic than a torch-side ``quantize_per_tensor`` grid and can drift by
-  one step on some builds), the test feeds activations that already sit on a
-  uint8 grid point: any near-identical grid maps them back to the same
-  integer, and the residual difference is only fbgemm integer accumulation vs
-  a torch fp32 linear reduction, bounded by ``(K + 1) * sx * weight_scale``.
+  weight_scale``. The fbgemm quantization parameters are computed with
+  different arithmetic than a torch-side ``quantize_per_tensor`` grid and can
+  drift by one step on some builds, which would move every activation-weight
+  product by one step. To make the comparison well-defined regardless of that
+  rounding, the test feeds **non-negative activations that already sit on a
+  uint8 grid point**: both grids clamp the minimum to code 0 (zero-point 0)
+  and re-quantizing grid values is stable, so both sides multiply the same
+  integer codes. The residual difference is fbgemm integer accumulation vs a
+  torch fp32 linear reduction, bounded by ``(K + 1) * sx * weight_scale``.
   The composition itself follows the recipe used by PyTorch's own
   ``test_quantized_op.py`` for this op;
 * exact device routing: CUDA inputs flow through the wrapper (host staging)
@@ -94,25 +96,28 @@ def _quantized_weight(n_out=N_OUT, n_in=N_IN, seed=0):
     )
 
 
-def _grid_exact(input):
-    """Round the activations onto a uint8 per-tensor grid (host side).
+def _grid_exact_input(shape, dtype=torch.float32):
+    """Non-negative activations that already sit on a uint8 quantization grid.
 
     The kernel quantizes the activations with dynamically computed parameters
     (0..255 affine on the input min/max, computed by fbgemm on the host). The
     fbgemm parameters use different arithmetic than a torch-side
-    ``quantize_per_tensor`` grid and can drift by one quantization step, which
-    would move every product by one step. Feeding values that already sit on a
-    grid point removes that ambiguity: any near-identical grid maps them back
-    to the same integer, so the remaining difference is only fbgemm's integer
-    accumulation vs torch fp32 linear accumulation.
+    ``quantize_per_tensor`` grid and can drift by one step on some builds,
+    which would move every activation-weight product by one step.
+
+    Using non-negative values pins the zero-point of *both* grids to 0 (both
+    clamp the minimum to code 0), and feeding values that already sit on a
+    grid point keeps the integer codes stable under the remaining scale
+    rounding: any near-identical grid maps them back to the same integer. The
+    residual difference is then only fbgemm integer accumulation vs a torch
+    fp32 linear reduction.
     """
-    host_input = input.cpu()
-    x_min = host_input.min()
-    x_max = host_input.max()
+    activations = torch.rand(shape, dtype=dtype)
+    x_min = activations.min()
+    x_max = activations.max()
     x_scale = (x_max - x_min) / 255.0
-    x_zp = torch.round(-x_min / x_scale)
-    grid = torch.quantize_per_tensor(host_input, x_scale, x_zp, dtype=torch.quint8)
-    return grid.dequantize(), x_scale.item()
+    quantized = torch.quantize_per_tensor(activations, x_scale, 0, dtype=torch.quint8)
+    return quantized.dequantize(), x_scale.item()
 
 
 def _reference(input, weight_int8, weight_scale, weight_zero_point, bias):
@@ -141,9 +146,8 @@ def test_fbgemm_linear_int8_weight(shape):
         weight_scale,
         weight_zero_point,
     ) = _quantized_weight(n_in=shape[-1])
-    raw_input = torch.randn(shape, device=flag_gems.device, dtype=torch.float32)
-    input, x_scale = _grid_exact(raw_input)
-    input = input.to(flag_gems.device)
+    raw_input, x_scale = _grid_exact_input(shape)
+    input = raw_input.to(flag_gems.device)
     bias = torch.randn(weight_int8.shape[0], device=flag_gems.device)
 
     res_out = flag_gems.fbgemm_linear_int8_weight(
@@ -153,9 +157,10 @@ def test_fbgemm_linear_int8_weight(shape):
     # The FlagGems wrapper executes the aten fbgemm CPU kernel (host staging
     # for CUDA activations); the logical reference replicates the int8 weight
     # dequantization with a plain fp32 linear layer. Both sides multiply the
-    # same uint8-grid activations by the same dequantized weight; only the
-    # integer accumulation order vs fp32 reduction differs, bounded by
-    # (K + 1) * x_scale * weight_scale (with 4x headroom for reduction noise).
+    # same uint8-grid activations (zero-point 0, see _grid_exact_input) by the
+    # same dequantized weight; only the integer accumulation order vs fp32
+    # reduction differs, bounded by (K + 1) * x_scale * weight_scale (with 4x
+    # headroom for reduction noise).
     ref_out = _reference(
         utils.to_reference(input),
         weight_int8,
