@@ -36,7 +36,7 @@ _SPLIT_THRESHOLD = 2000000
 _FLAT_BLOCK = 1024
 
 
-def _split_borders_ok(pad_left, pad_right): 
+def _split_borders_ok(pad_left, pad_right):
     if pad_left == 1 and pad_right == 0:
         return False
     if pad_right == 1 and pad_left == 0:

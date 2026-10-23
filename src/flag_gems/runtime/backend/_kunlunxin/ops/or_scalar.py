@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
     is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_
 )
 @triton.jit
-def or_bool_int_scalar_func(x, y): 
+def or_bool_int_scalar_func(x, y):
     return x.to(tl.int64) | y.to(tl.int64)
 
 
-def or_scalar(self, other): 
+def or_scalar(self, other):
     logger.debug("GEMS_KUNLUNXIN OR_SCALAR")
     if (
         self.dtype == torch.bool

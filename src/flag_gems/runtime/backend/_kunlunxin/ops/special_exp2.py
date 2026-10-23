@@ -23,7 +23,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 # Keep the shared logger name so tests asserting on
 # caplog logger="flag_gems.ops.special_exp2" keep working.
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.special_exp2")
 
 config_single_cta = CodeGenConfig(
     512,

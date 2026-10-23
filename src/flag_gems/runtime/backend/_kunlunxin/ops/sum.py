@@ -327,7 +327,7 @@ def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom, scale=1.0):
     plan = _TLE_ROW_PLANS.get(plan_key)
     if plan is not None:
         return plan
-    xblock, yblock, row_blocks = geom 
+    xblock, yblock, row_blocks = geom
     num_stages = 1
     if _TLE_PIPELINE and N % yblock == 0 and yblock >= 256 and N > yblock:
         num_stages = _TLE_ROW_STAGES

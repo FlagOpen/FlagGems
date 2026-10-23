@@ -1354,6 +1354,11 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
             f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
         )
 
+    if output.numel() == 0:
+        # ATen returns the (resized) empty `out` untouched; the M/N divisions
+        # below would raise ZeroDivisionError for e.g. (0, 4096) or (4096, 0).
+        return out
+
     K = output.numel() // M // N
     if K == 1 and out.is_contiguous():
         # Fast path: reduction over the last (contiguous) dim, the common

@@ -18,7 +18,6 @@ import os
 import torch
 import triton
 import triton.language as tl
-
 from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 from ..utils.pointwise_dynamic import pointwise_dynamic

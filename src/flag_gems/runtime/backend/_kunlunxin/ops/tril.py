@@ -934,7 +934,7 @@ def _launch_v2_pow2(
     if input.dtype == torch.float16 and active_total % 32768 == 0:
         block_size = 32768
     grid = (triton.cdiv(active_total, block_size), batch)
-    need_mask = active_total % block_size != 0 
+    need_mask = active_total % block_size != 0
     if (
         _TRIL_MEMMASK
         and (active_rows is None or allow_mmask_band)
@@ -1377,7 +1377,7 @@ def _launch_tril_inplace_contiguous(
     active_rows = min(M, max(0, N - 1 - diagonal))
     if active_rows == 0:
         return input
-    
+
     band_elems = active_rows * N * (input.numel() // (M * N))
     if _HAS_TLE_RAW and band_elems >= _INPLACE_RAW_MIN_NUMEL:
         batch = input.numel() // (M * N)
