@@ -1582,6 +1582,7 @@ from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.version import version
 from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_as_real_copy import view_as_real_copy
@@ -3204,6 +3205,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "version",
     "view_as_complex",
     "view_as_complex_copy",
     "view_as_real_copy",

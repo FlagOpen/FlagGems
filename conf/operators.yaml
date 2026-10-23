@@ -22207,6 +22207,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.0'
+- id: version
+  description: 'Returns the version counter of a tensor: an integer bumped by one
+    on every dispatched in-place call. Inference tensors do not track a version
+    counter and raise RuntimeError, mirroring aten::_version.
+
+    '
+  for:
+  - _version
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_as_complex
   description: Returns a view of the real input tensor as a complex tensor (zero-copy
     view operation).

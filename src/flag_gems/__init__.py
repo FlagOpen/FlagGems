@@ -16,7 +16,7 @@
 import warnings
 
 import torch
-from packaging import version
+from packaging.version import parse as _parse_version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
@@ -77,7 +77,7 @@ QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
 
 def torch_ge(v):
-    return version.parse(torch.__version__) >= version.parse(v)
+    return _parse_version(torch.__version__) >= _parse_version(v)
 
 
 def torch_has_aten_overload(operator, overload):
@@ -574,7 +574,7 @@ _FULL_CONFIG = (
     (
         "_to_copy",
         to_copy,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
@@ -627,6 +627,7 @@ _FULL_CONFIG = (
     ),
     ("_values_copy", _values_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_values_copy.out", _values_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_version", version, None, ["CompositeImplicitAutograd"]),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
@@ -891,7 +892,7 @@ _FULL_CONFIG = (
     (
         "copy_",
         copy_,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
