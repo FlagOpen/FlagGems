@@ -1068,7 +1068,7 @@ def softmax_backward_kernel_inner(
             tl.store(in_grad_ptr + n_offsets, in_grad_tile, mask=mask)
 
 
-_SB_MR_MAX_N = 4096 
+_SB_MR_MAX_N = 4096
 _SB_N_TILE_M = [
     (16, 64),
     (64, 32),
