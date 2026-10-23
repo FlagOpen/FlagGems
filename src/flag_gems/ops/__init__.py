@@ -569,8 +569,6 @@ from flag_gems.ops.blackman_window import blackman_window, blackman_window_perio
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
-from flag_gems.ops.broadcast_tensors import broadcast_tensors
-from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
@@ -585,7 +583,6 @@ from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
 from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
-from flag_gems.ops.chunk import chunk
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -687,7 +684,6 @@ from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
-from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
@@ -1114,7 +1110,6 @@ from flag_gems.ops.nanquantile import (
     nanquantile_scalar_out,
 )
 from flag_gems.ops.nansum import nansum, nansum_out
-from flag_gems.ops.narrow import narrow
 from flag_gems.ops.narrow_copy import narrow_copy
 from flag_gems.ops.native_batch_norm import native_batch_norm
 from flag_gems.ops.native_channel_shuffle import native_channel_shuffle
@@ -1327,7 +1322,6 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.sinc import sinc, sinc_
 from flag_gems.ops.sinh import sinh, sinh_
-from flag_gems.ops.slice import slice
 from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
@@ -1354,6 +1348,7 @@ from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
+from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -1458,7 +1453,6 @@ from flag_gems.ops.special_zeta import (
     special_zeta_tensor_scalar_out,
 )
 from flag_gems.ops.split_copy import split_copy
-from flag_gems.ops.split_with_sizes import split_with_sizes
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
@@ -1493,7 +1487,6 @@ from flag_gems.ops.take_along_dim import take_along_dim, take_along_dim_out
 from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
-from flag_gems.ops.tensor_split import tensor_split
 from flag_gems.ops.tensordot import tensordot, tensordot_out
 from flag_gems.ops.thnn_differentiable_lstm_cell_backward import (
     _thnn_differentiable_lstm_cell_backward,
@@ -1534,7 +1527,6 @@ from flag_gems.ops.unique import _unique2
 from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unique_dim_consecutive import unique_dim_consecutive
-from flag_gems.ops.unsafe_chunk import unsafe_chunk
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
 from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
@@ -1589,7 +1581,6 @@ from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
-from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from flag_gems.ops.weight_int4pack_mm import weight_int4pack_mm
@@ -2121,8 +2112,6 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bmm_w8a8_fp8",
-    "broadcast_tensors",
-    "broadcast_to",
     "bucketize",
     "cartesian_prod",
     "cat",
@@ -2144,7 +2133,6 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "choose_qparams_optimized",
-    "chunk",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -2250,7 +2238,6 @@ __all__ = [
     "dropout",
     "dropout_",
     "dropout_backward",
-    "dsplit",
     "dstack",
     "efficient_attention_backward",
     "elu",
@@ -2724,7 +2711,6 @@ __all__ = [
     "nanquantile_scalar_out",
     "nansum",
     "nansum_out",
-    "narrow",
     "narrow_copy",
     "native_batch_norm",
     "native_channel_shuffle",
@@ -2963,7 +2949,6 @@ __all__ = [
     "sinc_",
     "sinh",
     "sinh_",
-    "slice",
     "slice_backward",
     "slice_copy",
     "slice_copy_out",
@@ -2991,6 +2976,7 @@ __all__ = [
     "sort_stable",
     "sparse_broadcast_to",
     "sparse_bsc_tensor",
+    "sparse_bsr_tensor",
     "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
@@ -3075,7 +3061,6 @@ __all__ = [
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
     "split_copy",
-    "split_with_sizes",
     "split_with_sizes_copy",
     "spsolve",
     "sqrt",
@@ -3131,7 +3116,6 @@ __all__ = [
     "tanh_backward",
     "te_rmsnorm_bwd",
     "te_rmsnorm_fwd",
-    "tensor_split",
     "tensordot",
     "tensordot_out",
     "threshold",
@@ -3175,7 +3159,6 @@ __all__ = [
     "unique_consecutive",
     "unique_dim",
     "unique_dim_consecutive",
-    "unsafe_chunk",
     "unsafe_index",
     "unsafe_index_put",
     "unsafe_split_with_sizes",
@@ -3217,7 +3200,6 @@ __all__ = [
     "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",
-    "vsplit",
     "vstack",
     "w8a8_block_fp8_matmul",
     "weight_int4pack_mm",
