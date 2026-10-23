@@ -307,6 +307,7 @@ def _view_of(storage, kind):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize(
     "shape,other_shape,dtype,other_dtype,value_range", TENSOR_CASES
 )
@@ -319,7 +320,7 @@ def test_ge__tensor(shape, other_shape, dtype, other_dtype, value_range):
     res_inp = inp.clone()
 
     ref_out = torch.ops.aten.ge_.Tensor(ref_inp, ref_other)
-    res_out = flag_gems.ge_(res_inp, other)
+    res_out = flag_gems.ge_tensor_(res_inp, other)
 
     assert_result_equal(res_out, ref_out)
     assert_result_equal(res_inp, ref_inp)
@@ -328,6 +329,7 @@ def test_ge__tensor(shape, other_shape, dtype, other_dtype, value_range):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_scalar_
 @pytest.mark.parametrize("dtype,scalar", SCALAR_CASES)
 def test_ge__scalar(dtype, scalar):
     inp = make_input(dtype, (1024, 1024), ["-1", "1"])
@@ -336,7 +338,7 @@ def test_ge__scalar(dtype, scalar):
     res_inp = inp.clone()
 
     ref_out = torch.ops.aten.ge_.Scalar(ref_inp, scalar)
-    res_out = flag_gems.ge_(res_inp, scalar)
+    res_out = flag_gems.ge_scalar_(res_inp, scalar)
 
     assert_result_equal(res_out, ref_out)
     assert_result_equal(res_inp, ref_inp)
@@ -344,6 +346,7 @@ def test_ge__scalar(dtype, scalar):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("dtype,shape,value_range", BACKWARD_CASES)
 def test_ge__backward(dtype, shape, value_range):
     inp = make_input(dtype, shape, value_range)
@@ -363,7 +366,7 @@ def test_ge__backward(dtype, shape, value_range):
 
     res_base = inp.detach().clone().requires_grad_(True)
     res_receiver = res_base * 2.0
-    res_out = flag_gems.ge_(res_receiver, other)
+    res_out = flag_gems.ge_tensor_(res_receiver, other)
     (res_grad,) = torch.autograd.grad(
         res_out, res_base, grad_outputs=torch.ones_like(res_out)
     )
@@ -376,6 +379,7 @@ def test_ge__backward(dtype, shape, value_range):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
 def test_ge__special_values(dtype, scenario):
     inp = make_special_input(dtype, scenario)
@@ -388,7 +392,7 @@ def test_ge__special_values(dtype, scenario):
     res_inp = inp.clone()
 
     ref_out = torch.ops.aten.ge_.Tensor(ref_inp, ref_other)
-    res_out = flag_gems.ge_(res_inp, other)
+    res_out = flag_gems.ge_tensor_(res_inp, other)
 
     assert_result_equal(res_out, ref_out)
     assert_result_equal(res_inp, ref_inp)
@@ -397,6 +401,7 @@ def test_ge__special_values(dtype, scenario):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("dtype,shape,value_range", ALIAS_CASES)
 def test_ge__aliased_operand(dtype, shape, value_range):
     inp = make_input(dtype, shape, value_range)
@@ -405,7 +410,7 @@ def test_ge__aliased_operand(dtype, shape, value_range):
     res_inp = inp.clone()
 
     ref_out = torch.ops.aten.ge_.Tensor(ref_inp, ref_inp)
-    res_out = flag_gems.ge_(res_inp, res_inp)
+    res_out = flag_gems.ge_tensor_(res_inp, res_inp)
 
     assert_result_equal(res_out, ref_out)
     assert_result_equal(res_inp, ref_inp)
@@ -413,6 +418,7 @@ def test_ge__aliased_operand(dtype, shape, value_range):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("dtype,kind", VIEW_CASES)
 def test_ge__view_receiver(dtype, kind):
     storage_shape, other_shape = _VIEW_KINDS[kind]
@@ -426,7 +432,7 @@ def test_ge__view_receiver(dtype, kind):
 
     ref_other = to_reference(other)
     ref_out = torch.ops.aten.ge_.Tensor(ref_inp, ref_other)
-    res_out = flag_gems.ge_(res_inp, other)
+    res_out = flag_gems.ge_tensor_(res_inp, other)
 
     assert_result_equal(res_out, ref_out)
     assert_result_equal(res_inp, ref_inp)
@@ -437,20 +443,22 @@ def test_ge__view_receiver(dtype, kind):
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("shape,other_shape", NEGATIVE_CASES)
 def test_ge__invalid_operand(shape, other_shape):
     inp = torch.ones(shape, dtype=torch.float32, device=flag_gems.device)
     other = torch.ones(other_shape, dtype=torch.float32, device=flag_gems.device)
 
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems.ge_(inp, other)
+        flag_gems.ge_tensor_(inp, other)
 
 
 @pytest.mark.ge_
+@pytest.mark.ge_tensor_
 @pytest.mark.parametrize("dtype", REJECTED_DTYPES)
 def test_ge__unsupported_dtype(dtype):
     inp = torch.ones((2, 19, 7), dtype=dtype, device=flag_gems.device)
     other = torch.ones((2, 19, 7), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises((RuntimeError, TypeError)):
-        flag_gems.ge_(inp, other)
+        flag_gems.ge_tensor_(inp, other)

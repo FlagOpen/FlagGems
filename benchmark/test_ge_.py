@@ -17,7 +17,9 @@
 Both overloads write into the receiver, so the receiver is always the first
 argument. BinaryPointwiseBenchmark only builds equal-shaped operands, so the
 Tensor overload adds a right-broadcast operand pair; the Scalar overload needs
-receiver-first builders because that family yields the scalar first.
+receiver-first builders because that family yields the scalar first. The
+``ge_`` mark groups the family; each overload also carries its own
+``ge_tensor_`` / ``ge_scalar_`` mark so results land in separate buckets.
 """
 
 import pytest
@@ -85,11 +87,12 @@ class _GeScalarBenchmark(base.ScalarBinaryPointwiseBenchmark):
 
 
 @pytest.mark.ge_
-def test_ge_():
+@pytest.mark.ge_tensor_
+def test_ge_tensor_():
     bench = _GeBenchmark(
-        op_name="ge_",
+        op_name="ge_tensor_",
         torch_op=torch.ops.aten.ge_.Tensor,
-        gems_op=flag_gems.ge_,
+        gems_op=flag_gems.ge_tensor_,
         dtypes=BENCH_DTYPES,
         is_inplace=True,
     )
@@ -97,11 +100,12 @@ def test_ge_():
 
 
 @pytest.mark.ge_
-def test_ge__scalar():
+@pytest.mark.ge_scalar_
+def test_ge_scalar_():
     bench = _GeScalarBenchmark(
-        op_name="ge_",
+        op_name="ge_scalar_",
         torch_op=torch.ops.aten.ge_.Scalar,
-        gems_op=flag_gems.ge_,
+        gems_op=flag_gems.ge_scalar_,
         dtypes=BENCH_DTYPES,
         is_inplace=True,
     )
