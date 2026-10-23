@@ -132,9 +132,10 @@ class FusedGRUCellBackwardOutBenchmark(base.Benchmark):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.underscore_thnn_fused_gru_cell_backward
 def test_thnn_fused_gru_cell_backward():
     bench = FusedGRUCellBackwardBenchmark(
-        op_name="thnn_fused_gru_cell_backward",
+        op_name="_thnn_fused_gru_cell_backward",
         torch_op=torch.ops.aten._thnn_fused_gru_cell_backward,
         dtypes=DTYPES,
     )

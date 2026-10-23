@@ -21,6 +21,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 @pytest.mark.true_divide_
+@pytest.mark.true_divide_tensor_
 @pytest.mark.parametrize('shape', utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize('dtype', utils.FLOAT_DTYPES)
 def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):

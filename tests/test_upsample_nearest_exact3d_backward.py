@@ -29,6 +29,7 @@ CASES = [
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
 @pytest.mark.parametrize("dtype", [*utils.FLOAT_DTYPES, torch.float64])
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
@@ -55,6 +56,7 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)
@@ -75,6 +77,7 @@ def test_upsample_nearest_exact3d_backward_uint8():
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
     input_size = (2, 3, 3, 4, 5)
@@ -93,6 +96,7 @@ def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
 
 
 @pytest.mark.upsample_nearest_exact3d_backward_grad_input
+@pytest.mark.underscore_upsample_nearest_exact3d_backward_grad_input
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
     input_size = (2, 3, 3, 4, 5)

@@ -70,9 +70,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.underscore_fused_moving_avg_obs_fq_helper
 def test_fused_moving_avg_obs_fq_helper():
     FusedMovingAvgObsFqBenchmark(
-        op_name="fused_moving_avg_obs_fq_helper",
+        op_name="_fused_moving_avg_obs_fq_helper",
         torch_op=torch.ops.aten._fused_moving_avg_obs_fq_helper,
         gems_op=flag_gems._fused_moving_avg_obs_fq_helper,
         case_fn=_case_fn,

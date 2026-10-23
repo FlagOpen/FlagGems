@@ -42,6 +42,7 @@ def _reference(tensor):
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 @pytest.mark.parametrize("quant_min, quant_max, zero_point, grad_factor", QUANT_PARAMS)
@@ -82,6 +83,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
     _seed()
@@ -101,6 +103,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
     self_t = torch.empty((2, 0, 3), device=flag_gems.device)
     grad = torch.empty_like(self_t)
@@ -118,6 +121,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 def test_fake_quantize_learnable_per_tensor_affine_backward_rejects_integer_input():
     self_t = torch.ones((4, 8), dtype=torch.int32, device=flag_gems.device)
     grad = torch.ones((4, 8), device=flag_gems.device)

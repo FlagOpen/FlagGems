@@ -30,6 +30,7 @@ LSTM_SHAPES = [
 
 
 @pytest.mark.thnn_fused_lstm_cell_backward_impl
+@pytest.mark.underscore_thnn_fused_lstm_cell_backward_impl
 @pytest.mark.parametrize("shape", LSTM_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):

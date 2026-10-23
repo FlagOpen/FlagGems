@@ -103,6 +103,7 @@ def _assert_outputs_close(result, reference, dtype, batch_size):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.underscore_thnn_fused_gru_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("has_bias", [False, True])
@@ -118,6 +119,7 @@ def test_thnn_fused_gru_cell_backward(dtype, shape, has_bias):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.underscore_thnn_fused_gru_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_thnn_fused_gru_cell_backward_noncontiguous(dtype):
     batch_size, hidden_size = 5, 19
@@ -141,6 +143,7 @@ def test_thnn_fused_gru_cell_backward_noncontiguous(dtype):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.underscore_thnn_fused_gru_cell_backward
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_thnn_fused_gru_cell_backward_empty(shape):
     batch_size, hidden_size = shape
@@ -154,6 +157,7 @@ def test_thnn_fused_gru_cell_backward_empty(shape):
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
+@pytest.mark.underscore_thnn_fused_gru_cell_backward
 def test_thnn_fused_gru_cell_backward_invalid_workspace():
     grad_hy = torch.randn(2, 8, device=flag_gems.device)
     workspace = torch.randn(2, 39, device=flag_gems.device)

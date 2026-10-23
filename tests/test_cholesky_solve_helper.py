@@ -40,6 +40,7 @@ CHOLESKY_SOLVE_CASES = [
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 @pytest.mark.parametrize("rhs_shape,factor_shape", CHOLESKY_SOLVE_CASES)
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
@@ -59,6 +60,7 @@ def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 def test_cholesky_solve_helper_incompatible_batch_error():
     torch.manual_seed(0)
     rhs = torch.randn((2, 5, 3), dtype=torch.float32, device=flag_gems.device)
@@ -69,6 +71,7 @@ def test_cholesky_solve_helper_incompatible_batch_error():
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 def test_cholesky_solve_helper_dtype_error():
     torch.manual_seed(0)
     rhs = torch.randn((5, 2), dtype=torch.float32, device=flag_gems.device)
@@ -79,6 +82,7 @@ def test_cholesky_solve_helper_dtype_error():
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 @pytest.mark.skipif(
     torch.device(flag_gems.device).type == "cpu",
     reason="device-mismatch coverage requires a non-CPU FlagGems target",
@@ -93,6 +97,7 @@ def test_cholesky_solve_helper_device_error():
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 @pytest.mark.parametrize(
     "rhs_shape,factor_shape",
     [
@@ -116,6 +121,7 @@ def test_cholesky_solve_helper_invalid_rank_or_matrix_error(
 
 
 @pytest.mark.cholesky_solve_helper
+@pytest.mark.underscore_cholesky_solve_helper
 def test_cholesky_solve_helper_autograd_rejected():
     factor = _factor((5, 5), torch.float32).requires_grad_(True)
     torch.manual_seed(1)

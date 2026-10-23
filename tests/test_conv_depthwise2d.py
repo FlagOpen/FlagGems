@@ -36,6 +36,7 @@ SHAPE_DEPTHWISE = [
 
 
 @pytest.mark.conv_depthwise2d
+@pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
@@ -79,6 +80,7 @@ def test_conv_depthwise2d(
 
 
 @pytest.mark.conv_depthwise2d
+@pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_conv_depthwise2d_noncontiguous(dtype):
     torch.manual_seed(0)
@@ -98,6 +100,7 @@ def test_conv_depthwise2d_noncontiguous(dtype):
 
 
 @pytest.mark.conv_depthwise2d
+@pytest.mark.underscore_conv_depthwise2d
 def test_conv_depthwise2d_invalid_kernel_size():
     torch.manual_seed(0)
     inp = torch.randn((1, 4, 8, 8), device=flag_gems.device)
