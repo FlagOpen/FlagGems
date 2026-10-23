@@ -20,10 +20,6 @@ LU_SHAPES = [
     (1024, 1024),
 ]
 # torch.linalg.lu_factor only supports float32/float64; half/bfloat16 not supported.
-# float64 is gated on backend support: on backends without fp64 (e.g. Kunlunxin,
-# support_fp64=False) device tensors are silently downcast to fp32 while the
-# --ref cpu reference is upcast to float64, so those cases can only fail the
-# output-dtype assertion. Same convention as test_linalg_lu.py.
 LU_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
