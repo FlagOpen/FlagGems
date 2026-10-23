@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from contextlib import contextmanager
 
 import pytest
 import torch
@@ -265,6 +266,130 @@ def _assert_masked(res_out, ref_out, device):
     _assert_equal(res_out.values(), ref_out.values())
 
 
+def _readonly_geometry(value):
+    assert isinstance(value, torch.Tensor)
+    state = (
+        type(value),
+        value.device,
+        value.dtype,
+        value.layout,
+        tuple(value.shape),
+        value.requires_grad,
+        value.is_leaf,
+        value._version,
+        value.is_conj(),
+        value.is_neg(),
+    )
+    if value.layout == torch.sparse_coo:
+        return state + (
+            value.sparse_dim(),
+            value.dense_dim(),
+            value._nnz(),
+            value.is_coalesced(),
+        )
+    assert value.layout == torch.strided
+    return state + (tuple(value.stride()), value.storage_offset())
+
+
+def _readonly_part_state(value):
+    # Keep the original StorageImpl alive, and capture scalar pointers before
+    # any candidate call. A temporary COO component Python wrapper is not ABI.
+    storage = value.untyped_storage()
+    token = (
+        int(storage._cdata),
+        int(storage.data_ptr()),
+        int(value.data_ptr()),
+        int(storage.nbytes()),
+    )
+    raw = torch.empty(0, dtype=torch.uint8, device=value.device).set_(
+        storage, 0, (token[3],), (1,)
+    )
+    return {
+        "geometry": _readonly_geometry(value),
+        "storage": storage,
+        "token": token,
+        "base": value._base,
+        # Copy every original storage byte, including parent/slice padding and
+        # exact NaN/signed-zero payloads. CPU input snapshots must be independent.
+        "bytes": raw.cpu().clone(),
+    }
+
+
+def _readonly_state(value):
+    geometry = _readonly_geometry(value)
+    parts = (
+        (value._indices(), value._values())
+        if value.layout == torch.sparse_coo
+        else (value,)
+    )
+    return {
+        "value": value,
+        "geometry": geometry,
+        "parts": tuple(_readonly_part_state(part) for part in parts),
+    }
+
+
+def _assert_readonly_states(states):
+    try:
+        for state in states:
+            value = state["value"]
+            assert (
+                _readonly_geometry(value) == state["geometry"]
+            ), "input outer ABI/version changed"
+            parts = (
+                (value._indices(), value._values())
+                if value.layout == torch.sparse_coo
+                else (value,)
+            )
+            assert len(parts) == len(state["parts"])
+            for part, old in zip(parts, state["parts"]):
+                assert (
+                    _readonly_geometry(part) == old["geometry"]
+                ), "input component ABI/version changed"
+                assert part._base is old["base"], "input base relation changed"
+                storage = part.untyped_storage()
+                token = (
+                    int(storage._cdata),
+                    int(storage.data_ptr()),
+                    int(part.data_ptr()),
+                    int(storage.nbytes()),
+                )
+                assert (
+                    token == old["token"]
+                ), "input storage identity/pointer/extent changed"
+                # old['storage'] remains held throughout this check, preventing
+                # recycled StorageImpl addresses from masquerading as unchanged.
+                raw = torch.empty(0, dtype=torch.uint8, device=part.device).set_(
+                    storage, 0, (token[3],), (1,)
+                )
+                assert torch.equal(
+                    raw.cpu(), old["bytes"]
+                ), "input physical storage bytes changed"
+    except AssertionError:
+        raise
+    except Exception as error:
+        raise AssertionError("sparse_mask readonly input observation failed") from error
+
+
+@contextmanager
+def _readonly_inputs(*values):
+    try:
+        states = tuple(_readonly_state(value) for value in values)
+    except AssertionError:
+        raise
+    except Exception as error:
+        raise AssertionError("sparse_mask readonly input snapshot failed") from error
+
+    def check_inputs():
+        _assert_readonly_states(states)
+
+    try:
+        yield check_inputs
+    finally:
+        # Also covers delayed autograd input mutations and positive-call errors.
+        check_inputs()
+
+
 def _skip_kunlunxin_native_case(inp, mask):
     if flag_gems.vendor_name != "kunlunxin" or mask._nnz() == 0:
         return
@@ -311,15 +436,17 @@ def test_sparse_mask_value_ranges(shape, value_range, dtype):
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
     expected_device = inp.device
-    res_out = flag_gems.sparse_mask(inp, mask)
+    with _readonly_inputs(inp, mask) as _check_inputs:
+        res_out = flag_gems.sparse_mask(inp, mask)
+        _check_inputs()
 
-    _assert_masked(res_out, ref_out, expected_device)
-    # The gather must not mutate either operand: the reference was computed on
-    # a pristine clone, so any candidate mutation of ``inp``/``mask`` shows up
-    # here.
-    assert inp.device == mask.device == expected_device
-    _assert_equal(inp, ref_inp)
-    _assert_equal(mask, ref_mask)
+        _assert_masked(res_out, ref_out, expected_device)
+        # The gather must not mutate either operand: the reference was computed on
+        # a pristine clone, so any candidate mutation of ``inp``/``mask`` shows up
+        # here.
+        assert inp.device == mask.device == expected_device
+        _assert_equal(inp, ref_inp)
+        _assert_equal(mask, ref_mask)
 
 
 @pytest.mark.sparse_mask
@@ -335,9 +462,11 @@ def test_sparse_mask_sparse_self(shape, dtype):
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
     expected_device = inp.device
-    res_out = flag_gems.sparse_mask(inp, mask)
+    with _readonly_inputs(inp, mask) as _check_inputs:
+        res_out = flag_gems.sparse_mask(inp, mask)
+        _check_inputs()
 
-    _assert_masked(res_out, ref_out, expected_device)
+        _assert_masked(res_out, ref_out, expected_device)
 
 
 @pytest.mark.sparse_mask
@@ -355,9 +484,11 @@ def test_sparse_mask_non_contiguous(base_shape, shape, dtype):
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
     expected_device = inp.device
-    res_out = flag_gems.sparse_mask(inp, mask)
+    with _readonly_inputs(inp, mask) as _check_inputs:
+        res_out = flag_gems.sparse_mask(inp, mask)
+        _check_inputs()
 
-    _assert_masked(res_out, ref_out, expected_device)
+        _assert_masked(res_out, ref_out, expected_device)
 
 
 @pytest.mark.sparse_mask_out
@@ -375,10 +506,12 @@ def test_sparse_mask_out(shape, dtype):
 
     torch.ops.aten.sparse_mask.out(ref_inp, ref_mask, out=ref_out)
     expected_device = inp.device
-    res_ret = flag_gems.sparse_mask(inp, mask, out=out)
+    with _readonly_inputs(inp, mask) as _check_inputs:
+        res_ret = flag_gems.sparse_mask(inp, mask, out=out)
+        _check_inputs()
 
-    assert res_ret is out
-    _assert_masked(res_ret, ref_out, expected_device)
+        assert res_ret is out
+        _assert_masked(res_ret, ref_out, expected_device)
 
 
 @pytest.mark.sparse_mask
@@ -403,9 +536,11 @@ def test_sparse_mask_nan_inf(shape, dtype, scenario):
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
     expected_device = inp.device
-    res_out = flag_gems.sparse_mask(inp, mask)
+    with _readonly_inputs(inp, mask) as _check_inputs:
+        res_out = flag_gems.sparse_mask(inp, mask)
+        _check_inputs()
 
-    _assert_masked(res_out, ref_out, expected_device)
+        _assert_masked(res_out, ref_out, expected_device)
 
 
 @pytest.mark.sparse_mask
@@ -427,16 +562,19 @@ def test_sparse_mask_backward(shape, dtype):
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad_out)[0]
 
     expected_device = inp.device
-    res_out = flag_gems.sparse_mask(inp, mask)
-    _assert_masked(res_out, ref_out, expected_device)
+    with _readonly_inputs(inp, mask, grad_out) as _check_inputs:
+        res_out = flag_gems.sparse_mask(inp, mask)
+        _check_inputs()
+        _assert_masked(res_out, ref_out, expected_device)
 
-    # The candidate must retain the reference's autograd behavior.
-    assert res_out.requires_grad
-    res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=grad_out)[0]
-    assert res_in_grad.device == expected_device
-    if flag_gems.vendor_name == "ascend":
-        res_in_grad = res_in_grad.cpu()
-    tu.assert_result_close(res_in_grad, ref_in_grad)
+        # The candidate must retain the reference's autograd behavior.
+        assert res_out.requires_grad
+        res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=grad_out)[0]
+        _check_inputs()
+        assert res_in_grad.device == expected_device
+        if flag_gems.vendor_name == "ascend":
+            res_in_grad = res_in_grad.cpu()
+        tu.assert_result_close(res_in_grad, ref_in_grad)
 
 
 @pytest.mark.sparse_mask_negative
