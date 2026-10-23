@@ -1691,6 +1691,7 @@ _FULL_CONFIG = (
     ("replication_pad2d_backward.grad_input", replication_pad2d_backward_grad_input),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
+    ("reshape_as", reshape_as),
     ("resize", resize),
     ("resize_", resize_),
     ("resize_as", resize_as),
