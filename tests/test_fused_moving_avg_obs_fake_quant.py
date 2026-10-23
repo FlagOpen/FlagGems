@@ -179,8 +179,25 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     input_before = input_tensor.clone()
     input_storage = input_tensor.untyped_storage().data_ptr()
 
-    input_ref = utils.to_reference(input_tensor, True)
+    # Native fused fake quant requires FP32 activations with these FP32 states.
+    input_ref = utils.to_reference(input_tensor, False)
     ref_device = input_ref.device
+    if observer_on and (
+        ref_device.type == "cpu" or flag_gems.vendor_name == "ascend"
+    ):
+        pytest.skip(
+            "CPU reference (including Ascend fallback) only supports "
+            "per-row observer updates on ch_axis=0"
+        )
+    if (
+        flag_gems.vendor_name == "nvidia"
+        and ref_device.type == "cuda"
+        and fake_quant_on
+    ):
+        pytest.skip(
+            "CUDA reference per-row fake quant rejects ch_axis=1 "
+            "scale/zero-point dimensions"
+        )
     observer_ref = torch.tensor(
         [int(observer_on)], dtype=torch.long, device=ref_device
     )
