@@ -33,15 +33,17 @@ def _make_symmetric_positive_definite(shape, dtype, device):
     )
 
 
-def _assert_factorization_equal(result, reference, dtype):
+def _assert_factorization_equal(result, reference, dtype, expected_device):
     result_ld, result_pivots = result
     reference_ld, reference_pivots = reference
-    utils.gems_assert_close(result_ld, reference_ld, dtype)
-    utils.gems_assert_equal(result_pivots, reference_pivots)
+    assert result_ld.device == expected_device
+    assert result_pivots.device == expected_device
     assert result_ld.shape == reference_ld.shape
     assert result_ld.dtype == dtype
     assert result_pivots.shape == reference_pivots.shape
     assert result_pivots.dtype == torch.int32
+    utils.gems_assert_close(result_ld, reference_ld, dtype)
+    utils.gems_assert_equal(result_pivots, reference_pivots)
 
 
 @pytest.mark.linalg_ldl_factor
@@ -59,8 +61,9 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
     reference = torch.linalg.ldl_factor(ref_inp, hermitian=hermitian)
     result = flag_gems.ldl_factor(inp, hermitian=hermitian)
 
-    _assert_factorization_equal(result, reference, dtype)
-    utils.gems_assert_equal(inp, inp_before)
+    _assert_factorization_equal(result, reference, dtype, inp.device)
+    assert inp.device == inp_before.device
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before, False))
 
 
 @pytest.mark.linalg_ldl_factor
@@ -76,7 +79,7 @@ def test_linalg_ldl_factor_batched(shape, dtype):
     reference = torch.linalg.ldl_factor(ref_inp)
     result = flag_gems.ldl_factor(inp)
 
-    _assert_factorization_equal(result, reference, dtype)
+    _assert_factorization_equal(result, reference, dtype, inp.device)
 
 
 @pytest.mark.linalg_ldl_factor
