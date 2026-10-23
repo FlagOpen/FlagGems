@@ -384,13 +384,14 @@ def _check_scale_contract(case, layout, variant):
         torch.testing.assert_close(
             native_result.cpu().to(torch.float64), expected, rtol=0, atol=0
         )
-    with flag_gems.use_gems(
-        include=[
-            "upsample_nearest2d_backward",
-            "upsample_nearest2d_backward_grad_input",
-        ]
-    ):
-        actual = native(grad_output, size, shape, sh, sw, **kwargs)
+    if variant == "default":
+        actual = flag_gems.ops.upsample_nearest2d_backward(
+            grad_output, size, shape, sh, sw
+        )
+    else:
+        actual = flag_gems.ops.upsample_nearest2d_backward_grad_input(
+            grad_output, size, shape, sh, sw, **kwargs
+        )
     assert actual.dtype == grad_output.dtype
     assert actual.device == grad_output.device
     if variant == "grad_input":
