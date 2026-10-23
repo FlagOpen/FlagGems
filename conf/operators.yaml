@@ -4913,6 +4913,19 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dimI
+  description: 'Returns the number of sparse dimensions of a sparse COO tensor,
+    i.e. the leading dimension of its index matrix.
+    '
+  for:
+  - _dimI
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: dimV
   description: 'Returns the number of dense dimensions of a sparse COO tensor.
     '
@@ -13745,6 +13758,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - MoE
   stages:
   - stable: '4.2'
+- id: moveaxis
+  description: 'Returns a view of the original tensor with the axes in `source` moved
+    to the positions in `destination`.
+
+    This is a zero-copy view operation that only reorders sizes and strides, sharing
+    storage with the input.
+
+    '
+  for:
+  - moveaxis.int
+  - moveaxis.intlist
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mse_loss
   description: Compute the element-wise mean squared error, with optional weighting.
   for:
@@ -14838,6 +14869,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: nnz
+  description: 'Returns the number of stored entries of a sparse tensor: the
+    number of values in the COO storage, or of entries in the compressed
+    index buffer for CSR/CSC/BSR/BSC.
+    '
+  for:
+  - _nnz
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: nonzero
   description: 'Returns a 2-D tensor where each row is the index for a nonzero value.
 
@@ -20306,6 +20351,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: swapdims
+  description: |
+    Returns a view of the input tensor with the two specified dimensions
+    swapped; equivalent to torch.transpose().
+  for:
+  - swapdims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -22098,6 +22156,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: view_as_complex_copy
+  description: |
+    Copies a real tensor whose last dimension has size 2 and stride 1 into a
+    freshly allocated complex tensor. This is the out-of-place counterpart of
+    `torch.view_as_complex()`: float32 becomes complex64, float64 becomes
+    complex128 and float16 becomes complex32, the batch dimensions may be
+    non-contiguous, and the result never aliases the input.
+  for:
+  - view_as_complex_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: view_as_real_copy
   description: |
     Copies a complex tensor into a freshly allocated real tensor whose last

@@ -68,6 +68,7 @@ from flag_gems.ops._ctc_loss import _ctc_loss, _ctc_loss_out
 from flag_gems.ops._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
+from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
@@ -326,6 +327,7 @@ from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged
 from flag_gems.ops._new_zeros_with_same_feature_meta import (
     _new_zeros_with_same_feature_meta,
 )
+from flag_gems.ops._nnz import _nnz
 from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
@@ -1073,6 +1075,7 @@ from flag_gems.ops.mixed_dtypes_linear import mixed_dtypes_linear
 from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
+from flag_gems.ops.moveaxis import moveaxis
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
@@ -1470,6 +1473,7 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapdims import swapdims
 from flag_gems.ops.sym_constrain_range import sym_constrain_range
 from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
@@ -1573,6 +1577,7 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
+from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_as_real_copy import view_as_real_copy
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
@@ -1654,6 +1659,7 @@ __all__ = [
     "_ctc_loss_out",
     "_cummax_helper",
     "_cummin_helper",
+    "_dimI",
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
@@ -1873,6 +1879,7 @@ __all__ = [
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
     "_new_zeros_with_same_feature_meta",
+    "_nnz",
     "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
@@ -2670,6 +2677,7 @@ __all__ = [
     "mm",
     "mm_out",
     "mode",
+    "moveaxis",
     "mse_loss",
     "mse_loss_backward",
     "msort",
@@ -3084,6 +3092,7 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapdims",
     "sym_constrain_range",
     "sym_numel",
     "sym_size",
@@ -3186,6 +3195,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_as_complex",
+    "view_as_complex_copy",
     "view_as_real_copy",
     "view_copy",
     "vstack",
