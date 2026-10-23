@@ -895,21 +895,31 @@ def hadamard_transform(x, scale=1.0):
 # ============================================================
 
 
+def hadamard_transform_mn(x, M, scale=1.0):
+    """Hadamard transform for dim = M * 2^k, where M is 3, 5, or 7."""
+    if M not in (3, 5, 7):
+        raise ValueError(f"Unsupported M={M}")
+    dim = x.shape[-1]
+    if dim % M != 0 or dim // M & (dim // M - 1):
+        raise ValueError(f"Expected dim = M * 2^k, but got dim={dim} and M={M}")
+    return _launch_mn_fused_kernel(x, M=M, scale=scale)
+
+
 def hadamard_transform_12N(x, scale=1.0):
     """Hadamard transform for dim = 3 * 2^k (e.g. 1536, 3072, 6144, 12288)."""
-    return _launch_mn_fused_kernel(x, M=3, scale=scale)
+    return hadamard_transform_mn(x, M=3, scale=scale)
 
 
 def hadamard_transform_20N(x, scale=1.0):
     """Hadamard transform for dim = 5 * 2^k (e.g. 5120, 10240, 20480)."""
-    return _launch_mn_fused_kernel(x, M=5, scale=scale)
+    return hadamard_transform_mn(x, M=5, scale=scale)
 
 
 def hadamard_transform_28N(x, scale=1.0):
     """Hadamard transform for dim = 7 * 2^k (e.g. 7168, 14336, 28672)."""
-    return _launch_mn_fused_kernel(x, M=7, scale=scale)
+    return hadamard_transform_mn(x, M=7, scale=scale)
 
 
 def hadamard_transform_40N(x, scale=1.0):
     """Hadamard transform for dim = 5 * 2^k (e.g. 10240, 20480, 40960)."""
-    return _launch_mn_fused_kernel(x, M=5, scale=scale)
+    return hadamard_transform_mn(x, M=5, scale=scale)

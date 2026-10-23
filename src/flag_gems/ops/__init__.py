@@ -837,6 +837,7 @@ from flag_gems.ops.hadamard_transform import (
     hadamard_transform_20N,
     hadamard_transform_28N,
     hadamard_transform_40N,
+    hadamard_transform_mn,
 )
 from flag_gems.ops.hamming_window import (
     hamming_window,
@@ -2403,6 +2404,7 @@ __all__ = [
     "hadamard_transform_20N",
     "hadamard_transform_28N",
     "hadamard_transform_40N",
+    "hadamard_transform_mn",
     "hamming_window",
     "hamming_window_periodic",
     "hamming_window_periodic_alpha",

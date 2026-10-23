@@ -9468,6 +9468,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: hadamard_transform_mn
+  description: Applies a fused Hadamard transform to dimensions M * 2^k,
+    where M is 3, 5, or 7.
+  for:
+  - hadamard_transform_mn
+  labels: []
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: hamming_window
   description: Computes the Hamming window function.
   for:

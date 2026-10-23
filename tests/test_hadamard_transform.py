@@ -61,30 +61,22 @@ else:
 
 if cfg.QUICK_MODE:
     HADAMARD_MN_CASES = [
-        (1536, 3, "12N"),
-        (10240, 5, "20N"),
-        (14336, 7, "28N"),
-        (40960, 5, "40N"),
+        (1536, 3),
+        (10240, 5),
+        (14336, 7),
+        (40960, 5),
     ]
 else:
     HADAMARD_MN_CASES = [
-        (1536, 3, "12N"),
-        (3072, 3, "12N"),
-        (6144, 3, "12N"),
-        (12288, 3, "12N"),
-        (10240, 5, "20N"),
-        (20480, 5, "20N"),
-        (14336, 7, "28N"),
-        (20480, 5, "40N"),
-        (40960, 5, "40N"),
+        (1536, 3),
+        (3072, 3),
+        (6144, 3),
+        (12288, 3),
+        (10240, 5),
+        (20480, 5),
+        (14336, 7),
+        (40960, 5),
     ]
-
-_FN_MAP = {
-    "12N": flag_gems.hadamard_transform_12N,
-    "20N": flag_gems.hadamard_transform_20N,
-    "28N": flag_gems.hadamard_transform_28N,
-    "40N": flag_gems.hadamard_transform_40N,
-}
 
 
 def _hadamard_transform_ref(x, scale=1.0):
@@ -198,12 +190,12 @@ def _ref_mn(x: torch.Tensor, M: int) -> torch.Tensor:
 @pytest.mark.hadamard_transform_mn
 @_skip_if_join_bug
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("dim,M,tag", HADAMARD_MN_CASES)
+@pytest.mark.parametrize("dim,M", HADAMARD_MN_CASES)
 @pytest.mark.parametrize("batch", [1, 16, 1024])
-def test_hadamard_transform_mn(batch, dim, M, tag, dtype):
+def test_hadamard_transform_mn(batch, dim, M, dtype):
     x = torch.randn(batch, dim, dtype=dtype, device=flag_gems.device)
     ref_out = _ref_mn(x, M)
-    res_out = _FN_MAP[tag](x)
+    res_out = flag_gems.hadamard_transform_mn(x, M=M)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=dim)
 
 
@@ -215,7 +207,7 @@ def test_hadamard_transform_mn_scale(scale, dtype):
     batch, dim, M = 16, 6144, 3
     x = torch.randn(batch, dim, dtype=dtype, device=flag_gems.device)
     ref_out = _ref_mn(x, M) * scale
-    res_out = flag_gems.hadamard_transform_12N(x, scale=scale)
+    res_out = flag_gems.hadamard_transform_mn(x, M=M, scale=scale)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=dim)
 
 
@@ -226,5 +218,13 @@ def test_hadamard_transform_mn_scale(scale, dtype):
 def test_hadamard_transform_mn_leading_dims(shape, dtype):
     x = torch.randn(*shape, dtype=dtype, device=flag_gems.device)
     ref_out = _ref_mn(x, M=3)
-    res_out = flag_gems.hadamard_transform_12N(x)
+    res_out = flag_gems.hadamard_transform_mn(x, M=3)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
+
+
+@pytest.mark.hadamard_transform_mn
+@pytest.mark.parametrize("M", [1, 2, 4, 6, 8])
+def test_hadamard_transform_mn_invalid_m(M):
+    x = torch.randn(2, 32, device=flag_gems.device)
+    with pytest.raises(ValueError, match=f"Unsupported M={M}"):
+        flag_gems.hadamard_transform_mn(x, M=M)
