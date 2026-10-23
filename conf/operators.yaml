@@ -20426,6 +20426,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: swapdims_
+  description: |
+    In-place version of torch.swapdims(): swaps the two specified dimensions
+    of the input tensor's size and stride metadata.
+  for:
+  - swapdims_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: swiglu
   description: Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
