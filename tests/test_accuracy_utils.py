@@ -43,6 +43,15 @@ def test_gems_log_prefix(monkeypatch, module, expected):
     assert utils.gems_log_prefix(_function_from(module)) == expected
 
 
+@pytest.mark.parametrize("arch", ["gcu300", "gcu400"])
+def test_gems_log_prefix_arch_module(monkeypatch, arch):
+    # Architecture packages are imported without the vendor module component.
+    monkeypatch.setattr(flag_gems, "vendor_name", "enflame")
+    assert (
+        utils.gems_log_prefix(_function_from(f"{arch}.ops.native_layer_norm")) == "GEMS"
+    )
+
+
 @pytest.mark.parametrize(
     "module",
     [
