@@ -408,7 +408,7 @@ def test_nnpack_spatial_convolution_bias(with_bias, value_range):
     assert_result_close(res_out, ref_out)
 
 
-@pytest.mark.nnpack_spatial_convolution
+@pytest.mark.nnpack_spatial_convolution_out
 @pytest.mark.parametrize("shape,out_channels", _SHAPE_CASES[:2])
 @pytest.mark.parametrize("value_range", selected_ranges())
 def test_nnpack_spatial_convolution_out(shape, out_channels, value_range):

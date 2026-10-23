@@ -709,7 +709,7 @@ class _ConvFunction(torch.autograd.Function):
         return dx, dw, db.to(ctx.bias_device), None
 
 
-def run(input, weight, bias, padding, stride=[1, 1], **kwargs):
+def nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1], **kwargs):
     """aten::_nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1])."""
     logger.debug("GEMS NNPACK_SPATIAL_CONVOLUTION")
     out = kwargs.pop("out", None)
