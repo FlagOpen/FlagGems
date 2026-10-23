@@ -398,11 +398,12 @@ def gems_log_prefix(fn):
 
 
 def gems_log_logger(fn):
-    """Return the canonical logger name used by an operator implementation.
+    """Return the logger name used by an operator implementation.
 
-    Vendor overrides may live in a vendor module while intentionally sharing
-    the generic ``flag_gems.ops.<operator>`` logger name.
+    Operator modules log with ``logging.getLogger(__name__)``, so the logger
+    name is just the resolved function's module: ``flag_gems.ops.<operator>``
+    for the generic implementation, or the vendor module's own dotted path
+    (e.g. ``_kunlunxin.ops.<operator>``) for vendor overrides, since backend
+    packages are imported under their short name.
     """
-    module = fn.__module__.split(".")
-    operator_module = module[-1]
-    return f"flag_gems.ops.{operator_module}"
+    return fn.__module__
