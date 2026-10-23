@@ -398,12 +398,15 @@ def gems_log_prefix(fn):
 
 
 def gems_log_logger(fn):
-    """Return the logger name used by an operator implementation.
+    """Return the module-based logger name for normalized implementations.
 
-    Operator modules log with ``logging.getLogger(__name__)``, so the logger
-    name is just the resolved function's module: ``flag_gems.ops.<operator>``
+    With ``logging.getLogger(__name__)``, the logger name is the resolved
+    function's module: ``flag_gems.ops.<operator>``
     for the generic implementation, or the vendor module's own dotted path
     (e.g. ``_kunlunxin.ops.<operator>``) for vendor overrides, since backend
     packages are imported under their short name.
+
+    Legacy explicit logger aliases must be migrated with their capture sites
+    before adopting this helper; it does not inspect those aliases.
     """
     return fn.__module__
