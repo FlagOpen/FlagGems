@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_asin
 
 
 def _gems_op(*args, **kwargs):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args, **kwargs)
+    return flag_gems.foreach_asin(*args, **kwargs)
 
 
 _FAMILY = "asin"

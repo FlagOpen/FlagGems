@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_addcdiv_.ScalarList
 
 
 def _candidate(self_tensors, tensor1, tensor2, value):
-    with flag_gems.use_gems():
-        return _ATEN_OP(self_tensors, tensor1, tensor2, value)
+    return flag_gems.foreach_addcdiv_scalar_list_(self_tensors, tensor1, tensor2, value)
 
 
 def _make_inputs(dtype):
