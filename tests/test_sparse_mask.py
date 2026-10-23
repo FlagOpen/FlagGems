@@ -405,23 +405,6 @@ def _skip_kunlunxin_native_case(inp, mask):
         )
 
 
-def _make_grad_out(dense_grad, mask):
-    if flag_gems.vendor_name == "kunlunxin":
-        # Construct the same sparse upstream from the actual input values and
-        # mask on CPU; the original target-side compound factory fails before
-        # sparse_mask or its backward is called.
-        cpu_grad = _copy_tensor(dense_grad, "cpu")
-        cpu_mask = _copy_tensor(mask, "cpu")
-        result = _copy_tensor(
-            (cpu_grad * cpu_mask.to_dense()).to_sparse(), dense_grad.device
-        )
-        assert result.device == dense_grad.device
-        assert result.dtype == dense_grad.dtype and result.shape == dense_grad.shape
-        assert result.layout == torch.sparse_coo and result.is_coalesced()
-        return result
-    return (dense_grad * mask.to_dense()).to_sparse()
-
-
 @pytest.mark.sparse_mask
 @pytest.mark.parametrize("shape,value_range,dtype", _SPARSE_MASK_VALUE_RANGE_CASES)
 def test_sparse_mask_value_ranges(shape, value_range, dtype):
@@ -544,6 +527,10 @@ def test_sparse_mask_nan_inf(shape, dtype, scenario):
 
 
 @pytest.mark.sparse_mask
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="Kunlunxin native sparse_mask backward raises invalid device function",
+)
 @pytest.mark.parametrize("shape", _SPARSE_MASK_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
 def test_sparse_mask_backward(shape, dtype):
@@ -552,7 +539,7 @@ def test_sparse_mask_backward(shape, dtype):
     dense_grad = tu.make_input(dtype, shape, ["-1", "1"])
     # grad_output for the sparse result: sparse COO with the mask's indices and
     # values zero outside the mask.
-    grad_out = _make_grad_out(dense_grad, mask)
+    grad_out = (dense_grad * mask.to_dense()).to_sparse()
 
     ref_inp = _to_reference(inp)
     ref_mask = _to_reference(mask)
