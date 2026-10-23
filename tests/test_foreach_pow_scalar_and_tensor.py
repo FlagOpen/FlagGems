@@ -24,8 +24,7 @@ _ATEN_OP = torch.ops.aten._foreach_pow.ScalarAndTensor
 
 
 def _candidate(*args):
-    with flag_gems.use_gems():
-        return _ATEN_OP(*args)
+    return flag_gems.foreach_pow_scalar_and_tensor(*args)
 
 
 def _make_inputs(dtype):
