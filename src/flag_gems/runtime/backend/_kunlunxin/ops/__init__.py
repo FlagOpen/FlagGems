@@ -72,6 +72,7 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_expm1_ import _foreach_expm1_  # noqa: F401
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
 from ._foreach_math import (
@@ -96,6 +97,7 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_tanh_ import _foreach_tanh_  # noqa: F401
 from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -887,6 +889,7 @@ __all__ = [
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lgamma",
@@ -915,6 +918,7 @@ __all__ = [
     "_foreach_sub__List",
     "_foreach_tan",
     "_foreach_tan_",
+    "_foreach_tanh_",
     "_foreach_zero",
     "_foreach_zero_",
     "_functional_assert_async",
