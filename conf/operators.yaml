@@ -3800,6 +3800,31 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: convert_indices_from_coo_to_csr
+  description: Converts a COO row-index vector plus a row count into the CSR row pointer
+    tensor of length `size + 1`, where `out[k]` is the number of stored
+    indices below row `k`.
+  for:
+  - _convert_indices_from_coo_to_csr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: convert_indices_from_coo_to_csr_out
+  description: A variant of `_convert_indices_from_coo_to_csr()` that writes the CSR row
+    pointers into the `out` tensor.
+  for:
+  - _convert_indices_from_coo_to_csr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: convert_indices_from_csr_to_coo
   description: Decodes COO coordinates from CSR row pointers and stored column indices,
     returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and
