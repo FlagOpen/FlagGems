@@ -114,6 +114,7 @@ from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
+from .var_mean import var_mean
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
@@ -228,4 +229,5 @@ __all__ = [
     "var",
     "var_correction",
     "var_dim",
+    "var_mean",
 ]
