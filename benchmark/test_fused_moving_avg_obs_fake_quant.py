@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -66,7 +64,6 @@ def test_fused_moving_avg_obs_fake_quant():
     FusedMovingAvgObsFakeQuantBenchmark(
         op_name="fused_moving_avg_obs_fake_quant",
         torch_op=torch.fused_moving_avg_obs_fake_quant,
-        gems_op=flag_gems.fused_moving_avg_obs_fake_quant,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
