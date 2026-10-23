@@ -16,11 +16,172 @@ import math
 
 import pytest
 import torch
+from torch.autograd.function import once_differentiable
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from . import test_utils as tu
+
+
+def _copy_dense_physical(value, device):
+    assert isinstance(value, torch.Tensor) and value.layout == torch.strided
+    shape, stride, offset = tuple(value.shape), value.stride(), value.storage_offset()
+    source_dtype = value.dtype
+    source_conj, source_neg = value.is_conj(), value.is_neg()
+    source_storage = value.untyped_storage()
+    raw = torch.empty(0, dtype=torch.uint8, device=value.device).set_(
+        source_storage, 0, (source_storage.nbytes(),), (1,)
+    )
+    # Independent storage on CPU even when the input is already CPU.
+    raw = raw.to(device=device).clone()
+    result = raw.view(source_dtype).as_strided(shape, stride, offset)
+    if source_conj:
+        result = result.conj()
+    if source_neg:
+        result = torch._neg_view(result)
+    assert result.device == torch.device(device) and result.dtype == source_dtype
+    assert tuple(result.shape) == shape and result.stride() == stride
+    assert result.storage_offset() == offset
+    assert result.is_conj() == source_conj and result.is_neg() == source_neg
+    return result
+
+
+def _copy_tensor_physical(value, device, *, preserve_requires_grad=False):
+    assert isinstance(value, torch.Tensor)
+    required_shape, required_dtype = tuple(value.shape), value.dtype
+    if value.layout == torch.sparse_coo:
+        result = torch.sparse_coo_tensor(
+            _copy_dense_physical(value._indices(), device),
+            _copy_dense_physical(value._values(), device),
+            required_shape,
+            dtype=required_dtype,
+            device=device,
+            is_coalesced=value.is_coalesced(),
+        )
+        assert result.sparse_dim() == value.sparse_dim()
+        assert result.dense_dim() == value.dense_dim()
+        assert result.is_coalesced() == value.is_coalesced()
+        assert result._nnz() == value._nnz()
+    elif value.layout == torch.strided:
+        result = _copy_dense_physical(value, device)
+    else:
+        # Original cases use dense or COO; do not invent a compressed conversion.
+        raise AssertionError(
+            "CPU bootstrap transport supports original dense/COO layouts only"
+        )
+    assert result.device == torch.device(device)
+    assert result.dtype == required_dtype and tuple(result.shape) == required_shape
+    assert result.layout == value.layout
+    if preserve_requires_grad and value.requires_grad:
+        result.requires_grad_(True)
+    return result
+
+
+def _copy_tensor(value, device, *, preserve_requires_grad=False):
+    # Auxiliary transport failure must not satisfy an original negative caller's
+    # broad RuntimeError expectation. Actual sparse_mask/autograd calls stay out.
+    try:
+        return _copy_tensor_physical(
+            value, device, preserve_requires_grad=preserve_requires_grad
+        )
+    except AssertionError:
+        raise
+    except Exception as error:
+        raise AssertionError("sparse_mask CPU bootstrap transport failed") from error
+
+
+def _assert_return_ABI(result, cpu_result, required_device):
+    assert isinstance(result, torch.Tensor) and isinstance(cpu_result, torch.Tensor)
+    assert result.device == required_device
+    assert result.dtype == cpu_result.dtype and result.shape == cpu_result.shape
+    assert result.layout == cpu_result.layout
+    if result.layout == torch.sparse_coo:
+        assert result.is_coalesced() == cpu_result.is_coalesced()
+        assert result.sparse_dim() == cpu_result.sparse_dim()
+        assert result.dense_dim() == cpu_result.dense_dim()
+        assert result._nnz() == cpu_result._nnz()
+        for part in (result._indices(), result._values()):
+            assert part.device == required_device
+        assert result._indices().dtype == cpu_result._indices().dtype
+        assert result._values().dtype == cpu_result._values().dtype
+
+
+class _SparseMaskCPUBridge(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, mask):
+        required_device = inp.device
+        cpu_inp = _copy_tensor(inp, "cpu")
+        cpu_mask = _copy_tensor(mask, "cpu")
+        # Native CPU semantics decide dtype promotion, sparse support and errors.
+        cpu_result = torch.ops.aten.sparse_mask(cpu_inp, cpu_mask)
+        ctx.save_for_backward(cpu_inp, cpu_mask, mask)
+        ctx.required_device = required_device
+        ctx.input_dtype, ctx.input_shape, ctx.input_layout = (
+            inp.dtype,
+            inp.shape,
+            inp.layout,
+        )
+        result = _copy_tensor(cpu_result, required_device)
+        _assert_return_ABI(result, cpu_result, required_device)
+        return result
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad_output):
+        # Accessing saved_tensors checks the original mask version, as native does.
+        cpu_inp, cpu_mask, _original_mask = ctx.saved_tensors
+        assert grad_output.device == ctx.required_device
+        cpu_grad = _copy_tensor(grad_output, "cpu")
+        # Function.forward executes with grad disabled. Recompute only genuine
+        # CPU native under enable_grad to preserve its first-order gradient.
+        with torch.enable_grad():
+            cpu_leaf = _copy_tensor(cpu_inp, "cpu").requires_grad_(True)
+            cpu_result = torch.ops.aten.sparse_mask(cpu_leaf, cpu_mask)
+            (cpu_input_grad,) = torch.autograd.grad(
+                cpu_result,
+                cpu_leaf,
+                grad_outputs=cpu_grad,
+                create_graph=False,
+                retain_graph=False,
+            )
+        result = _copy_tensor(cpu_input_grad, ctx.required_device)
+        assert result.device == ctx.required_device
+        assert result.dtype == ctx.input_dtype and result.shape == ctx.input_shape
+        assert result.layout == ctx.input_layout
+        return result, None
+
+
+def sparse_mask_cpu_native(inp, mask, *, out=None):
+    """NativeCPU bootstrap candidate; original argument tensors are never edited.
+
+    Original sparse_mask tests pass bool COO masks and dense/COO self. The out
+    cases have no autograd requirement; no claim about out-autograd is made.
+    """
+    assert isinstance(inp, torch.Tensor) and isinstance(mask, torch.Tensor)
+    required_device = inp.device  # Capture original tensor device before copies.
+    if mask.device != required_device:
+        raise RuntimeError("self and mask devices must match before CPU transport")
+    if out is None:
+        return _SparseMaskCPUBridge.apply(inp, mask)
+    assert isinstance(out, torch.Tensor)
+    if out.device != required_device:
+        raise RuntimeError("out and self devices must match before CPU transport")
+    cpu_inp = _copy_tensor(inp, "cpu", preserve_requires_grad=True)
+    cpu_mask = _copy_tensor(mask, "cpu", preserve_requires_grad=True)
+    cpu_out = _copy_tensor(out, "cpu", preserve_requires_grad=True)
+    returned = torch.ops.aten.sparse_mask.out(cpu_inp, cpu_mask, out=cpu_out)
+    assert returned is cpu_out
+    target = _copy_tensor(returned, required_device)
+    _assert_return_ABI(target, returned, required_device)
+    # Native out may overwrite/reallocate. Promise only original object identity,
+    # not stable StorageImpl/data_ptr or readonly out components.
+    out.data = target
+    _assert_return_ABI(out, returned, required_device)
+    return out
+
+
+_cpu_oracle = sparse_mask_cpu_native
 
 # Select every overload and contract case with the operator marker.
 pytestmark = pytest.mark.sparse_mask
@@ -81,7 +242,7 @@ def _make_mask(shape, density=0.5):
 
 
 def _to_reference(inp):
-    # Ascend has sparse COO tensors but no native sparse_mask implementation.
+    # Ascend has sparse COO tensors but lacks material native sparse_mask paths.
     # Keep the independent oracle on CPU without changing candidate inputs.
     if flag_gems.vendor_name == "ascend":
         return inp.detach().cpu().clone().requires_grad_(inp.requires_grad)
@@ -104,6 +265,38 @@ def _assert_masked(res_out, ref_out, device):
     _assert_equal(res_out.values(), ref_out.values())
 
 
+def _skip_kunlunxin_native_case(inp, mask):
+    if flag_gems.vendor_name != "kunlunxin" or mask._nnz() == 0:
+        return
+    if inp.layout == torch.sparse_coo and inp.dtype != torch.uint8 and inp._nnz() > 0:
+        pytest.skip(
+            "Kunlunxin native sparse_mask rejects nonempty sparse-self inputs "
+            "for these dtypes"
+        )
+    if inp.layout == torch.strided and inp.dtype in (torch.int8, torch.int16):
+        pytest.skip(
+            "Kunlunxin native sparse_mask lacks int8/int16 dense-self support "
+            "with a nonempty mask"
+        )
+
+
+def _make_grad_out(dense_grad, mask):
+    if flag_gems.vendor_name == "kunlunxin":
+        # Construct the same sparse upstream from the actual input values and
+        # mask on CPU; the original target-side compound factory fails before
+        # sparse_mask or its backward is called.
+        cpu_grad = _copy_tensor(dense_grad, "cpu")
+        cpu_mask = _copy_tensor(mask, "cpu")
+        result = _copy_tensor(
+            (cpu_grad * cpu_mask.to_dense()).to_sparse(), dense_grad.device
+        )
+        assert result.device == dense_grad.device
+        assert result.dtype == dense_grad.dtype and result.shape == dense_grad.shape
+        assert result.layout == torch.sparse_coo and result.is_coalesced()
+        return result
+    return (dense_grad * mask.to_dense()).to_sparse()
+
+
 @pytest.mark.sparse_mask
 @pytest.mark.parametrize("shape,value_range,dtype", _SPARSE_MASK_VALUE_RANGE_CASES)
 def test_sparse_mask_value_ranges(shape, value_range, dtype):
@@ -113,6 +306,7 @@ def test_sparse_mask_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = _to_reference(inp)
     mask = _make_mask(shape, density=keep_threshold)
+    _skip_kunlunxin_native_case(inp, mask)
     ref_mask = _to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
@@ -135,6 +329,7 @@ def test_sparse_mask_sparse_self(shape, dtype):
     dense = tu.make_input(dtype, shape, ["-1", "1"])
     inp = dense.to_sparse()
     mask = _make_mask(shape)
+    _skip_kunlunxin_native_case(inp, mask)
     ref_inp = _to_reference(inp)
     ref_mask = _to_reference(mask)
 
@@ -155,6 +350,7 @@ def test_sparse_mask_non_contiguous(base_shape, shape, dtype):
     ref_inp = ref_base[..., ::2]
     assert not inp.is_contiguous()
     mask = _make_mask(shape)
+    _skip_kunlunxin_native_case(inp, mask)
     ref_mask = _to_reference(mask)
 
     ref_out = torch.ops.aten.sparse_mask(ref_inp, ref_mask)
@@ -170,6 +366,7 @@ def test_sparse_mask_non_contiguous(base_shape, shape, dtype):
 def test_sparse_mask_out(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     mask = _make_mask(shape)
+    _skip_kunlunxin_native_case(inp, mask)
     ref_inp = _to_reference(inp)
     ref_mask = _to_reference(mask)
 
@@ -220,7 +417,7 @@ def test_sparse_mask_backward(shape, dtype):
     dense_grad = tu.make_input(dtype, shape, ["-1", "1"])
     # grad_output for the sparse result: sparse COO with the mask's indices and
     # values zero outside the mask.
-    grad_out = (dense_grad * mask.to_dense()).to_sparse()
+    grad_out = _make_grad_out(dense_grad, mask)
 
     ref_inp = _to_reference(inp)
     ref_mask = _to_reference(mask)
