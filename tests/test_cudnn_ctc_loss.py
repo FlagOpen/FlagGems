@@ -102,7 +102,9 @@ def test_cudnn_ctc_loss_forward(shape):
     ref_log_probs = utils.to_reference(log_probs, True)
     ref_targets = utils.to_reference(targets)
 
-    ref_loss, _, _ = _reference(ref_log_probs, ref_targets, input_lengths, target_lengths)
+    ref_loss, _, _ = _reference(
+        ref_log_probs, ref_targets, input_lengths, target_lengths
+    )
 
     res_loss, res_grad = flag_gems.cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0, False, False
@@ -122,7 +124,9 @@ def test_cudnn_ctc_loss_backward(shape):
     ref_log_probs = utils.to_reference(log_probs, True)
     ref_targets = utils.to_reference(targets)
 
-    _, ref_grad, _ = _reference(ref_log_probs, ref_targets, input_lengths, target_lengths)
+    _, ref_grad, _ = _reference(
+        ref_log_probs, ref_targets, input_lengths, target_lengths
+    )
 
     _, res_grad = flag_gems.cudnn_ctc_loss(
         log_probs, targets, input_lengths, target_lengths, 0, False, False
