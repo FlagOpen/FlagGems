@@ -5969,6 +5969,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: fbgemm_pack_quantized_matrix
+  description: Packs an int8 quantized weight matrix into the opaque fbgemm GEMM
+    format via the aten fbgemm CPU kernel (with host staging for CUDA weights);
+    the returned packed tensor carries an fbgemm C++ wrapper object and is only
+    consumable by fbgemm quantized linear kernels.
+  for:
+  - fbgemm_pack_quantized_matrix
+  - fbgemm_pack_quantized_matrix.KN
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
 - id: feature_alpha_dropout
   description: Applies alpha dropout independently to each feature map, preserving
     the self-normalizing properties of SELU activations.
