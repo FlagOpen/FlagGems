@@ -51,7 +51,7 @@ def _build_inputs_fn(plan, dtype, device):
     torch.manual_seed(0)
     inp = torch.randn((n, k), dtype=dtype, device=device)
     coefficients = torch.randn((m, n), dtype=dtype, device=device)
-    out = torch.empty((m, k), dtype=dtype, device=device)
+    out = torch.zeros((m, k), dtype=dtype, device=device)
     return inp, coefficients, {"out": out}
 
 

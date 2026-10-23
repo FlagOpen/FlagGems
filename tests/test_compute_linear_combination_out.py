@@ -47,10 +47,11 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     saved_coefficients = coefficients.clone()
     ref_inp = utils.to_reference(inp, True)
     ref_coefficients = utils.to_reference(coefficients, True)
-    ref_out = torch.empty((m, k), dtype=ref_inp.dtype, device=ref_inp.device)
-    out = torch.empty((m, k), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.zeros((m, k), dtype=ref_inp.dtype, device=ref_inp.device)
+    out = torch.zeros((m, k), dtype=dtype, device=flag_gems.device)
     out_pointer = out.data_ptr()
 
+    # ATen accumulates into out, so both calls start from the same zero buffer.
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
@@ -102,12 +103,13 @@ def test_compute_linear_combination_out_noncontiguous(dtype):
     coefficients = torch.randn((m, n), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_coefficients = utils.to_reference(coefficients, True)
-    ref_out = torch.empty((k, m), dtype=ref_inp.dtype, device=ref_inp.device).t()
-    out = torch.empty((k, m), dtype=dtype, device=flag_gems.device).t()
+    ref_out = torch.zeros((k, m), dtype=ref_inp.dtype, device=ref_inp.device).t()
+    out = torch.zeros((k, m), dtype=dtype, device=flag_gems.device).t()
     out_pointer = out.data_ptr()
     out_stride = out.stride()
     assert not out.is_contiguous()
 
+    # ATen accumulates into out, so both calls start from the same zero buffer.
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
