@@ -46,8 +46,8 @@ def _build_inputs_fn(plan, dtype, device):
     inp = torch.randn(shape, dtype=torch.float32, device=device)
     return (
         inp,
-        torch.tensor([1], dtype=torch.int32, device=device),
-        torch.tensor([1], dtype=torch.int32, device=device),
+        torch.tensor([1], dtype=torch.int64, device=device),
+        torch.tensor([1], dtype=torch.int64, device=device),
         torch.tensor([-0.5], dtype=torch.float32, device=device),
         torch.tensor([0.5], dtype=torch.float32, device=device),
         torch.ones(1, dtype=torch.float32, device=device),
