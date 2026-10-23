@@ -135,6 +135,7 @@ _FULL_CONFIG = (
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
+    ("_choose_qparams_per_tensor", choose_qparams_per_tensor),
     ("_chunk_cat", _chunk_cat),
     ("_coalesce", _coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_coalesce.out", _coalesce_out, None, (AUTOGRAD_DISPATCH_KEY,)),

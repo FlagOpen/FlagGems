@@ -3162,6 +3162,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: choose_qparams_per_tensor
+  description: 'Chooses quantization parameters (scale and zero-point) for a tensor
+    by computing its min and max, returning the affine quantization pair as Python
+    scalars.
+
+    '
+  for:
+  - _choose_qparams_per_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: chunk_cat
   description: Triton kernel implementation for _chunk_cat.
   for:
