@@ -960,7 +960,6 @@ _FULL_CONFIG = (
     # entry registers no extra dispatch key and the implementation is tested
     # through its direct call path, mirroring the can_cast investigation.
     ("dim", dim),
-    ("dim", dim),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
