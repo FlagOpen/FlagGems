@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..utils.block_size_utils import get_block_size_1d
+from .sum import _launch_sum_flat, _resolve_acc_dtype
 from .sum import sum_dim as _sum_dim_tle
 
 logger = logging.getLogger(__name__)
@@ -33,41 +33,19 @@ logger = logging.getLogger(__name__)
 _TLE_FAST_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
 
-@libentry()
-@triton.jit
-def mean_scalar_kernel(inp, out, M, BLOCK_SIZE: tl.constexpr):
-    """Scalar mean over all M elements.
-    On XPU (USE_XHPC): intercepted by baidu::xpu::api::mean binding.
-    Triton fallback (single CTA): sequential accumulation for correctness.
-    Params for binding:
-      kernelParams[0] = inp, kernelParams[1] = out
-      kernelConsts[2] = M,   kernelConsts[3] = BLOCK_SIZE
-    """
-    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for off in range(0, M, BLOCK_SIZE):
-        offset = off + tl.arange(0, BLOCK_SIZE)
-        mask = offset < M
-        v = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
-        acc += v
-    result = tl.sum(acc) / M
-    tl.store(out, result)
-
-
 def mean(inp, *, dtype=None):
     logger.debug("GEMS_KUNLUNXIN MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
     if M == 0:
-        # torch returns NaN for the mean of an empty tensor (verified against
-        # CPU torch); `get_block_size_1d(0)` is not a defined launch config on
-        # this backend and the scalar kernel would divide 0 by 0.
+        # torch returns NaN for the mean of an empty tensor (verified against CPU torch).
         return torch.full([], float("nan"), dtype=dtype, device=inp.device)
-    BLOCK_SIZE = get_block_size_1d(M, inp.element_size())
+    # mean = sum / M: TLE flat reduce folded with `scale = 1/M` (fp32 accumulate, then
+    # scale+cast in the store, matching torch.mean's opmath order).
+    acc_dtype = _resolve_acc_dtype(inp.dtype)
     out = torch.empty([], dtype=dtype, device=inp.device)
-
-    with torch_device_fn.device(inp.device):
-        mean_scalar_kernel[(1, 1, 1)](inp, out, M, BLOCK_SIZE, buffer_size_limit=2048)
+    _launch_sum_flat(inp, out, acc_dtype, scale=1.0 / M)
     return out
 
 
