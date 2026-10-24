@@ -89,6 +89,8 @@ def test_special_chebyshev_polynomial_t_out_tensor_degree(dtype, caplog):
 @pytest.mark.special_chebyshev_polynomial_t_out
 @pytest.mark.parametrize("out_shape", [(0,), (1,)])
 def test_special_chebyshev_polynomial_t_out_resizes_buffer(out_shape):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU and out_shape == (1,):
+        pytest.skip("Ascend native reference cannot resize a nonempty out buffer")
     x = torch.tensor(
         [[-0.75, -0.25, 0.25], [0.5, 0.75, 1.0]],
         dtype=torch.float32,
