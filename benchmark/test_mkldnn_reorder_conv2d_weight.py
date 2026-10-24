@@ -35,10 +35,27 @@ DEFAULT_WEIGHT_SHAPES = [
     (256, 512, 3, 3),
 ]
 
+
 # Floating dtype matrix for this reorder. Int8 is excluded: the oneDNN
 # blocked layout for int8 weights is a physical re-packing on some ISA
 # builds, which the value-transparent candidate does not reproduce.
-_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+#
+# The native fp16/bf16 reorder paths additionally require avx512-class CPU
+# extensions; on machines without them the *native* call raises before the
+# candidate runs, so those dtypes are probed once at import and dropped from
+# the benchmark matrix there.
+def _native_supported(dtype):
+    try:
+        w = torch.empty((8, 4, 3, 3), dtype=dtype).to_mkldnn()
+        torch.ops.aten.mkldnn_reorder_conv2d_weight(w)
+        return True
+    except RuntimeError:
+        return False
+
+
+# The full floating matrix this reorder covers (int8 excluded; see note).
+_ALL_FLOAT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+_DTYPES = [dtype for dtype in _ALL_FLOAT_DTYPES if _native_supported(dtype)]
 
 _PADDING = [1, 1]
 _STRIDE = [1, 1]
