@@ -49,6 +49,10 @@ def _reference(tensor):
 def test_fake_quantize_learnable_per_tensor_affine_backward(
     shape, dtype, quant_min, quant_max, zero_point, grad_factor
 ):
+    if dtype != torch.float32:
+        pytest.skip(
+            "Native learnable per-tensor fake-quant backward requires float32 input"
+        )
     _seed()
     self_t = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     grad = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
@@ -75,7 +79,8 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
         result[2], ref_out[2], torch.float32, reduce_dim=reduce_size
     )
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
+        assert value.device == snapshot.device
+        utils.gems_assert_equal(value, utils.to_reference(snapshot))
     assert result[0].shape == self_t.shape
     assert result[1].shape == scale.shape
     assert result[2].shape == zero_point_t.shape
@@ -86,6 +91,10 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
+    if dtype != torch.float32:
+        pytest.skip(
+            "Native learnable per-tensor fake-quant backward requires float32 input"
+        )
     _seed()
     self_t = torch.randn((8, 16), dtype=dtype, device=flag_gems.device) * 100.0
     grad = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
@@ -109,6 +118,16 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
     grad = torch.empty_like(self_t)
     scale = torch.tensor([0.1], device=flag_gems.device)
     zero_point = torch.tensor([0.0], device=flag_gems.device)
+    reference_inputs = tuple(
+        _reference(tensor) for tensor in (grad, self_t, scale, zero_point)
+    )
+    reference = _ATEN_OP(*reference_inputs, -128, 127, 1.0)
+    if (
+        reference[1].data_ptr() == reference_inputs[2].data_ptr()
+        and reference[2].data_ptr() == reference_inputs[3].data_ptr()
+        and torch.count_nonzero(reference[1]).item() != 0
+    ):
+        pytest.skip("Native empty backward returns scale instead of a zero gradient")
     result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
         grad, self_t, scale, zero_point, -128, 127, 1.0
     )

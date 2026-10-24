@@ -83,7 +83,8 @@ def test_fused_moving_avg_obs_fq_helper(
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # Reference on the reference device (CPU when --ref=cpu, else CUDA).
-    ref_x = utils.to_reference(base, True)
+    # The native helper consumes float32 observer state and float32 input.
+    ref_x = utils.to_reference(base, False)
     (
         ref_out,
         ref_mask,

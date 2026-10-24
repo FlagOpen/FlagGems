@@ -155,7 +155,6 @@ def test_lu_with_info_check_errors_on_nonsingular_input(check_errors):
 
 
 @pytest.mark.lu_with_info
-@pytest.mark.underscore_lu_with_info
 def test_lu_info_exact_zero_excludes_nonfinite_pivots():
     from flag_gems.ops._lu_with_info import _lu_info_kernel
 
@@ -171,7 +170,6 @@ def test_lu_info_exact_zero_excludes_nonfinite_pivots():
 
 
 @pytest.mark.lu_with_info
-@pytest.mark.underscore_lu_with_info
 def test_lu_info_nonfinite_pivots_are_not_singular():
     from flag_gems.ops._lu_with_info import _lu_info_kernel
 
