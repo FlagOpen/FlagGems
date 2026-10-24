@@ -133,19 +133,17 @@ def _make_special_input(dtype, scenario):
 
 
 # The native fp16 and bfloat16 reorder paths require avx512-class CPU
-# extensions (fp16: avx_ne_convert or avx512_fp16; bf16: avx_ne_convert or
-# avx512bw/vl/dq); machines without them raise before the candidate is ever
-# called. Match both message forms.
+# extensions; machines without them raise before the candidate is ever called.
+# Each message form maps to its own accurate skip reason.
 def _native_reorder(*args, **kwargs):
     try:
         return torch.ops.aten.mkldnn_reorder_conv2d_weight(*args, **kwargs)
     except RuntimeError as e:
         msg = str(e)
-        if (
-            "avx_ne_convert or avx512_fp16" in msg
-            or "avx512bw, avx512vl and avx512dq" in msg
-        ):
+        if "avx_ne_convert or avx512_fp16" in msg:
             pytest.skip("fp16 reorder needs avx512_fp16-class CPU")
+        if "avx512bw, avx512vl and avx512dq" in msg:
+            pytest.skip("bf16 reorder needs avx512bw/vl/dq-class CPU")
         raise
 
 
