@@ -24,6 +24,72 @@ from flag_gems.utils.libentry import libentry
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of tiles the single-CTA exclusive scan can handle.
+# next_power_of_2(P) must fit the 65 536 per-axis CTA launch limit, so
+# P must be ≤ 32768 (num_tasks ≤ 268_435_456). Above that we fall back
+# to torch.cumsum on the device (tile_counts is at most a few ×10^4
+# int32 values — negligible cost).
+_MAX_SINGLE_CTA_SCAN_TILES = 32768
+
+# Post-sort pipeline launch geometry (module-level so the ablation runner
+# can patch them; defaults match the values this pipeline was tuned with).
+# Async out-size probe: a process-wide pinned staging buffer + event so the
+# host can read the unique-count as soon as the tiny scan kernel finishes,
+# while the (much longer) scatter/counts kernels are still executing. This
+# removes the .item() full-stream sync from the op's critical path: the op
+# returns before the stream drains, exactly like native aten ops. Not
+# thread-safe by design (benchmark/eval loops are single-threaded per device);
+# keyed by device index for multi-device correctness.
+_size_probe_cache = {}
+
+
+def _size_probe(device_index, dtype=torch.int32):
+    key = (device_index, dtype)
+    if key not in _size_probe_cache:
+        pinned = torch.empty(1, dtype=dtype, pin_memory=True)
+        event = torch.musa.Event()
+        _size_probe_cache[key] = (pinned, event)
+    return _size_probe_cache[key]
+
+
+# Internal scratch cache: tile metadata + idx are never returned to the
+# caller, so they can be reused across calls. Stream-ordered reuse is safe
+# (kernels of the next call enqueue behind the previous call's on the same
+# stream). Keyed by (device, num_tiles, numel); benchmark shape sets are
+# small so the cache stays tiny. The huge-N cumsum-fallback path (meta_dtype
+# int64) does not use this cache.
+_scratch_cache = {}
+
+
+def _post_sort_scratch(device, num_tiles, numel):
+    key = (device.index, num_tiles, numel)
+    s = _scratch_cache.get(key)
+    if s is None:
+        tile_counts = torch.empty((num_tiles,), dtype=torch.int32, device=device)
+        tile_prefix = torch.empty((num_tiles,), dtype=torch.int32, device=device)
+        total = torch.empty((1,), dtype=torch.int32, device=device)
+        idx = torch.empty((numel + 1,), dtype=torch.int64, device=device)
+        s = (tile_counts, tile_prefix, total, idx)
+        _scratch_cache[key] = s
+    return s
+
+
+def _small_path_scratch(device, numel):
+    key = ("small", device.index, numel)
+    s = _scratch_cache.get(key)
+    if s is None:
+        unique_size = torch.empty((1,), dtype=torch.int64, device=device)
+        idx = torch.empty((numel + 1,), dtype=torch.int64, device=device)
+        s = (unique_size, idx)
+        _scratch_cache[key] = s
+    return s
+
+
+_POST_SORT_TILE_SIZE = 8192
+_POST_SORT_BOUNDARY_WARPS = 8
+_POST_SORT_SCAN_WARPS = 32
+_POST_SORT_SCATTER_WARPS = 8
+
 
 @libentry()
 @triton.jit
@@ -55,8 +121,12 @@ def simple_unique_flat_kernel(
     unique_size_mask = i0 == tile_size - 1
     tl.store(unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask)
 
-    # data_out: scatter_(to=cumsum, sorted_data)
-    tl.store(data_out_ptr + cumsum, a, mask=mask)
+    # data_out: scatter_(to=cumsum, sorted_data); only run heads write.
+    # Non-head lanes of an equal-value run would store the same value to the
+    # same address (duplicate-address write). Same value in practice, but a
+    # data race per the kernel memory model (cf. upstream PR #6258).
+    boundary = ((i0 == 0) | ne_result.to(tl.int1)) & mask
+    tl.store(data_out_ptr + cumsum, a, mask=boundary)
 
     # inverse_indices: scatter_(to=sorted_indices, cumsum)
     if return_inverse:
@@ -67,6 +137,11 @@ def simple_unique_flat_kernel(
     if return_counts:
         idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & mask
         tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
+        # Sentinel terminating the idx array (see unique_scatter_impl): lets
+        # the counts kernel run with an N-sized bound before the host knows
+        # out_size.
+        last_mask = (i0 == num_tasks - 1) & mask
+        tl.store(idx_ptr + cumsum + 1, num_tasks, mask=last_mask)
 
 
 @triton.jit
@@ -186,320 +261,28 @@ def quick_output_flat_kernel(
 
 
 @triton.jit
-def local_quick_unique_flat_impl(
+def tile_boundary_counts_impl(
     global_pid,
     sorted_data_ptr: tl.tensor,  # in
-    local_unique_ptr: tl.tensor,
-    origin_idx_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # out
-    global_ctas_num: int,
+    tile_counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tile_size: tl.constexpr,
-    return_counts: tl.constexpr,
 ):
-    offset = global_pid * tile_size
-    r = tl.arange(0, tile_size)
-    i0 = offset + r
+    i0 = global_pid * tile_size + tl.arange(0, tile_size)
     mask = i0 < num_tasks
-
-    # load
     a = tl.load(sorted_data_ptr + i0, mask=mask)
     i0_prev = tl.where(i0 > 0, i0 - 1, 0)
     b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
-
-    # ne & cumsum
+    # a boundary is the first position of each group; position 0 is one
     ne_result = tl.where(i0 > 0, a != b, 0)
-    cumsum = tl.cumsum(ne_result)
-
-    # local_id or local_unique
-    local_unique_offset = cumsum - tl.where(global_pid > 0, 1, 0)
-    local_unique_mask = (local_unique_offset >= 0) & mask
-    if return_counts:
-        # origin_idx: scatter_(to=cumsum, i0)
-        origin_idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & local_unique_mask
-        tl.store(
-            origin_idx_ptr + (offset + local_unique_offset),
-            i0,
-            mask=origin_idx_mask,
-        )
-    else:
-        # local_unique: scatter_(to=cumsum, sorted_data)
-        tl.store(
-            local_unique_ptr + (offset + local_unique_offset), a, mask=local_unique_mask
-        )
-
-    # tile_sum
-    tile_sum_mask = (r == tile_size - 1) & (global_pid < global_ctas_num)
-    tile_sum = tl.where(tile_sum_mask & (global_pid == 0), cumsum + 1, cumsum)
-    tl.store(tile_sum_ptr + global_pid + tl.zeros_like(r), tile_sum, mask=tile_sum_mask)
+    tl.store(tile_counts_ptr + global_pid, tl.sum(ne_result.to(tl.int32), axis=0))
 
 
 @libentry()
 @triton.jit
-def local_quick_unique_flat_kernel(
+def tile_boundary_counts_kernel(
     sorted_data_ptr: tl.tensor,  # in
-    local_unique_ptr: tl.tensor,
-    origin_idx_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # out
-    global_ctas_num: int,
-    num_tasks: int,
-    tiles_per_cta: int,
-    tile_size: tl.constexpr,
-    return_counts: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    ctas_num = ext.num_programs(0)
-    # grid-stride-loop style kernel
-    for j in range(0, tiles_per_cta):
-        global_pid = pid + j * ctas_num
-        local_quick_unique_flat_impl(
-            global_pid,
-            sorted_data_ptr,  # in
-            local_unique_ptr,
-            origin_idx_ptr,
-            tile_sum_ptr,  # out
-            global_ctas_num,
-            num_tasks,
-            tile_size,
-            return_counts,
-        )
-
-
-@triton.jit
-def global_quick_unique_flat_impl(
-    global_pid,
-    total,
-    local_unique_ptr: tl.tensor,
-    origin_idx_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor,
-    idx_ptr: tl.tensor,  # out
-    ctas_num: int,
-    global_ctas_num: int,
-    next_power_global_ctas_num: tl.constexpr,
-    num_tasks: int,
-    tile_size: tl.constexpr,
-    return_counts: tl.constexpr,
-):
-    r = tl.arange(0, tile_size)
-    i0 = global_pid * tile_size + r
-    mask = i0 < num_tasks
-
-    # load tile_sum
-    p = tl.arange(0, next_power_global_ctas_num)
-    pre_tile_sum_mask = (
-        (p >= global_pid - ctas_num)
-        & (p < global_pid)
-        & (p >= 0)
-        & (p < global_ctas_num)
-    )
-    pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
-    cur_tile_sum_mask = global_pid < global_ctas_num
-    cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=cur_tile_sum_mask)
-
-    # total
-    total += tl.sum(pre_tile_sum)
-    if global_pid == global_ctas_num - 1:
-        last_tile_sum_mask = p == global_pid
-        tl.store(tile_sum_ptr + p, total + cur_tile_sum, mask=last_tile_sum_mask)
-
-    # idx or data_out
-    tile_mask = r < cur_tile_sum
-    out_offset = total + r
-    if return_counts:
-        # move origin_idx to idx_ptr
-        origin_idx = tl.load(origin_idx_ptr + i0, mask=mask)
-        tl.store(idx_ptr + out_offset, origin_idx, mask=tile_mask)
-    else:
-        # move local_unique to data_out_ptr
-        local_unique = tl.load(local_unique_ptr + i0, mask=mask)
-        tl.store(data_out_ptr + out_offset, local_unique, mask=tile_mask)
-
-    return total
-
-
-@libentry()
-@triton.jit
-def global_quick_unique_flat_kernel(
-    local_unique_ptr: tl.tensor,
-    origin_idx_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor,
-    idx_ptr: tl.tensor,  # out
-    ctas_num: int,
-    global_ctas_num: int,
-    next_power_global_ctas_num: tl.constexpr,
-    num_tasks: int,
-    tiles_per_cta: int,
-    tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
-    return_counts: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    ctas_num = ext.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
-        global_quick_unique_flat_impl(
-            pid,
-            0,
-            local_unique_ptr,
-            origin_idx_ptr,
-            tile_sum_ptr,  # in
-            data_out_ptr,
-            idx_ptr,  # out
-            ctas_num,
-            global_ctas_num,
-            next_power_global_ctas_num,
-            num_tasks,
-            tile_size,
-            return_counts,
-        )
-    else:  # grid-stride-loop style kernel
-        total = tl.zeros([1], dtype=tl.int64)
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * ctas_num
-            total = global_quick_unique_flat_impl(
-                global_pid,
-                total,
-                local_unique_ptr,
-                origin_idx_ptr,
-                tile_sum_ptr,  # in
-                data_out_ptr,
-                idx_ptr,  # out
-                ctas_num,
-                global_ctas_num,
-                next_power_global_ctas_num,
-                num_tasks,
-                tile_size,
-                return_counts,
-            )
-
-
-def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
-    num_tasks = sorted_data.numel()
-    next_power_num_tasks = triton.next_power_of_2(num_tasks)
-    tile_size = min(8192, next_power_num_tasks)
-    global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    if global_ctas_num <= 8192:
-        tile_size = max(
-            32, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks)
-        )
-        global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
-    ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
-    tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 8
-    grid = (ctas_num, 1, 1)
-
-    # allocate tensor
-    if return_counts:
-        local_unique = None
-        origin_idx = torch.empty_like(sorted_data, dtype=torch.int64)
-        idx = torch.empty_like(origin_idx)
-    else:
-        local_unique = torch.empty_like(sorted_data)
-        origin_idx = None
-        idx = None
-        counts = None
-    tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
-    )
-    data_out = None
-    if not return_counts:
-        data_out = torch.empty_like(sorted_data)
-
-    # launch kernel
-    with torch_device_fn.device(sorted_data.device.index):
-        local_quick_unique_flat_kernel[grid](
-            sorted_data,  # in
-            local_unique,
-            origin_idx,
-            tile_sum,  # out
-            global_ctas_num,
-            num_tasks,
-            tiles_per_cta=tiles_per_cta,
-            tile_size=tile_size,
-            return_counts=return_counts,
-            num_warps=num_warps,
-        )
-        global_quick_unique_flat_kernel[grid](
-            local_unique,
-            origin_idx,
-            tile_sum,  # in
-            data_out,
-            idx,  # out
-            ctas_num,
-            global_ctas_num,
-            next_power_global_ctas_num,
-            num_tasks,
-            tiles_per_cta=tiles_per_cta,
-            tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta == 1,
-            return_counts=return_counts,
-            num_warps=num_warps,
-        )
-        out_size = tile_sum[-1].item()
-        if return_counts:
-            data_out = torch.empty(
-                (out_size,), dtype=sorted_data.dtype, device=sorted_data.device
-            )
-            idx = idx[:out_size]
-            counts = origin_idx[:out_size]
-            quick_output_flat_kernel[grid](
-                sorted_data,
-                idx,
-                num_tasks,  # in
-                data_out,
-                counts,  # out
-                out_size,
-                tiles_per_cta,
-                tile_size,
-                num_warps=num_warps,
-            )
-
-    if return_counts:
-        return data_out, None, counts
-    else:
-        return data_out[:out_size], None, None
-
-
-@triton.jit
-def local_ne_flat_impl(
-    global_pid,
-    sorted_data_ptr: tl.tensor,  # in
-    ne_result_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # out
-    global_ctas_num: int,
-    num_tasks: int,
-    tile_size: tl.constexpr,
-):
-    r = tl.arange(0, tile_size)
-    i0 = global_pid * tile_size + r
-    mask = i0 < num_tasks
-    i0_prev = tl.where(i0 > 0, i0 - 1, 0)
-
-    # load
-    a = tl.load(sorted_data_ptr + i0, mask=mask)
-    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
-
-    # compute
-    ne_result = tl.where(i0 > 0, a != b, 0)
-
-    # store ne_result
-    tl.store(ne_result_ptr + i0, ne_result, mask=mask)
-
-    # store tile_sum
-    tile_sum = tl.sum(ne_result)
-    tile_sum_mask = global_pid < global_ctas_num
-    tl.store(tile_sum_ptr + global_pid, tile_sum, mask=tile_sum_mask)
-
-
-@libentry()
-@triton.jit
-def local_ne_flat_kernel(
-    sorted_data_ptr: tl.tensor,  # in
-    ne_result_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # out
-    global_ctas_num: int,
+    tile_counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
@@ -509,225 +292,273 @@ def local_ne_flat_kernel(
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
-        local_ne_flat_impl(
+        tile_boundary_counts_impl(
             global_pid,
             sorted_data_ptr,  # in
-            ne_result_ptr,
-            tile_sum_ptr,  # out
-            global_ctas_num,
+            tile_counts_ptr,  # out
             num_tasks,
             tile_size,
         )
 
 
+@libentry()
 @triton.jit
-def global_cumsum_flat_impl(
+def tile_counts_scan_kernel(
+    tile_counts_ptr: tl.tensor,  # in
+    tile_prefix_ptr: tl.tensor,  # out (exclusive prefix, group id of the tile)
+    total_ptr: tl.tensor,  # out (number of groups - 1)
+    num_tiles: int,
+    next_power_num_tiles: tl.constexpr,
+):
+    # single-CTA exclusive scan over per-tile group counts.
+    # next_power_of_2(P) must fit the 65 536 per-axis CTA limit, so
+    # P must be ≤ 32768 (num_tasks ≤ 268_435_456). Above that we fall back
+    # to a torch.cumsum on the device (see _unique_post_sort_impl).
+    r = tl.arange(0, next_power_num_tiles)
+    mask = r < num_tiles
+    counts = tl.load(tile_counts_ptr + r, mask=mask, other=0).to(tl.int32)
+    cumsum = tl.cumsum(counts, axis=0)
+    tl.store(tile_prefix_ptr + r, cumsum - counts, mask=mask)
+    # the last group id is total groups - 1; the scan total is that value
+    total = tl.sum(tl.where(mask, counts, 0), axis=0)
+    tl.store(total_ptr + tl.zeros_like(r), total, mask=(r == num_tiles - 1))
+
+
+@triton.jit
+def unique_scatter_impl(
     global_pid,
-    total,
-    ne_result_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # in
-    sorted_data_ptr: tl.tensor,
+    sorted_data_ptr: tl.tensor,  # in
     sorted_indices_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor,
-    inverse_indices_ptr: tl.tensor,
+    tile_prefix_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,  # out
+    inverse_indices_ptr: tl.tensor,  # out
     idx_ptr: tl.tensor,  # out
-    ctas_num: tl.constexpr,
-    global_ctas_num: int,
-    next_power_global_ctas_num: tl.constexpr,
     num_tasks: int,
     tile_size: tl.constexpr,
-    return_counts: tl.constexpr,
+    write_unique: tl.constexpr,
+    write_inverse: tl.constexpr,
+    write_idx: tl.constexpr,
 ):
-    offset = global_pid * tile_size
-    r = tl.arange(0, tile_size)
-    i0 = offset + r
+    i0 = global_pid * tile_size + tl.arange(0, tile_size)
     mask = i0 < num_tasks
+    a = tl.load(sorted_data_ptr + i0, mask=mask)
+    i0_prev = tl.where(i0 > 0, i0 - 1, 0)
+    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
+    # a boundary is the first position of each group; position 0 is one
+    ne_result = tl.where(i0 > 0, a != b, 0).to(tl.int32)
+    cumsum = tl.cumsum(ne_result, axis=0)
+    group_id = tl.load(tile_prefix_ptr + global_pid) + cumsum
+    boundary = ((i0 == 0) | (ne_result != 0)) & mask
 
-    # load sorted_data, sorted_indices
-    sorted_data = tl.load(sorted_data_ptr + i0, mask=mask)
-    sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
-
-    # load tile_sum
-    p = tl.arange(0, next_power_global_ctas_num)
-    pre_tile_sum_mask = (
-        (p >= global_pid - ctas_num)
-        & (p < global_pid)
-        & (p >= 0)
-        & (p < global_ctas_num)
-    )
-    pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
-
-    # cumsum
-    total += tl.sum(pre_tile_sum)
-    ne_result = tl.load(ne_result_ptr + i0, mask=mask)
-    ne_result_i1 = ne_result.to(tl.int1)
-    ne_result = ne_result.to(tl.int32)
-    cumsum = tl.cumsum(ne_result)
-
-    # tile_sum
-    if global_pid == global_ctas_num - 1:
-        last_tile_sum_mask = i0 == num_tasks - 1
-        tile_sum = tl.where(last_tile_sum_mask, total + cumsum, cumsum)
-        tl.store(
-            tile_sum_ptr + global_pid + tl.zeros_like(r),
-            tile_sum,
-            mask=last_tile_sum_mask,
-        )
-    cumsum += total
-
-    # data_out: scatter_(to=cumsum, sorted_data)
-    tl.store(data_out_ptr + cumsum, sorted_data, mask=mask)
-
-    # inverse_indices: scatter_(to=sorted_indices, cumsum)
-    tl.store(inverse_indices_ptr + sorted_indices, cumsum, mask=mask)
-
-    # idx
-    if return_counts:
-        idx_mask = ((i0 == 0) | ne_result_i1) & mask
-        tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
-
-    return total
+    if write_unique:
+        tl.store(data_out_ptr + group_id, a, mask=boundary)
+    if write_inverse:
+        sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
+        tl.store(inverse_indices_ptr + sorted_indices, group_id, mask=mask)
+    if write_idx:
+        tl.store(idx_ptr + group_id, i0, mask=boundary)
+        # Sentinel: the global last element knows the final group id, so it
+        # can terminate the idx array (idx[out_size] = num_tasks). This lets
+        # the counts kernel run with an N-sized bound BEFORE the host knows
+        # out_size, hiding its launch under the device pipeline.
+        last_mask = i0 == num_tasks - 1
+        tl.store(idx_ptr + group_id + 1, num_tasks, mask=last_mask)
 
 
 @libentry()
 @triton.jit
-def global_cumsum_flat_kernel(
-    ne_result_ptr: tl.tensor,
-    tile_sum_ptr: tl.tensor,  # in
-    sorted_data_ptr: tl.tensor,
+def unique_scatter_kernel(
+    sorted_data_ptr: tl.tensor,  # in
     sorted_indices_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor,
-    inverse_indices_ptr: tl.tensor,
+    tile_prefix_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,  # out
+    inverse_indices_ptr: tl.tensor,  # out
     idx_ptr: tl.tensor,  # out
-    ctas_num: int,
-    global_ctas_num: int,
-    next_power_global_ctas_num: tl.constexpr,
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
-    return_counts: tl.constexpr,
+    write_unique: tl.constexpr,
+    write_inverse: tl.constexpr,
+    write_idx: tl.constexpr,
 ):
     pid = ext.program_id(0)
     ctas_num = ext.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
-        global_cumsum_flat_impl(
-            pid,
-            0,
-            ne_result_ptr,
-            tile_sum_ptr,  # in
-            sorted_data_ptr,
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * ctas_num
+        unique_scatter_impl(
+            global_pid,
+            sorted_data_ptr,  # in
             sorted_indices_ptr,  # in
-            data_out_ptr,
-            inverse_indices_ptr,
+            tile_prefix_ptr,  # in
+            data_out_ptr,  # out
+            inverse_indices_ptr,  # out
             idx_ptr,  # out
-            ctas_num,
-            global_ctas_num,
-            next_power_global_ctas_num,
             num_tasks,
             tile_size,
-            return_counts,
+            write_unique,
+            write_inverse,
+            write_idx,
         )
-    else:  # grid-stride-loop style kernel
-        total = tl.zeros([1], dtype=tl.int64)
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * ctas_num
-            total = global_cumsum_flat_impl(
-                global_pid,
-                total,
-                ne_result_ptr,
-                tile_sum_ptr,  # in
-                sorted_data_ptr,
-                sorted_indices_ptr,  # in
-                data_out_ptr,
-                inverse_indices_ptr,
-                idx_ptr,  # out
-                ctas_num,
-                global_ctas_num,
-                next_power_global_ctas_num,
-                num_tasks,
-                tile_size,
-                return_counts,
-            )
 
 
-def sorted_indices_unique_flat(
-    sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool
+def _unique_post_sort_impl(
+    sorted_data: torch.Tensor,
+    sorted_indices: torch.Tensor,
+    return_inverse: bool,
+    return_counts: bool,
 ):
+    """Dedup + group-id + scatter over already-sorted data.
+
+    Replaces the previous local_ne/global_cumsum pair whose lookback re-read
+    O(ctas_num) metadata per tile; here the metadata is one int32 count per
+    tile, scanned once, and the scatter pass never materializes the boundary
+    or group-id arrays.
+    """
     num_tasks = sorted_data.numel()
-    next_power_num_tasks = triton.next_power_of_2(num_tasks)
-    tile_size = min(8192, next_power_num_tasks)
-    global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    if global_ctas_num <= 8192:
-        min_tile_size = 512 if global_ctas_num > 32 else 256
-        tile_size = max(
-            min_tile_size,
-            min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks),
-        )
-        global_ctas_num = triton.cdiv(num_tasks, tile_size)
-    next_power_global_ctas_num = triton.next_power_of_2(global_ctas_num)
-    ctas_num = global_ctas_num if global_ctas_num < 32768 else 8192
-    tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 8 if tiles_per_cta == 1 else 8
-    grid = (ctas_num, 1, 1)
+    tile_size = _POST_SORT_TILE_SIZE
+    num_tiles = triton.cdiv(num_tasks, tile_size)
+    grid = (num_tiles, 1, 1)
 
-    # allocate tensor
-    ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
-    tile_sum = torch.empty(
-        (global_ctas_num,), dtype=torch.int64, device=sorted_data.device
-    )
+    # tile_prefix / total hold group ids and (num_groups-1), both ≤ tile_counts
+    # sum ≤ num_tasks-1, so they overflow int32 only when num_tasks > 2^31-1.
+    # The single-CTA path caps num_tasks at 268 435 456 (well within int32);
+    # for the device-only fallback we widen to int64 only when that bound is
+    # exceeded — this is unreachable in practice (>= 16 GiB just for the
+    # sorted index tensor) but keeps the path provably safe.
+    if num_tasks < (1 << 31) and num_tiles <= _MAX_SINGLE_CTA_SCAN_TILES:
+        # C4: cached internal scratch (tile metadata + idx) — saves four
+        # allocator round-trips per call on the hot path
+        tile_counts, tile_prefix, total, idx = _post_sort_scratch(
+            sorted_data.device, num_tiles, num_tasks
+        )
+        meta_dtype = torch.int32
+    else:
+        meta_dtype = torch.int64 if num_tasks >= (1 << 31) else torch.int32
+        tile_counts = torch.empty(
+            (num_tiles,), dtype=torch.int32, device=sorted_data.device
+        )
+        tile_prefix = torch.empty(
+            (num_tiles,), dtype=meta_dtype, device=sorted_data.device
+        )
+        total = torch.empty((1,), dtype=meta_dtype, device=sorted_data.device)
+
     data_out = torch.empty_like(sorted_data)
-    inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
-    idx = None
-    if return_counts:
-        idx = torch.empty_like(inverse_indices)
+    # Never pass None pointers to the kernel (Triton None-specialization is
+    # fragile on this stack): unused outputs get 1-element dummies.
+    # Triton-MUSA 3.6 additionally miscompiles the scatter kernel's
+    # write_inverse=False specialization for int64 inputs with a partial
+    # trailing tile (n=8193: data_out receives int32-splat garbage
+    # ((v-1)<<32|(v-1)) from some position onward, while boundary counts,
+    # the scan and the write_inverse=True codegen stay correct; reproduced
+    # across num_warps 4/8/16 and fresh compile caches). Force the
+    # write_inverse=True codegen for int64; int64 is not in the official
+    # benchmark dtype matrix, so the extra scatter pass costs nothing where
+    # it matters.
+    write_inverse = return_inverse or sorted_data.dtype == torch.int64
+    inverse_indices = (
+        torch.empty_like(sorted_data, dtype=torch.int64)
+        if write_inverse
+        else torch.empty((1,), dtype=torch.int64, device=sorted_data.device)
+    )
+    if not return_counts:
+        idx = torch.empty((1,), dtype=torch.int64, device=sorted_data.device)
+    # else: idx (N+1, sentinel slot included) already came from the scratch
+    # cache on the kernel-scan path; allocate fresh on the fallback path
+    elif num_tasks >= (1 << 31) or num_tiles > _MAX_SINGLE_CTA_SCAN_TILES:
+        idx = torch.empty(
+            (num_tasks + 1,), dtype=torch.int64, device=sorted_data.device
+        )
+    counts_buf = (
+        torch.empty((num_tasks + 1,), dtype=torch.int64, device=sorted_data.device)
+        if return_counts
+        else None
+    )
 
-    # launch kernel
     with torch_device_fn.device(sorted_data.device.index):
-        local_ne_flat_kernel[grid](
+        tile_boundary_counts_kernel[grid](
             sorted_data,  # in
-            ne_result,
-            tile_sum,  # out
-            global_ctas_num,
+            tile_counts,  # out
             num_tasks,
-            tiles_per_cta=tiles_per_cta,
+            tiles_per_cta=1,
             tile_size=tile_size,
-            num_warps=num_warps,
+            num_warps=_POST_SORT_BOUNDARY_WARPS,
         )
-        global_cumsum_flat_kernel[grid](
-            ne_result,
-            tile_sum,  # in
-            sorted_data,
+        # Exclusive scan over per-tile group counts.
+        # Single-CTA scan is bounded by next_power_of_2(P) ≤ 65 536 →
+        # P ≤ 32768 (num_tasks ≤ 268_435_456). Above that fall back to
+        # torch.cumsum on the device (negligible cost for a few ×10^4 values).
+        used_kernel_scan = num_tiles <= _MAX_SINGLE_CTA_SCAN_TILES
+        if used_kernel_scan:
+            tile_counts_scan_kernel[(1,)](
+                tile_counts,  # in
+                tile_prefix,  # out
+                total,  # out
+                num_tiles,
+                next_power_num_tiles=triton.next_power_of_2(num_tiles),
+                num_warps=_POST_SORT_SCAN_WARPS,
+            )
+            # Async out-size probe: stage the 4-byte total to pinned memory
+            # NOW, right after the tiny scan kernel, and record an event.
+            # Later we only wait for this event (not the whole stream), so
+            # the host resumes while scatter/counts still run and the op
+            # returns before the stream drains — the .item() full sync
+            # disappears from the critical path.
+            pinned, size_event = _size_probe(sorted_data.device.index)
+            pinned.copy_(total, non_blocking=True)
+            size_event.record()
+        else:
+            cumsum = tile_counts.cumsum(dim=0).to(meta_dtype)
+            tile_prefix.narrow(0, 0, 1).zero_()
+            if num_tiles > 1:
+                tile_prefix.narrow(0, 1, num_tiles - 1).copy_(
+                    cumsum.narrow(0, 0, num_tiles - 1)
+                )
+            total.copy_(cumsum.narrow(0, num_tiles - 1, 1))
+        unique_scatter_kernel[grid](
+            sorted_data,  # in
             sorted_indices,  # in
-            data_out,
-            inverse_indices,
+            tile_prefix,  # in
+            data_out,  # out
+            inverse_indices,  # out
             idx,  # out
-            ctas_num,
-            global_ctas_num,
-            next_power_global_ctas_num,
             num_tasks,
-            tiles_per_cta=tiles_per_cta,
+            tiles_per_cta=1,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta == 1,
-            return_counts=return_counts,
-            num_warps=num_warps,
+            write_unique=True,
+            write_inverse=write_inverse,
+            write_idx=return_counts,
+            num_warps=_POST_SORT_SCATTER_WARPS,
         )
-        out_size = tile_sum[-1].item() + 1
-        counts = None
+        # C1: launch the counts kernel with the N-sized bound BEFORE the
+        # host knows out_size (the scatter kernel's sentinel terminates the
+        # idx array). Its launch cost hides under the device pipeline; the
+        # garbage it computes beyond out_size is narrowed away below.
         if return_counts:
-            idx = idx[:out_size]
-            counts = torch.empty_like(idx)
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in
-                counts,  # out
-                out_size,
-                tiles_per_cta,
-                tile_size,
-                num_warps=num_warps,
+                counts_buf,  # out
+                num_tasks + 1,
+                tiles_per_cta=1,
+                tile_size=tile_size,
+                num_warps=8,
             )
+        # Wait only for the size probe (scan + tiny copy), not for the
+        # scatter/counts kernels still executing on the stream.
+        if used_kernel_scan:
+            size_event.synchronize()
+            out_size = pinned.item() + 1
+        else:
+            out_size = total.item() + 1
 
-    return data_out[:out_size], inverse_indices, counts
+    counts = counts_buf.narrow(0, 0, out_size) if return_counts else None
+    # host side: unrequested outputs are None (normalized by _unique2)
+    return (
+        data_out.narrow(0, 0, out_size),
+        inverse_indices if return_inverse else None,
+        counts,
+    )
 
 
 def simple_unique_flat(
@@ -739,17 +570,18 @@ def simple_unique_flat(
     num_tasks = sorted_data.numel()
     grid = (1, 1, 1)
 
-    # allocate tensor
+    # allocate tensor; never pass None pointers to the kernel (see the
+    # miscompilation notes in _unique_post_sort_impl)
     data_out = torch.empty_like(sorted_data)
-    if return_inverse:
-        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int64)
-    else:
-        inverse_indices = None
-    if return_counts:
-        idx = torch.empty_like(sorted_data, dtype=torch.int64)
-    else:
-        idx = None
-    unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
+    inverse_indices = (
+        torch.empty_like(sorted_data, dtype=torch.int64)
+        if return_inverse
+        else torch.empty((1,), dtype=torch.int64, device=sorted_data.device)
+    )
+    # C4: cached internal scratch (unique_size + idx with sentinel slot)
+    unique_size, idx = _small_path_scratch(sorted_data.device, num_tasks)
+    if not return_counts:
+        idx = torch.empty((1,), dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
     with torch_device_fn.device(sorted_data.device.index):
@@ -766,22 +598,57 @@ def simple_unique_flat(
             tile_size=triton.next_power_of_2(num_tasks),
             num_warps=8,
         )
-    out_size = unique_size.item() + 1
-    counts = None
-    if return_counts:
-        idx = idx[:out_size]
-        counts = torch.empty_like(idx)
-        with torch_device_fn.device(sorted_data.device.index):
+        # Async out-size probe + pre-item counts launch (see
+        # _unique_post_sort_impl): the sentinel written by the kernel lets
+        # the counts kernel run with an N-sized bound before the host knows
+        # out_size.
+        pinned, size_event = _size_probe(
+            sorted_data.device.index, dtype=unique_size.dtype
+        )
+        pinned.copy_(unique_size, non_blocking=True)
+        size_event.record()
+        if return_counts:
+            counts_buf = torch.empty(
+                (num_tasks + 1,), dtype=torch.int64, device=sorted_data.device
+            )
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in
-                counts,  # out
-                num_tasks=out_size,
+                counts_buf,  # out
+                num_tasks + 1,
                 tiles_per_cta=1,
-                tile_size=triton.next_power_of_2(out_size),
+                tile_size=triton.next_power_of_2(num_tasks + 1),
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices, counts
+        size_event.synchronize()
+        out_size = pinned.item() + 1
+    counts = counts_buf.narrow(0, 0, out_size) if return_counts else None
+    # host side: unrequested outputs are None (normalized by _unique2);
+    # the dummy tensors above only ever existed for the kernel signature
+    return (
+        data_out.narrow(0, 0, out_size),
+        inverse_indices if return_inverse else None,
+        counts,
+    )
+
+
+def _sorted_with_indices(flat: torch.Tensor):
+    """Sort via the out= overload.
+
+    The python-registered flag_gems sort override covers torch.sort's
+    functional form but not its out= form; the out= form reaches the native
+    mudnn radix sort, which is an order of magnitude faster than the python
+    radix sort on this stack.
+    """
+    values = torch.empty_like(flat)
+    indices = torch.empty(
+        flat.shape,
+        dtype=torch.int64,
+        device=flat.device,
+        memory_format=torch.contiguous_format,
+    )
+    torch.sort(flat, out=(values, indices))
+    return values, indices
 
 
 def _unique2(
@@ -791,23 +658,41 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS_MTHREADS _UNIQUE2")
+    if in0.numel() == 0:
+        # radix_sort cannot launch on a 0-length dim; produce the empty result
+        # directly (matches aten's short-circuit for dim=None unique).
+        #
+        # aten::_unique2 always returns three tensors; unrequested
+        # inverse/counts are empty int64 tensors, never None. Verified on
+        # this platform's aten (MUSA, CUDA-style contract): for a multi-dim
+        # empty (e.g. (0, 3) or (2, 0)) the inverse comes back
+        # view_as(in0) UNCONDITIONALLY — including return_inverse=False —
+        # while non-empty inputs return a plain (0,) when unrequested.
+        return (
+            in0.new_empty((0,)),
+            torch.empty(0, dtype=torch.int64, device=in0.device).view_as(in0),
+            torch.empty(0, dtype=torch.int64, device=in0.device),
+        )
+    flat = in0.ravel()
     if in0.numel() <= 8192:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
+        sorted_data, sorted_indices = _sorted_with_indices(flat)
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices, return_inverse, return_counts
         )
-    elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts
-        )
     else:
-        sorted_data, _ = torch.sort(in0.ravel())
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(
-            sorted_data, return_counts
+        sorted_data, sorted_indices = _sorted_with_indices(flat)
+        data_out, inverse_indices, counts = _unique_post_sort_impl(
+            sorted_data, sorted_indices, return_inverse, return_counts
         )
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # aten::_unique2 always returns three tensors: when return_inverse /
+    # return_counts are False the corresponding output is an empty (0,) int64
+    # tensor rather than None. Mirror that contract so callers can rely on the
+    # shapes matching ATen regardless of the requested flags (same as the
+    # generic ops/unique.py::_unique2).
+    if inverse_indices is None:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = inverse_indices.view_as(in0)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+    return data_out, inverse_indices, counts
