@@ -1,5 +1,11 @@
 # 已验证的 benchmark skip
 
+## 2026-10-24 完整遍历增量
+
+使用 Gems@4184f11bc6fe0775c3042a9400867e01aa469b8a 的 OOM 后继续收集逻辑，对 421 项进行完整 reference-only 复审，无 NOT_RUN。新增 1,561 条精确 OOM 规则：昇腾 106、海光 392、沐曦 376、摩尔 130、平头哥 109、燧原 445、天数 3。全部为明确 OutOfMemoryError，恢复成功且 skip_eligible=true；不根据未知错误或未执行 case 推断 OOM。
+
+累计 2,352 条规则（2,348 条 OOM、4 条 BF16 不支持）。原始证据为 oom-continue-review-20261024-0hIuL3/results，逐规则来源和完整输入元数据归档在该实验目录的 oom-skip-evidence.json。回放检查新增规则不影响 8,283 个成功 case 和 421 个已有 skip。本增量仍只覆盖已验证的 benchmark case，不据此跳过 correctness 测例；加入 skip 不代表 reference、注入或优化已经通过，需另行真机复测。
+
 ## 2026-10-23 增量
 
 在原 370 条规则上新增 421 条明确设备 OOM 规则，累计 791 条（787 条 OOM、4 条 BF16 不支持）。新规则来自 Gems@318c49df3550eae21c94cc9975b373e22d051f29 的 benchmark-fix-review-20261023-dATv1G 审核原始逐 case 记录，异常类型全部为 OutOfMemoryError，不以模糊 UNKNOWN 分类或未执行的 NOT_RUN 生成规则。平台分布为昇腾 22、海光 84、沐曦 80、摩尔 74、平头哥 53、燧原 105、天数 3。原始报告同时收录于 failed_review_pytests_1037.zip（SHA256 92aa37c51f1f009d8e31ff7491fb01e9c74664bc863950502b70f890e8a730c0）。

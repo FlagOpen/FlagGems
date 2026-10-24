@@ -18,8 +18,8 @@ spec.loader.exec_module(policy)
 
 def test_registry_is_unique_and_conservative():
     rows = json.loads((ROOT / "benchmark/verified_case_skips.json").read_text())
-    assert len(rows) == len(policy._rules()) == 791
-    assert sum(r[3] == "OOM" for r in rows) == 787
+    assert len(rows) == len(policy._rules()) == 2352
+    assert sum(r[3] == "OOM" for r in rows) == 2348
     assert sum(r[3] == "BF16_UNSUPPORTED" for r in rows) == 4
     assert {r[0] for r in rows} == {
         "ascend",
@@ -36,7 +36,7 @@ def test_new_oom_rules_have_exact_recorded_scope():
     from collections import Counter
 
     rows = json.loads((ROOT / "benchmark/verified_case_skips.json").read_text())
-    added = rows[370:]
+    added = rows[370:791]
     assert len(added) == 421
     assert all(row[3] == "OOM" for row in added)
     assert Counter(row[0] for row in added) == {
@@ -46,6 +46,24 @@ def test_new_oom_rules_have_exact_recorded_scope():
         "mthreads": 74,
         "thead": 53,
         "enflame": 105,
+        "iluvatar": 3,
+    }
+
+
+def test_full_traversal_oom_rules_have_exact_recorded_scope():
+    from collections import Counter
+
+    rows = json.loads((ROOT / "benchmark/verified_case_skips.json").read_text())
+    added = rows[791:]
+    assert len(added) == 1561
+    assert all(row[3] == "OOM" for row in added)
+    assert Counter(row[0] for row in added) == {
+        "ascend": 106,
+        "hygon": 392,
+        "metax": 376,
+        "mthreads": 130,
+        "thead": 109,
+        "enflame": 445,
         "iluvatar": 3,
     }
 
