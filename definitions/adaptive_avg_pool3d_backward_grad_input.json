@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "adaptive_avg_pool3d_backward",
+  "name": "adaptive_avg_pool3d_backward_grad_input",
   "requires_triton_kernel": true,
   "description": "Computes the gradient of 3D adaptive average pooling.",
   "parameters": [

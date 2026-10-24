@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -52,11 +50,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.linalg_ldl_factor
+@pytest.mark.ldl_factor
 def test_linalg_ldl_factor():
     LdlFactorBenchmark(
-        op_name="linalg_ldl_factor",
+        op_name="ldl_factor",
         torch_op=torch.linalg.ldl_factor,
-        gems_op=flag_gems.ldl_factor,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float64],
