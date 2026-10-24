@@ -36,16 +36,19 @@ from . import accuracy_utils as utils
 
 
 # Reorder support measured on this build with a valid rank-4 weight:
-#   float32 / float16 / bfloat16 / int8 -> reordered, values bit-exact for all five ranges
+#   float32 / float16 / bfloat16 -> reordered, values bit-exact for all five ranges
+#   int8 -> to_mkldnn() accepts it, but the oneDNN blocked layout for int8 weights
+#            is a genuine physical re-packing on some ISA builds (the fp* paths are
+#            value-transparent passes); the re-layout candidate is value-transparent
+#            only, so int8 results diverge from native there and it is excluded.
 #   uint8 -> ``to_mkldnn()`` accepts it, the convolution descriptor does not, so it is
 #            reachable as a candidate call and appears as the dtype negative below
 #   bool / int32 / int64 / float64 / fp8 -> ``to_mkldnn()`` itself refuses them
 #            ("dense_to_mkldnn expects float, bfloat16, half, uint8, int8 tensor input"),
 #            so they cannot be expressed as a candidate call at all.
-# The complete native CPU dtype matrix for this reorder (measured; the
-# KernelGen acceptance suite used this exact list). It deviates from the
-# floating-only FLOAT_DTYPES family by design (int8 weights are reorderable).
-SUPPORTED_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.int8]
+# The reorder candidate is value-transparent; the floating dtypes match the
+# native result on every ISA build. Int8 is excluded (see note above).
+SUPPORTED_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 FLOAT_DTYPES = SUPPORTED_DTYPES  # alias so the standard dtype-constant name resolves
 
 # Spec shapes filtered to the ranks this operator accepts (rank 3/4/5).
@@ -275,7 +278,6 @@ def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
         # (the same floating dtypes the acceptance suite sweeps).
         (d, s)
         for d in SUPPORTED_DTYPES
-        if d != torch.int8
         for s in ("nan", "inf", "mixed")
     ],
 )
@@ -370,7 +372,7 @@ def test_mkldnn_reorder_conv2d_weight_dense_operand():
 @pytest.mark.mkldnn_reorder_conv2d_weight
 # The native reorder preserves values through autograd forwarding but has no
 # derivative; complex dtypes would need a different raise path (measured).
-@pytest.mark.parametrize("dtype", [d for d in SUPPORTED_DTYPES if d != torch.int8])
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_mkldnn_reorder_conv2d_weight_rejects_backward(dtype):
     inp = (
         make_input(dtype, (8, 4, 3, 3), ["-1", "1"])

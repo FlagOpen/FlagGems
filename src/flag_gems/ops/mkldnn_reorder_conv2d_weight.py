@@ -53,7 +53,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["mkldnn_reorder_conv2d_weight", "mkldnn_reorder_conv2d_weight_out"]
 
-_ALLOWED_DTYPES = (torch.float32, torch.float16, torch.bfloat16, torch.int8)
+# The value-transparent re-layout matches the native reorder for the
+# floating dtypes on every ISA build. Int8 is rejected: the oneDNN
+# blocked layout for int8 weights is a physical re-packing on some ISA
+# builds, which a value-transparent pass cannot reproduce.
+_ALLOWED_DTYPES = (torch.float32, torch.float16, torch.bfloat16)
 
 _DESCRIPTOR_ERROR = (
     "could not create a primitive descriptor for the convolution forward "

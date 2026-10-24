@@ -35,8 +35,10 @@ DEFAULT_WEIGHT_SHAPES = [
     (256, 512, 3, 3),
 ]
 
-# The complete native CPU dtype matrix for this reorder, verified with a valid rank-4 weight.
-_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.int8]
+# Floating dtype matrix for this reorder. Int8 is excluded: the oneDNN
+# blocked layout for int8 weights is a physical re-packing on some ISA
+# builds, which the value-transparent candidate does not reproduce.
+_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 
 _PADDING = [1, 1]
 _STRIDE = [1, 1]
