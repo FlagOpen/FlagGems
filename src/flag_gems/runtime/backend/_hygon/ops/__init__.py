@@ -228,7 +228,6 @@ __all__ = [
     "baddbmm",
     "baddbmm_",
     "baddbmm_out",
-    "baddbmm_",
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",

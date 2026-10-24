@@ -20,10 +20,65 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 
+def _prune_addmm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    # Keep at least the smallest declared tiles for sub-tile dimensions.
+    limits = {
+        "BLOCK_SIZE_M": max(32, triton.next_power_of_2(m)),
+        "BLOCK_SIZE_N": max(32, triton.next_power_of_2(n)),
+        "BLOCK_SIZE_K": max(16, triton.next_power_of_2(k)),
+    }
+    pruned = []
+    seen = set()
+    for config in configs:
+        if any(config.kwargs[name] > limit for name, limit in limits.items()):
+            continue
+        # Groups covering all M tiles produce the same program ordering.
+        signature = config.all_kwargs()
+        signature["GROUP_SIZE_M"] = min(
+            config.kwargs.get("GROUP_SIZE_M", 8),
+            triton.cdiv(m, config.kwargs["BLOCK_SIZE_M"]),
+        )
+        signature = tuple(sorted(signature.items()))
+        if signature not in seen:
+            seen.add(signature)
+            pruned.append(config)
+    if m * n <= 32**2:
+        return pruned or configs
+
+    # Bound compile cost for larger generic GEMMs. Short reductions favor
+    # smaller K tiles; long reductions retain tiles that amortize the loop.
+    block_ks = (16, 32) if k <= 128 else (32, 64) if k <= 512 else (64, 128)
+    shortlist = []
+    for config in pruned:
+        bm = config.kwargs["BLOCK_SIZE_M"]
+        bn = config.kwargs["BLOCK_SIZE_N"]
+        bk = config.kwargs["BLOCK_SIZE_K"]
+        if bk not in block_ks or bm * bn > 32768:
+            continue
+        if min(m, n) >= 64 and bm * bn < 2048:
+            continue
+        if (n >= 4 * m and bn < bm) or (m >= 4 * n and bm < bn):
+            continue
+        warps = 4 if bm * bn <= 16384 else 8
+        if config.num_warps != warps:
+            continue
+        if config.num_stages > min(2, triton.cdiv(k, bk)):
+            continue
+        grid_m = triton.cdiv(m, bm)
+        group_m = min(config.kwargs.get("GROUP_SIZE_M", 8), grid_m)
+        if group_m not in (1, min(8, grid_m)):
+            continue
+        shortlist.append(config)
+    return shortlist or pruned or configs
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
+    prune_configs_by={"early_config_prune": _prune_addmm_configs},
     strategy=["default", "default", "default"],
     warmup=2,
     rep=8,
