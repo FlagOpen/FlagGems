@@ -1442,6 +1442,8 @@ _FULL_CONFIG = (
     ("mish", mish),
     ("mish_", mish_),
     ("mish_backward", mish_backward),
+    ("mkldnn_reorder_conv2d_weight", mkldnn_reorder_conv2d_weight),
+    ("mkldnn_reorder_conv2d_weight.out", mkldnn_reorder_conv2d_weight_out),
     ("mkldnn_rnn_layer", mkldnn_rnn_layer),
     ("mm", mm),
     ("mm.out", mm_out),

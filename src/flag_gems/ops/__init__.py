@@ -1077,6 +1077,10 @@ from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mixed_dtypes_linear import mixed_dtypes_linear
+from flag_gems.ops.mkldnn_reorder_conv2d_weight import (
+    mkldnn_reorder_conv2d_weight,
+    mkldnn_reorder_conv2d_weight_out,
+)
 from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
@@ -2682,6 +2686,8 @@ __all__ = [
     "mish_",
     "mish_backward",
     "mixed_dtypes_linear",
+    "mkldnn_reorder_conv2d_weight",
+    "mkldnn_reorder_conv2d_weight_out",
     "mkldnn_rnn_layer",
     "mm",
     "mm_out",
